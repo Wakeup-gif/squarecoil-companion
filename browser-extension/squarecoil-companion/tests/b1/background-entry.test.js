@@ -241,6 +241,18 @@ test.afterEach(() => {
   delete global.window;
 });
 
+test('UT-B5-CINE-042 a granted exact Bing origin is recognized without accepting broader permission changes', () => {
+  installChromeHarness({ timerEnabled: true });
+  const { includesBingPermission, BING_PERMISSION_ORIGIN, B5B_PERMISSION_CHANGED_MESSAGE } = loadBackground();
+  assert.equal(BING_PERMISSION_ORIGIN, 'https://www.bing.com/*');
+  assert.equal(B5B_PERMISSION_CHANGED_MESSAGE, 'SC_COMPANION_B5B_PERMISSION_CHANGED');
+  assert.equal(includesBingPermission({ origins: ['https://www.bing.com/*'] }), true);
+  assert.equal(includesBingPermission({ origins: ['https://bing.com/*'] }), false);
+  assert.equal(includesBingPermission({ origins: ['https://www.bing.com.evil.example/*'] }), false);
+  assert.equal(includesBingPermission({ origins: ['<all_urls>'] }), false);
+  assert.equal(includesBingPermission({ permissions: ['tabs'] }), false);
+});
+
 test('boot request waits for teardown, retires the old runtime, and injects a fresh generation', async () => {
   const runtimeInstanceId = 'runtime-teardown-race';
   const root = {

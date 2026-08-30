@@ -518,10 +518,20 @@ test('UT-B2-READY-019 popup settlement retry policy is exactly bounded to three 
 
 test('UT-B2-READY-022 popup static copy preserves the final fail-closed gate behind friendly status copy', () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../../popup/popup.html'), 'utf8');
+  assert.match(html, /<h1>SquareCoil Companion<\/h1>/);
+  assert.doesNotMatch(html, /<img\b|brand-mark|US Sign &amp; Mill/);
   assert.match(html, /Companion workspace/);
   assert.match(html, /Ready appears only after every required safety check passes\./);
   assert.match(html, /Technical details/);
   assert.doesNotMatch(html, /B6 · Release candidate|OWNER|fenced authority|trusted core|Bridge settlement/);
+});
+
+test('UT-B5-POPUP-005 popup uses quiet filled surfaces while preserving keyboard focus and forced-colors boundaries', () => {
+  const css = fs.readFileSync(path.resolve(__dirname, '../../popup/popup.css'), 'utf8');
+  assert.match(css, /button\{border:0;/);
+  assert.match(css, /\.status-card,[^\n]+\{border:0;/);
+  assert.match(css, /button:focus-visible[^\{]+\{outline:2px solid var\(--accent\)/);
+  assert.match(css, /@media\(forced-colors:active\)[^\n]+border:1px solid ButtonText/);
 });
 
 test('UT-B5-POPUP-001 exact healthy status and read-only page summary render in the friendly popup', async () => {

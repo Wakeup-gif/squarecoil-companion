@@ -10,6 +10,7 @@ const { PACKAGE_FILES: REQUIRED_PACKAGE_FILES, CANDIDATE_EMBEDDED_BUNDLES } = re
 const CANONICAL_BUILD_ID = 'rebuild-b6-release-candidate';
 const CANONICAL_STAGE = 'B6';
 const FIXTURE_ORIGIN = 'https://ussignandmill.squarecoil.net';
+const WEBSITE_LOGO_FILENAME = 'US-Sign&-Mill-Logo - sized for SC site.png';
 const FIXTURE_PATH = '/__b1_fixture__/a4.html';
 const FRAME_PATH = '/__b1_fixture__/frame.html';
 const DASHBOARD_PATH = '/dashboard.php';
@@ -32,6 +33,7 @@ const CLAIM_KEY = '__squareCoilCompanionInjectionClaim';
 const BOOTSTRAP_KEY = '__squareCoilCompanionBootstrap';
 const DOCUMENT_TOKEN_DATASET_KEY = 'squarecoilCompanionDocumentToken';
 const AUTHORITY_STORAGE_KEY = 'squarecoilCompanionB2AuthorityV1';
+const WALLPAPER_CACHE_KEY = 'squarecoilCompanionB5BWallpaperCacheV1';
 const EXPECTED_DEGRADED_REASON = 'coordination-not-implemented-b1';
 const REQUIRED_A4_STABLE_FIXTURE_IDS = Object.freeze([
   'B1-LC-001',
@@ -983,6 +985,11 @@ async function installSyntheticRouting(context, networkEvidence, transitionFixtu
       networkEvidence.nativeMutationAttempts.push(record);
       return route.abort('blockedbyclient');
     }
+    if (url.origin === FIXTURE_ORIGIN && decodeURIComponent(url.pathname).endsWith(`/images/${WEBSITE_LOGO_FILENAME}`)) {
+      networkEvidence.fulfilled.push(url.href);
+      return route.fulfill({ status: 200, contentType: 'image/png',
+        body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') });
+    }
     if (url.origin === 'https://www.bing.com' && url.pathname === '/HPImageArchive.aspx' &&
         url.searchParams.get('format') === 'js' && url.searchParams.get('idx') === '0' &&
         url.searchParams.get('n') === '1' && BING_MARKETS.includes(url.searchParams.get('mkt')) &&
@@ -1431,6 +1438,16 @@ async function openSettingsHome(page, timeoutMs) {
   await waitFor(async () => await heading.innerText().catch(() => '') === 'Settings' ? true : null, 'Settings Home navigation', timeoutMs);
 }
 
+async function openSettingsDestination(page, group, view, timeoutMs) {
+  await openSettingsHome(page, timeoutMs);
+  const toggle = page.locator(`#${ROOT_ID} [data-action="settings-toggle-group"][data-group="${group}"]`);
+  if (await toggle.getAttribute('aria-expanded').catch(() => null) !== 'true') {
+    await clickWorkspaceControl(page, `[data-action="settings-toggle-group"][data-group="${group}"]`, timeoutMs);
+  }
+  await page.locator(`#${ROOT_ID} [data-action="settings-route"][data-view="${view}"]`).waitFor({ state: 'visible', timeout: timeoutMs });
+  await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="${view}"]`, timeoutMs);
+}
+
 function runB2TransitionLifecycleBrowserCase(cases, family, fixtureIds, stableFixtureIds, slug, name, task, extraMetadata = {}) {
   for (const fixtureId of fixtureIds) {
     if (!REQUIRED_B2_2_A4_FIXTURE_IDS.includes(fixtureId)) throw new Error(`Unknown B2.2 A4 fixture ID: ${fixtureId}`);
@@ -1465,6 +1482,65 @@ function runB2ReadyBrowserCase(cases, family, fixtureIds, slug, name, task) {
 
 function serviceWorkerTarget(targets, extensionId) {
   return targets.targetInfos.find(target => target.type === 'service_worker' && target.url === `chrome-extension://${extensionId}/dist/background.js`) || null;
+}
+
+let attachedCdpCommandId = 0;
+function sendAttachedCdpCommand(rootSession, sessionId, method, params = {}, timeoutMs = 10_000) {
+  const id = ++attachedCdpCommandId;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => finish(new Error(`Timed out sending ${method} to the action popup target`)), timeoutMs);
+    const listener = event => {
+      if (event?.sessionId !== sessionId) return;
+      let message;
+      try { message = JSON.parse(event.message); } catch (_) { return; }
+      if (message.id !== id) return;
+      if (message.error) finish(new Error(`${method} failed: ${message.error.message || 'unknown error'}`));
+      else finish(null, message.result);
+    };
+    function finish(error, value) {
+      clearTimeout(timer);
+      rootSession.off('Target.receivedMessageFromTarget', listener);
+      if (error) reject(error); else resolve(value);
+    }
+    rootSession.on('Target.receivedMessageFromTarget', listener);
+    rootSession.send('Target.sendMessageToTarget', {
+      sessionId,
+      message: JSON.stringify({ id, method, params })
+    }).catch(error => finish(error));
+  });
+}
+
+async function clickRealActionPopup(rootSession, extensionPage, extensionId, timeoutMs) {
+  const popupOpened = await extensionPage.evaluate(async () => {
+    try { await chrome.action.openPopup(); return { ok: true }; }
+    catch (error) { return { ok: false, error: String(error?.message || error) }; }
+  });
+  assert(popupOpened.ok === true, 'Trusted popup gate could not open the real extension action popup', popupOpened);
+  const popupTarget = await waitFor(async () => {
+    const targets = await rootSession.send('Target.getTargets');
+    return targets.targetInfos?.find(target => target.type === 'page' && target.attached === false &&
+      target.url === `chrome-extension://${extensionId}/popup/popup.html`) || null;
+  }, 'the actual toolbar action popup target', timeoutMs);
+  const attached = await rootSession.send('Target.attachToTarget', { targetId: popupTarget.targetId, flatten: false });
+  assert(attached?.sessionId, 'Could not attach to the real toolbar action popup', attached);
+  const sessionId = attached.sessionId;
+  try {
+    const button = await waitFor(async () => {
+      const evaluated = await sendAttachedCdpCommand(rootSession, sessionId, 'Runtime.evaluate', {
+        expression: `(() => { const node = document.getElementById('enableWallpaper'); if (!node || node.disabled) return null; const rect = node.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, label: node.textContent.trim() }; })()`,
+        returnByValue: true,
+        awaitPromise: true
+      }, timeoutMs);
+      return evaluated?.result?.value || null;
+    }, 'the trusted Allow access control in the actual toolbar popup', timeoutMs);
+    await sendAttachedCdpCommand(rootSession, sessionId, 'Input.dispatchMouseEvent',
+      { type: 'mousePressed', x: button.x, y: button.y, button: 'left', buttons: 1, clickCount: 1 }, timeoutMs);
+    await sendAttachedCdpCommand(rootSession, sessionId, 'Input.dispatchMouseEvent',
+      { type: 'mouseReleased', x: button.x, y: button.y, button: 'left', buttons: 0, clickCount: 1 }, timeoutMs);
+    return { targetId: popupTarget.targetId, label: button.label, input: 'trusted-cdp-mouse' };
+  } finally {
+    await rootSession.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+  }
 }
 
 async function runInteractivePermissionGate({ playwright, family, executablePath, packageDirectory, packageInventory, options }) {
@@ -1569,30 +1645,16 @@ async function runInteractivePermissionGate({ playwright, family, executablePath
         assert(result.network.bing.length === 0, 'Interactive gate reached Bing before permission', result.network.bing);
 
         const permissionProbePage = await context.newPage();
-        let popupPage = null;
         let decision;
         try {
           await permissionProbePage.goto(`chrome-extension://${extensionId}/popup/popup.html`, { waitUntil: 'domcontentloaded', timeout: options.timeoutMs });
-          const targets = await browserCdp.send('Target.getTargets');
-          const fixtureTarget = targets.targetInfos?.find(target => target.type === 'page' && target.url === `${FIXTURE_ORIGIN}${FIXTURE_PATH}`);
-          assert(fixtureTarget?.targetId, 'Trusted popup gate could not identify the sealed simulator tab', targets.targetInfos);
-          await browserCdp.send('Extensions.triggerAction', { id: extensionId, targetId: fixtureTarget.targetId });
-          popupPage = await waitFor(async () => context.pages().find(candidate =>
-            candidate !== permissionProbePage && candidate.url() === `chrome-extension://${extensionId}/popup/popup.html`) || null,
-          'the actual toolbar action popup', options.timeoutMs);
-          await popupPage.bringToFront();
-          await popupPage.locator('#enableWallpaper').click({ timeout: options.timeoutMs });
-          // The browser owns the optional-host confirmation surface. Dispatch a
-          // normal confirmation key only after the trusted popup click; never
-          // pre-grant the origin through CDP or a profile mutation.
-          await popupPage.waitForTimeout(500);
-          await popupPage.keyboard.press('Enter');
+          const popupClick = await clickRealActionPopup(browserCdp, permissionProbePage, extensionId, options.timeoutMs);
           decision = await waitFor(async () => permissionProbePage.evaluate(async () => {
             const granted = await chrome.permissions.contains({ origins: ['https://www.bing.com/*'] });
             return granted === true ? { granted: true, decision: 'browser-owned-toolbar-popup' } : null;
           }), 'the browser-owned Bing permission grant', options.timeoutMs);
+          decision.popupClick = popupClick;
         } finally {
-          await popupPage?.close().catch(() => {});
           await permissionProbePage.close().catch(() => {});
           await page.bringToFront().catch(() => {});
         }
@@ -1608,7 +1670,8 @@ async function runInteractivePermissionGate({ playwright, family, executablePath
           const dom = await inspectVisibleCinematicPhoto(page, 'SLEEK_DARK');
           return current?.state === 'SHOWING' && ['REMOTE', 'CACHE_RETAINED', 'CACHE_FRESH'].includes(current.source) &&
             current.statusCode === (current.source === 'REMOTE' ? 'BING_IMAGE_ACTIVE' : current.statusCode) &&
-            dom.hostTheme === 'SLEEK_DARK' && dom.computedImagePresent === true ? { snapshot, dom } : null;
+            dom.hostTheme === 'SLEEK_DARK' && dom.computedImagePresent === true && dom.opacity === '1'
+            ? { snapshot, dom } : null;
         }, 'the granted Bing image on the integrated Glass surface', options.timeoutMs);
         assertVisibleCinematicPhoto(rendered.dom);
         const darkScreenshot = await capturePageEvidence(page, options, family, 'live-bing-dark-glass');
@@ -1621,7 +1684,8 @@ async function runInteractivePermissionGate({ playwright, family, executablePath
           const dom = await inspectVisibleCinematicPhoto(page, 'LIGHT_GLASS');
           return snapshot?.preferences?.websiteTheme === 'LIGHT_GLASS' && current?.state === 'SHOWING' &&
             ['REMOTE', 'CACHE_RETAINED', 'CACHE_FRESH'].includes(current.source) &&
-            dom.hostTheme === 'LIGHT_GLASS' && dom.computedImagePresent === true ? { snapshot, dom } : null;
+            dom.hostTheme === 'LIGHT_GLASS' && dom.computedImagePresent === true && dom.opacity === '1'
+            ? { snapshot, dom } : null;
         }, 'the same real Bing photograph behind integrated Light Glass', options.timeoutMs);
         assertVisibleCinematicPhoto(renderedLight.dom);
         const lightScreenshot = await capturePageEvidence(page, options, family, 'live-bing-light-glass');
@@ -1650,14 +1714,14 @@ async function runInteractivePermissionGate({ playwright, family, executablePath
         const retained = await waitFor(async () => {
           const snapshot = await bridge.coreSnapshot().catch(() => null);
           const current = snapshot?.presentation?.optional?.cinematic;
+          const dom = await inspectVisibleCinematicPhoto(page, 'LIGHT_GLASS');
           return current?.state === 'DEGRADED_CACHE' && current.source === 'CACHE_RETAINED' &&
-            current.statusCode === 'OLDER_CACHED_BING_IMAGE_RETAINED' && current.failureCode === 'NETWORK_UNAVAILABLE'
-            ? snapshot : null;
+            current.statusCode === 'OLDER_CACHED_BING_IMAGE_RETAINED' && current.failureCode === 'NETWORK_UNAVAILABLE' &&
+            dom.hostTheme === 'LIGHT_GLASS' && dom.computedImagePresent === true && dom.opacity === '1'
+            ? { snapshot, dom } : null;
         }, 'older cached Bing image retained after a simulated network outage', options.timeoutMs);
-        const retainedDom = await inspectVisibleCinematicPhoto(page, 'LIGHT_GLASS');
-        assertVisibleCinematicPhoto(retainedDom);
-        await openSettingsHome(page, options.timeoutMs);
-        await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="website-theme"]`, options.timeoutMs);
+        assertVisibleCinematicPhoto(retained.dom);
+        await openSettingsDestination(page, 'appearance', 'website-theme', options.timeoutMs);
         const retainedStatusText = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
         assert(/Older cached Bing image retained after a failure; network unavailable/i.test(retainedStatusText) &&
           !/Using saved wallpaper/i.test(retainedStatusText),
@@ -1694,7 +1758,7 @@ async function runInteractivePermissionGate({ playwright, family, executablePath
         return { fallbackSource: fallback.presentation.optional.cinematic.source, decision,
           provider: { ok: provider.ok, source: provider.source, reason: provider.reason }, rendered: rendered.dom,
           renderedLight: renderedLight.dom, bing: result.network.bing,
-          retained: { cinematic: retained.presentation.optional.cinematic, dom: retainedDom, statusText: retainedStatusText },
+          retained: { cinematic: retained.snapshot.presentation.optional.cinematic, dom: retained.dom, statusText: retainedStatusText },
           screenshots: { dark: darkScreenshot, light: lightScreenshot, retained: retainedScreenshot } };
       }, { b5OptionalFixtureIds: ['B5B-CINE-001', 'B5B-SAFETY-001'], supplemental: true });
     result.status = result.cases.some(testCase => testCase.status === 'FAIL') ? 'FAIL' :
@@ -1952,13 +2016,43 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             'B5-D zero-history Home omitted feature navigation', home);
           await clickWorkspaceControl(emptyPage, `[data-action="view"][data-view="settings"]`, options.timeoutMs);
           const settings = await emptyPage.locator(`#${ROOT_ID} .sc-content`).innerText();
-          const normalizedSettings = settings.toLowerCase();
-          assert(normalizedSettings.includes('appearance') && normalizedSettings.includes('time tracking') &&
-            normalizedSettings.includes('jobs and watching') && normalizedSettings.includes('notifications') &&
-            normalizedSettings.includes('dashboard') && normalizedSettings.includes('privacy and permissions') &&
-            normalizedSettings.includes('advanced diagnostics') && normalizedSettings.includes('not available yet'),
-            'B5-D zero-history Settings did not expose the accepted feature areas', settings);
+          const disclosureState = await emptyPage.evaluate(rootId => {
+            const root = document.getElementById(rootId);
+            const toggles = Array.from(root?.querySelectorAll('[data-action="settings-toggle-group"]') || []);
+            const groups = Array.from(root?.querySelectorAll('.sc-settings-group') || []);
+            return {
+              labels: toggles.map(node => node.querySelector('strong')?.textContent.trim() || ''),
+              expanded: toggles.filter(node => node.getAttribute('aria-expanded') === 'true').map(node => node.dataset.group),
+              visibleRoutes: Array.from(root?.querySelectorAll('[data-action="settings-route"]') || [])
+                .filter(node => node.getClientRects().length > 0)
+                .map(node => node.dataset.view),
+              companionTitle: root?.querySelector('.sc-proto-brand strong')?.textContent || '',
+              companionLogoCount: root?.querySelectorAll('.sc-proto-shell img, .sc-brand-mark').length || 0,
+              groupBorders: groups.map(node => getComputedStyle(node).borderTopWidth),
+              toggleBorders: toggles.map(node => getComputedStyle(node).borderTopWidth)
+            };
+          }, ROOT_ID);
+          assert(JSON.stringify(disclosureState.labels) === JSON.stringify([
+            'Appearance', 'Time tracking', 'Jobs and watching', 'Notifications',
+            'Dashboard', 'Privacy and data', 'Help and diagnostics'
+          ]) && disclosureState.expanded.length === 0 && disclosureState.visibleRoutes.length === 0 &&
+            disclosureState.companionTitle === 'SquareCoil Companion' && disclosureState.companionLogoCount === 0 &&
+            disclosureState.groupBorders.every(value => value === '0px') && disclosureState.toggleBorders.every(value => value === '0px'),
+          'B5-D zero-history Settings did not expose the compact nested feature categories', { settings, disclosureState });
           const settingsHomeScreenshot = await captureUiEvidence(emptyPage, options, family, 'settings-home-zero-history', `#${ROOT_ID}`);
+
+          await clickWorkspaceControl(emptyPage, `[data-action="settings-toggle-group"][data-group="appearance"]`, options.timeoutMs);
+          const appearanceDisclosure = await waitFor(async () => emptyPage.evaluate(rootId => {
+            const root = document.getElementById(rootId);
+            const expanded = Array.from(root?.querySelectorAll('[data-action="settings-toggle-group"][aria-expanded="true"]') || [])
+              .map(node => node.dataset.group);
+            const visibleRoutes = Array.from(root?.querySelectorAll('[data-action="settings-route"]') || [])
+              .filter(node => node.getClientRects().length > 0)
+              .map(node => node.dataset.view);
+            return expanded.length === 1 && expanded[0] === 'appearance' &&
+              JSON.stringify(visibleRoutes) === JSON.stringify(['timer-appearance', 'website-theme'])
+              ? { expanded, visibleRoutes } : null;
+          }, ROOT_ID), 'B5-D nested Appearance disclosure', options.timeoutMs);
 
           await clickWorkspaceControl(emptyPage, `[data-action="settings-route"][data-view="website-theme"]`, options.timeoutMs);
           const nativeThemeScreenshot = await captureUiEvidence(emptyPage, options, family, 'settings-native-zero-history', `#${ROOT_ID}`);
@@ -1997,6 +2091,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           const lightThemeScreenshot = await captureUiEvidence(emptyPage, options, family, 'settings-light-glass-zero-history', `#${ROOT_ID}`);
 
           await clickWorkspaceControl(emptyPage, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
+          await clickWorkspaceControl(emptyPage, `[data-action="settings-toggle-group"][data-group="help"]`, options.timeoutMs);
           await clickWorkspaceControl(emptyPage, `[data-action="settings-route"][data-view="advanced-diagnostics"]`, options.timeoutMs);
           await emptyPage.locator(`#${ROOT_ID} details.sc-technical`).evaluate(node => { node.open = true; });
           const diagnosticsScreenshot = await captureUiEvidence(emptyPage, options, family, 'advanced-diagnostics', `#${ROOT_ID}`);
@@ -2045,7 +2140,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             after.timer.currentContextId === before.currentContextId && after.timer.contextRows.length === 0,
           'B5-D zero-history navigation changed Timer or Ledger authority', { before, after });
           assert(result.network.nativeMutationAttempts.length === 0, 'B5-D zero-history navigation attempted a native SquareCoil mutation', result.network.nativeMutationAttempts);
-          return { home, settings, before, afterRevision: after.revision, darkTheme, lightTheme, focus, responsive,
+          return { home, settings, disclosureState, appearanceDisclosure, before, afterRevision: after.revision, darkTheme, lightTheme, focus, responsive,
             screenshots: { settingsHomeScreenshot, nativeThemeScreenshot, darkThemeScreenshot, lightThemeScreenshot, diagnosticsScreenshot } };
         } finally {
           if (emptyBridge) {
@@ -2367,13 +2462,15 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           const selected = root?.querySelector('.sc-tab[data-selected="true"]');
           return root?.dataset.workspaceState === 'loaded' && selected ? {
             workspaceState: root.dataset.workspaceState,
-            brand: root.querySelector('.sc-proto-brand small')?.textContent || '',
+            brand: root.querySelector('.sc-proto-brand strong')?.textContent || '',
+            logoCount: root.querySelectorAll('.sc-proto-shell img, .sc-brand-mark').length,
             selectedContextId: selected.dataset.context || null,
             selectedAria: selected.getAttribute('aria-label') || '',
             mainText: root.querySelector('.sc-content')?.textContent || ''
           } : null;
         }, ROOT_ID), 'B3 canonical workspace initial render', options.timeoutMs);
-        assert(main.brand === 'Companion', 'Workspace brand did not use the friendly Companion identity', main);
+        assert(main.brand === 'SquareCoil Companion' && main.logoCount === 0,
+          'Workspace header was not text-only SquareCoil Companion chrome', main);
         assert(main.selectedContextId === 'job:260701', 'Initial B3 selection did not reflect current Context truth', main);
         assert(main.selectedAria.includes('Today') && main.selectedAria.includes('timer limit') && main.selectedAria.includes('Running'), 'Compact tab omitted Today, threshold, or operational semantics', main);
 
@@ -2403,8 +2500,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
       'B4 data products expose one count-consistent revision without live-state authority',
       async () => {
         const before = await bridge.coreSnapshot();
-        await openSettingsHome(page, options.timeoutMs);
-        await page.locator(`#${ROOT_ID} [data-action="settings-route"][data-view="data-tools"]`).click();
+        await openSettingsDestination(page, 'privacy', 'data-tools', options.timeoutMs);
         const surface = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
         assert(surface.includes('Full Backup JSON') && surface.includes('History CSV') && surface.includes('Time Report CSV'), 'B4 data product surface was incomplete', surface);
         assert(surface.includes('SquareCoil official time is never changed'), 'B4 data surface omitted its native-data boundary', surface);
@@ -2897,8 +2993,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           stableJson(cancelAfter.data?.lastMutation) === stableJson(cancelBefore.data?.lastMutation),
         'Escape/off-panel cancel archived or mutated authoritative history', { cancelBefore, cancelAfter });
 
-        await openSettingsHome(page, options.timeoutMs);
-        await page.locator(`#${ROOT_ID} [data-action="settings-route"][data-view="data-tools"]`).click({ force: true });
+        await openSettingsDestination(page, 'privacy', 'data-tools', options.timeoutMs);
 
         const backup = await bridge.dataExport('FULL_BACKUP', {
           backupId: `a4-b4-${family}-dedupe`,
@@ -2959,15 +3054,13 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
 
           await openSettingsHome(page, options.timeoutMs);
           const settingsHome = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
-          const normalizedSettingsHome = settingsHome.toLowerCase();
-          assert(normalizedSettingsHome.includes('appearance') && normalizedSettingsHome.includes('time tracking') &&
-            normalizedSettingsHome.includes('jobs and watching') && normalizedSettingsHome.includes('notifications') &&
-            normalizedSettingsHome.includes('dashboard') && normalizedSettingsHome.includes('privacy and permissions') &&
-            normalizedSettingsHome.includes('advanced diagnostics') && normalizedSettingsHome.includes('submit a ticket') &&
-            normalizedSettingsHome.includes('send feedback'),
-          'B5-A Settings Home was incomplete', settingsHome);
+          const settingsCategories = await page.locator(`#${ROOT_ID} [data-action="settings-toggle-group"] strong`).allTextContents();
+          assert(JSON.stringify(settingsCategories.map(value => value.trim())) === JSON.stringify([
+            'Appearance', 'Time tracking', 'Jobs and watching', 'Notifications',
+            'Dashboard', 'Privacy and data', 'Help and diagnostics'
+          ]), 'B5-A Settings Home was incomplete', { settingsHome, settingsCategories });
 
-          await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="timer-appearance"]`, options.timeoutMs);
+          await openSettingsDestination(page, 'appearance', 'timer-appearance', options.timeoutMs);
           await clickWorkspaceControl(page, `[data-action="preference"][data-value="AUTO"]`, options.timeoutMs);
           const autoSnapshot = await waitFor(async () => {
             const snapshot = await bridge.coreSnapshot();
@@ -2983,7 +3076,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           assert(['GLASS', 'SOLID_FALLBACK'].includes(glassSnapshot.presentation.panelFinishEffective), 'B5-A Glass did not report its real effective presentation', glassSnapshot.presentation);
 
           await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
-          await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="website-theme"]`, options.timeoutMs);
+          await openSettingsDestination(page, 'appearance', 'website-theme', options.timeoutMs);
           const beforeDarkTheme = await bridge.coreSnapshot();
           await bridge.preferenceAction({ websiteTheme: 'SLEEK_DARK' }, beforeDarkTheme.preferences.preferenceRevision);
           const darkPresentation = await waitFor(async () => page.evaluate(() => ({
@@ -3012,7 +3105,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           await waitFor(async () => await page.locator(`#${ROOT_ID} [data-action="preference-site"][data-value="ORIGINAL"][data-active="true"]`).count() ? true : null, 'B5-A Original UI settlement', options.timeoutMs);
 
           await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
-          await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="timer-limits"]`, options.timeoutMs);
+          await openSettingsDestination(page, 'time', 'timer-limits', options.timeoutMs);
           await page.locator(`#${ROOT_ID} [data-sc-limits-form] input[name="yellowMinutes"]`).fill('45', { force: true });
           const observerBefore = await observerBridge.coreSnapshot();
           await observerBridge.preferenceAction({ yellowMinutes: 50, orangeMinutes: 100, redMinutes: 200 }, observerBefore.preferences.preferenceRevision);
@@ -3022,7 +3115,11 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             return owner?.preferences?.yellowMinutes === 50 && owner.preferences.preferenceRevision === observer?.preferences?.preferenceRevision
               ? { owner, observer } : null;
           }, 'B5-A cross-tab preference settlement', options.timeoutMs);
-          await page.locator(`#${ROOT_ID} [data-sc-view-heading]`).click({ force: true });
+          await page.locator(`#${ROOT_ID} [data-sc-limits-form] input[name="yellowMinutes"]`).evaluate(input => input.blur());
+          await waitFor(async () => page.evaluate(rootId => {
+            const active = document.activeElement;
+            return !active?.matches?.(`#${rootId} [data-sc-limits-form] input[name]`) ? true : null;
+          }, ROOT_ID), 'B5-A Limits field focus release', options.timeoutMs);
           await waitFor(async () => {
             const text = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
             const disabled = await page.locator(`#${ROOT_ID} [data-sc-limits-form] button[type="submit"]`).isDisabled().catch(() => false);
@@ -3030,7 +3127,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           }, 'B5-A stale Limits rejection', options.timeoutMs);
           page.once('dialog', dialog => dialog.accept());
           await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
-          await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="timer-limits"]`, options.timeoutMs);
+          await openSettingsDestination(page, 'time', 'timer-limits', options.timeoutMs);
           await page.locator(`#${ROOT_ID} [data-sc-limits-form] input[name="yellowMinutes"]`).fill('30', { force: true });
           await page.locator(`#${ROOT_ID} [data-sc-limits-form] input[name="orangeMinutes"]`).fill('60', { force: true });
           await page.locator(`#${ROOT_ID} [data-sc-limits-form] input[name="redMinutes"]`).fill('120', { force: true });
@@ -3051,7 +3148,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           }
 
           await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
-          await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="send-feedback"]`, options.timeoutMs);
+          await openSettingsDestination(page, 'help', 'send-feedback', options.timeoutMs);
           await page.locator(`#${ROOT_ID} [data-sc-support-form] textarea[name="description"]`).fill('Installed browser acceptance feedback', { force: true });
           await page.locator(`#${ROOT_ID} [data-sc-support-form] input[name="includeDiagnostics"]`).check({ force: true });
           const supportSurface = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
@@ -3064,7 +3161,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           await clickWorkspaceControl(page, `[data-action="settings-close"]`, options.timeoutMs);
 
           await clickWorkspaceControl(page, `[data-action="view"][data-view="settings"]`, options.timeoutMs);
-          await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="developer-support"]`, options.timeoutMs);
+          await openSettingsDestination(page, 'help', 'developer-support', options.timeoutMs);
           const developerSupport = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
           assert(developerSupport.includes('No approved Buy Me a Coffee URL, Cash App name, or packaged QR is configured'), 'B5-A fabricated a Developer Support destination', developerSupport);
           await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
@@ -3121,8 +3218,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         assert(before.preferences.cinematicBackground === 'NONE' && before.preferences.dashboardProfile === 'OFF', 'B5-B optional packs were not off by default', before.preferences);
         assert(defaultDom.cinematicHosts === 0 && defaultDom.dashboardLayers === 0, 'B5-B default allocated optional presentation artifacts', defaultDom);
 
-        await openSettingsHome(page, options.timeoutMs);
-        await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="website-theme"]`, options.timeoutMs);
+        await openSettingsDestination(page, 'appearance', 'website-theme', options.timeoutMs);
         const themeSurface = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
         assert(/Dark Glass/i.test(themeSurface) && /Light Glass/i.test(themeSurface) &&
           /include the rotating Bing photograph and translucent surfaces as one theme/i.test(themeSurface) &&
@@ -3131,7 +3227,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           /never with job, timer, page, identity, account, or user content/i.test(themeSurface),
         'B5-B theme surface did not disclose the integrated privacy-fenced Bing background', themeSurface);
         await clickWorkspaceControl(page, `[data-action="settings-back"]`, options.timeoutMs);
-        await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="presentation-packs"]`, options.timeoutMs);
+        await openSettingsDestination(page, 'dashboard', 'presentation-packs', options.timeoutMs);
         const optionalSurface = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
         assert(/Design dashboard/i.test(optionalSurface) && /background is part of Dark Glass or Light Glass/i.test(optionalSurface) &&
           optionalSurface.includes('Restore Native / Off'),
@@ -3172,7 +3268,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         const fallbackScreenshot = await capturePageEvidence(page, options, family, 'dark-glass-fallback-full-page');
 
         await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
-        await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="website-theme"]`, options.timeoutMs);
+        await openSettingsDestination(page, 'appearance', 'website-theme', options.timeoutMs);
         await clickWorkspaceControl(page, `[data-action="preference-site"][data-value="SLEEK_DARK"]`, options.timeoutMs);
         await waitFor(async () => await page.locator(`#${ROOT_ID} [data-action="preference-site"][data-value="SLEEK_DARK"][data-active="true"]`).count() ? true : null,
           'B5-B Dark Glass UI settlement before permission grant', options.timeoutMs);
@@ -3367,8 +3463,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           assert(wrong.presentation.optional.dashboard.state === 'INACTIVE_PAGE' && wrongLayers.styles === 0 && wrongLayers.summaries === 0,
             'B5-B selector accident applied to a different dashboard mode', { wrong: wrong.presentation.optional.dashboard, wrongLayers });
 
-          await openSettingsHome(page, options.timeoutMs);
-          await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="presentation-packs"]`, options.timeoutMs);
+          await openSettingsDestination(page, 'dashboard', 'presentation-packs', options.timeoutMs);
           await clickWorkspaceControl(page, `[data-action="restore-native"]`, options.timeoutMs);
           const restored = await waitFor(async () => {
             const snapshot = await bridge.coreSnapshot();
@@ -3388,8 +3483,21 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           })).then(value => value.attribute === null && value.layers === 0 && value.summaries === 0 ? value : null),
           'B5-E dashboard summary teardown', options.timeoutMs);
           const permissionProbe = await bridge.send({ type: MESSAGES.B5B_WALLPAPER, requestId: 'b5b-a4-after-restore' });
-          assert(permissionProbe?.ok === false && permissionProbe?.reason === 'optional-origin-permission-required',
-            'B5-B Restore Native did not remove optional Bing access and its cache', permissionProbe);
+          const restoredPermissionPage = await context.newPage();
+          let restoredOptionalState;
+          try {
+            await restoredPermissionPage.goto(`chrome-extension://${extensionId}/popup/popup.html`, { waitUntil: 'domcontentloaded', timeout: options.timeoutMs });
+            restoredOptionalState = await restoredPermissionPage.evaluate(async cacheKey => ({
+              permission: await chrome.permissions.contains({ origins: ['https://www.bing.com/*'] }),
+              cache: (await chrome.storage.local.get(cacheKey))[cacheKey]
+            }), WALLPAPER_CACHE_KEY);
+          } finally {
+            await restoredPermissionPage.close().catch(() => {});
+            await page.bringToFront().catch(() => {});
+          }
+          assert(permissionProbe?.ok === false && permissionProbe?.source == null &&
+            restoredOptionalState?.permission === false && restoredOptionalState.cache === undefined,
+          'B5-B Restore Native did not remove optional Bing access and its cache', { permissionProbe, restoredOptionalState });
           assert(restored.ledgerSegmentCount === before.ledgerSegmentCount && restored.timer.timerState === before.timer.timerState &&
             restored.timer.currentContextId === before.timer.currentContextId, 'B5-B presentation changed Timer or Ledger authority', { before, restored });
           assert(result.network.nativeMutationAttempts.length === 0, 'B5-B presentation attempted a native SquareCoil mutation', result.network.nativeMutationAttempts);
@@ -3398,7 +3506,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             permissionGrant, grantedCinematic: grantedCinematic.presentation.optional.cinematic, remoteDarkDom, darkRemoteScreenshot,
             lightCinematic: lightCinematic.presentation.optional.cinematic, remoteLightDom, lightRemoteScreenshot, flickerEvidence,
             exactDashboard: exact.presentation.optional.dashboard, exactDom, wrongDashboard: wrong.presentation.optional.dashboard,
-            restoredDom, restoredDashboard, permissionProbe: { ok: permissionProbe.ok, reason: permissionProbe.reason },
+            restoredDom, restoredDashboard, restoredOptionalState, permissionProbe: { ok: permissionProbe.ok, reason: permissionProbe.reason },
             nativeMutationAttempts: result.network.nativeMutationAttempts.length };
         } finally {
           if (wrongDashboardBridge) { await wrongDashboardBridge.authorityTeardown().catch(() => {}); await wrongDashboardBridge.detach(); }
@@ -4025,9 +4133,11 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
       assert(tracker.companionCount() === parseBaseline, 'BFCache restore re-executed the companion bundle', tracker.snapshot());
       await page.locator(`#${ROOT_ID} .sc-proto-shell`).waitFor({ state: 'visible', timeout: options.timeoutMs });
       await openSettingsHome(page, options.timeoutMs);
-      const settingsText = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
-      assert(settingsText.includes('Companion appearance') && settingsText.includes('SquareCoil theme'),
-        'BFCache restored MAIN health but left Companion Settings noninteractive', settingsText);
+      const categoryCount = await page.locator(`#${ROOT_ID} [data-action="settings-toggle-group"]`).count();
+      await clickWorkspaceControl(page, `[data-action="settings-toggle-group"][data-group="appearance"]`, options.timeoutMs);
+      const appearanceRoutes = await page.locator(`#${ROOT_ID} [data-action="settings-route"]:visible`).evaluateAll(nodes => nodes.map(node => node.dataset.view));
+      assert(categoryCount === 7 && JSON.stringify(appearanceRoutes) === JSON.stringify(['timer-appearance', 'website-theme']),
+        'BFCache restored MAIN health but left Companion Settings noninteractive', { categoryCount, appearanceRoutes });
       await clickWorkspaceControl(page, `[data-action="settings-close"]`, options.timeoutMs);
       return { events, runtimeInstanceId: restored.runtimeInstanceId, companionBundleParses: tracker.companionCount(),
         workspaceVisible: true, settingsInteractive: true };

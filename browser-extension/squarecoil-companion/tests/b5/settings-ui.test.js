@@ -92,10 +92,42 @@ async function harness({ confirms = [], clipboardAvailable = true, cinematicPerm
 test('UT-B5-UI-001 one Settings router exposes the settled user-facing feature groups', async () => {
   const h = await harness();
   h.click({ action: 'view', view: 'settings' });
-  for (const label of ['Appearance', 'Time tracking', 'Jobs and watching', 'Notifications', 'Dashboard', 'Privacy and permissions',
-    'Advanced diagnostics', 'Companion appearance', 'SquareCoil theme', 'Local data and backups', 'Submit a ticket']) {
+  for (const label of ['Appearance', 'Time tracking', 'Jobs and watching', 'Notifications', 'Dashboard', 'Privacy and data',
+    'Help and diagnostics', 'Companion appearance', 'SquareCoil theme', 'Local data and backups', 'Submit a ticket']) {
     assert.match(h.root.innerHTML, new RegExp(label));
   }
+  assert.equal((h.root.innerHTML.match(/data-action="settings-toggle-group"/g) || []).length, 7);
+  assert.equal((h.root.innerHTML.match(/aria-expanded="false"/g) || []).length, 7);
+  h.ui.teardown();
+});
+
+test('UT-B5-UI-020 Settings disclosures reveal one nested category at a time and collapse on a second click', async () => {
+  const h = await harness();
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'settings-toggle-group', group: 'appearance' });
+  assert.match(h.root.innerHTML, /data-group="appearance" aria-expanded="true"/);
+  assert.match(h.root.innerHTML, /id="sc-settings-group-appearance" role="region" aria-label="Appearance settings"><div/);
+
+  h.click({ action: 'settings-toggle-group', group: 'time' });
+  assert.match(h.root.innerHTML, /data-group="appearance" aria-expanded="false"/);
+  assert.match(h.root.innerHTML, /id="sc-settings-group-appearance" role="region" aria-label="Appearance settings" hidden/);
+  assert.match(h.root.innerHTML, /data-group="time" aria-expanded="true"/);
+  assert.equal((h.root.innerHTML.match(/aria-expanded="true"/g) || []).length, 1);
+
+  h.click({ action: 'settings-toggle-group', group: 'time' });
+  assert.equal((h.root.innerHTML.match(/aria-expanded="true"/g) || []).length, 0);
+  h.ui.teardown();
+});
+
+test('UT-B5-UI-021 Companion chrome is text-only and uses quiet surfaces without removing accessible focus or job-tab edges', async () => {
+  const h = await harness();
+  h.click({ action: 'view', view: 'settings' });
+  assert.match(h.root.innerHTML, /<strong>SquareCoil Companion<\/strong>/);
+  assert.doesNotMatch(h.root.innerHTML, /sc-brand-mark|<img\b|US Sign &amp; Mill|>SC<\/span>/);
+  assert.match(h.root.innerHTML, /button\{border:0;background:var\(--sc-panel-2\)/);
+  assert.match(h.root.innerHTML, /\.sc-settings-group\{overflow:hidden;border:0;/);
+  assert.match(h.root.innerHTML, /button:focus-visible[^\{]+\{outline:2px solid var\(--sc-accent\)/);
+  assert.match(h.root.innerHTML, /button\.sc-tab\{[^}]*border:1px solid var\(--sc-border\)!important/);
   h.ui.teardown();
 });
 

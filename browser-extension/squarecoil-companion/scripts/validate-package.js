@@ -108,7 +108,7 @@ function validateManifestPolicy(manifest) {
   assert(JSON.stringify(manifest.permissions || []) === JSON.stringify(EXPECTED_PERMISSIONS), 'Packaged permissions must remain storage + scripting + passive webRequest observation only');
   assert(JSON.stringify(manifest.host_permissions || []) === JSON.stringify(EXPECTED_HOST_PERMISSIONS), 'Packaged host permission must remain limited to the exact SquareCoil tenant');
   assert(JSON.stringify(manifest.optional_host_permissions || []) === JSON.stringify(EXPECTED_OPTIONAL_HOST_PERMISSIONS), 'Packaged optional host permission must remain limited to the exact Bing image origin');
-  assert(JSON.stringify(manifest.web_accessible_resources || []) === JSON.stringify(EXPECTED_WEB_ACCESSIBLE_RESOURCES), 'Packaged authoritative theme resources must remain limited to the exact CSS files and tenant');
+  assert(JSON.stringify(manifest.web_accessible_resources || []) === JSON.stringify(EXPECTED_WEB_ACCESSIBLE_RESOURCES), 'Packaged presentation resources must remain limited to the exact CSS files and tenant');
   assert(JSON.stringify(Object.keys(manifest.background || {}).sort()) === JSON.stringify(['service_worker']), 'Packaged background policy must contain only the service worker entry');
   assert(manifest.background.service_worker === 'dist/background.js', 'Packaged service worker reference is invalid');
   assert(manifest.action?.default_popup === 'popup/popup.html', 'Packaged popup reference is invalid');

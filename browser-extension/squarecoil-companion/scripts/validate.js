@@ -28,7 +28,7 @@ assert(JSON.stringify(manifest.optional_host_permissions || []) === JSON.stringi
 assert(JSON.stringify(manifest.web_accessible_resources || []) === JSON.stringify([{
   resources: ['dist/themes/dark-glass.css', 'dist/themes/light-glass.css'],
   matches: ['https://ussignandmill.squarecoil.net/*']
-}]), 'Authoritative theme resources must be limited to the two generated CSS ports on the exact SquareCoil tenant');
+}]), 'Authoritative presentation resources must be limited to the two generated CSS ports on the exact SquareCoil tenant');
 assert(JSON.stringify(Object.keys(manifest.background || {}).sort()) === JSON.stringify(['service_worker']), 'B1 background policy must contain only the service worker entry');
 assert(manifest.background?.service_worker === 'dist/background.js', 'B1 manifest must use generated dist/background.js');
 assert(manifest.action?.default_popup === 'popup/popup.html', 'B1 popup path must be explicit');

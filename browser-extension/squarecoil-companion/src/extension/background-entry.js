@@ -29,8 +29,10 @@ const ENABLE_MESSAGE = 'SC_COMPANION_SET_ENABLED';
 const REVALIDATE_MESSAGE = 'SC_COMPANION_REVALIDATE';
 const RETRY_TEARDOWN_MESSAGE = 'SC_COMPANION_RETRY_TEARDOWN';
 const B5B_REMOVE_PERMISSION_MESSAGE = 'SC_COMPANION_B5B_REMOVE_PERMISSION';
+const B5B_PERMISSION_CHANGED_MESSAGE = 'SC_COMPANION_B5B_PERMISSION_CHANGED';
 const B5B_WALLPAPER_MESSAGE = 'SC_COMPANION_B5B_GET_WALLPAPER';
 const B5B_ACK_MESSAGE = 'SC_COMPANION_B5B_ACK';
+const BING_PERMISSION_ORIGIN = 'https://www.bing.com/*';
 const PERSISTENCE_PROBE_KEY = '__scCompanionB1PersistenceProbe';
 const EXPECTED_B1_DEGRADED_REASON = 'coordination-not-implemented-b1';
 const B2_SETTLEMENT_CONTROL_TIMEOUT_MS = 20_000;
@@ -39,6 +41,24 @@ const tabOperationQueues = new Map();
 const wallpaperProvider = chrome.permissions && chrome.storage?.local && typeof globalThis.fetch === 'function'
   ? createWallpaperProvider({ permissions: chrome.permissions, storage: chrome.storage.local, fetch: globalThis.fetch.bind(globalThis) })
   : null;
+
+function includesBingPermission(change) {
+  return Array.isArray(change?.origins) && change.origins.includes(BING_PERMISSION_ORIGIN);
+}
+
+async function notifySupportedTabsOfBingPermissionChange() {
+  if (typeof chrome.tabs?.query !== 'function' || typeof chrome.tabs?.sendMessage !== 'function') return [];
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({ url: 'https://ussignandmill.squarecoil.net/*' }); } catch (_) { return []; }
+  return Promise.allSettled(tabs.filter(tab => Number.isInteger(tab?.id))
+    .map(tab => chrome.tabs.sendMessage(tab.id, { type: B5B_PERMISSION_CHANGED_MESSAGE })));
+}
+
+if (typeof chrome.permissions?.onAdded?.addListener === 'function') {
+  chrome.permissions.onAdded.addListener(change => {
+    if (includesBingPermission(change)) void notifySupportedTabsOfBingPermissionChange();
+  });
+}
 
 const authorityUpdateTransport = createAuthorityUpdateTransport({ tabs: chrome.tabs });
 
@@ -1564,8 +1584,10 @@ module.exports = {
   REVALIDATE_MESSAGE,
   RETRY_TEARDOWN_MESSAGE,
   B5B_REMOVE_PERMISSION_MESSAGE,
+  B5B_PERMISSION_CHANGED_MESSAGE,
   B5B_WALLPAPER_MESSAGE,
   B5B_ACK_MESSAGE,
+  BING_PERMISSION_ORIGIN,
   B2_SETTLEMENT_CONTROL_TIMEOUT_MS,
   AUTHORITY_MESSAGES,
   AUTHORITY_PROTOCOL_VERSION,
@@ -1581,6 +1603,8 @@ module.exports = {
   setPageEnabled,
   retryTeardown,
   revalidatePage,
+  includesBingPermission,
+  notifySupportedTabsOfBingPermissionChange,
   collectPageProbe,
   responseForProbe,
   checkPersistence,

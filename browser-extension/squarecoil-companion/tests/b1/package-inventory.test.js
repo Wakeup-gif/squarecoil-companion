@@ -15,6 +15,7 @@ const read = relative => fs.readFileSync(path.join(root, ...relative.split('/'))
 
 test('UT-B6-PKG-001 one canonical inventory drives build validation browser packaging and CI', () => {
   assert.equal(PACKAGE_FILES.length, 11);
+  assert.equal(PACKAGE_FILES.some(file => file.startsWith('assets/') && /logo/i.test(file)), false);
   assert.equal(new Set(PACKAGE_FILES).size, PACKAGE_FILES.length);
   assert.deepEqual(CANDIDATE_EMBEDDED_BUNDLES, [
     'dist/background.js',

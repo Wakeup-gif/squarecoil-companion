@@ -8,6 +8,7 @@ const ROOT_ROUTE_ATTRIBUTE = 'data-squarecoil-companion-site-route';
 const EDITOR_STYLE_ID = 'squarecoil-companion-ckeditor-document-theme';
 const EDITOR_FRAME_ATTRIBUTE = 'data-squarecoil-companion-editor-frame';
 const PRESENTATION_BOOTSTRAP_KEY = '__squareCoilCompanionPresentationBootstrap';
+const WEBSITE_LOGO_SOURCE = 'images/US-Sign&-Mill-Logo - sized for SC site.png';
 const ROUTE_BY_PATH = Object.freeze({
   '/dashboard.php': 'DASHBOARD',
   '/project_milestones.php': 'PROJECT_MILESTONES',
@@ -56,31 +57,40 @@ font[color="green"],[style*="color:green" i],[style*="color: green" i],[style*="
 @media print{html,body,body.cke_editable,body.cke_editable_themed{color:#111!important;background:#fff!important;background-image:none!important}}
 `;
 const REFINED_LIGHT_CSS = `
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"]{color-scheme:light;--sc-site-accent:#2f70aa;--sc-site-text:#18212b;--sc-site-muted:#65717d;--sc-site-border:#cbd4dd;--sc-site-panel:#fff;--sc-site-panel-2:#eef3f7}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] body{background:#f2f5f8;color:var(--sc-site-text)}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] header.navbar,
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar,
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .card,
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .panel,
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .well,
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .modal-content{background-color:var(--sc-site-panel);color:var(--sc-site-text);border-color:var(--sc-site-border);box-shadow:0 10px 30px rgba(26,43,59,.10)}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.panel .panel,.well .well,.modal-content .panel){box-shadow:none;backdrop-filter:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] table{background-color:var(--sc-site-panel);color:var(--sc-site-text)}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] th{background-color:var(--sc-site-panel-2);color:#2d3a46}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] td{border-color:var(--sc-site-border)}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] input,
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] select,
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] textarea{background-color:#fff;color:var(--sc-site-text);border-color:#aebbc7}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"]{color-scheme:light;--sc-site-accent:#276a9f;--sc-site-text:#17212b;--sc-site-muted:#61707d;--sc-site-border:#cbd6df;--sc-site-panel:#fff;--sc-site-panel-2:#edf3f7;--sc-site-canvas:#e8eef3}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] body,
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(#main,#content_wrapper,#content){color:var(--sc-site-text)!important;background-color:var(--sc-site-canvas)!important;background-image:none!important;text-shadow:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(header.navbar,.navbar,#topbar,#sidebar_left,.sidebar-left,#pmlt){color:var(--sc-site-text)!important;background:#f8fafc!important;border-color:var(--sc-site-border)!important;box-shadow:0 6px 22px rgba(26,43,59,.08)!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] #sidebar_left :is(.sidebar-menu,.nano-content){background:transparent!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] #sidebar_left :is(a,span,i),
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] #pmlt :is(a,p,div,span,strong,small,h1,h2,h3){color:var(--sc-site-text)!important;text-shadow:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] #sidebar_left a:is(:hover,:focus-visible,.active),
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] #sidebar_left a[data-active="true"],
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] #sidebar_left li.active>a{color:#174c75!important;background:#dcebf6!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(header.navbar,.navbar) :is(a,span,strong,small,label):not(.btn):not(.label):not(.badge){color:#2b4254!important;text-shadow:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.card,.panel,.panel-default,.well,.modal-content,.dropdown-menu,.tab-content){color:var(--sc-site-text)!important;background:var(--sc-site-panel)!important;background-image:none!important;border-color:var(--sc-site-border)!important;box-shadow:0 8px 24px rgba(26,43,59,.08)!important;text-shadow:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.panel-heading,.panel-footer,.modal-header,.modal-footer,.nav-tabs){color:var(--sc-site-text)!important;background:var(--sc-site-panel-2)!important;border-color:var(--sc-site-border)!important;text-shadow:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.panel-body,.tab-pane,.table-responsive){color:var(--sc-site-text)!important;background:transparent!important;background-image:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.panel .panel,.well .well,.modal-content .panel){box-shadow:none!important;backdrop-filter:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(h1,h2,h3,h4,h5,h6,.panel-title,strong,b,label,p,li,td,th){color:var(--sc-site-text)!important;text-shadow:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(table,.table){color:var(--sc-site-text)!important;background:var(--sc-site-panel)!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(th,.table>thead>tr>th){color:#263746!important;background:var(--sc-site-panel-2)!important;border-color:var(--sc-site-border)!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(td,.table>tbody>tr>td){color:var(--sc-site-text)!important;background:transparent!important;border-color:var(--sc-site-border)!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(input,select,textarea,.form-control,.gui-input,.gui-textarea){color:var(--sc-site-text)!important;background:#fff!important;border-color:#aab9c5!important;box-shadow:inset 0 1px 2px rgba(17,35,51,.05)!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(input,textarea,.form-control)::placeholder{color:#6d7b87!important;opacity:1!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.btn,.button,button):not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning){color:#20313f!important;background:#f7fafc!important;border-color:#b9c6d0!important;text-shadow:none!important;box-shadow:none!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.dropdown-menu,.select2-dropdown,.qtip,.fancybox-skin,.mfp-content,.cke,.cke_inner,.cke_top,.cke_bottom,.cke_contents){color:var(--sc-site-text)!important;background:#fff!important;border-color:var(--sc-site-border)!important;box-shadow:0 12px 34px rgba(26,43,59,.14)!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.alert-danger,.text-danger){color:#9f2929!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.alert-warning,.text-warning){color:#845413!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.alert-success,.text-success){color:#216a45!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand{display:inline-flex!important;align-items:center!important;gap:8px!important;color:#17212b!important;text-decoration:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand>img{display:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand::before{content:"SC";display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:#3f86c8;color:#fff;font-weight:800;font-size:12px;letter-spacing:.02em}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand::after{content:"SquareCoil";font-weight:750;font-size:15px;letter-spacing:-.01em}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand>img[data-squarecoil-companion-logo="brand"]{display:block!important;width:100px!important;min-width:100px!important;max-width:100px!important;height:38px!important;flex:0 0 100px!important;object-fit:contain!important;padding:3px 6px!important;border-radius:7px!important;background:#fff!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand::before,html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand::after{content:none!important;display:none!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar :is(.navbar-right,.navbar-nav)>li>a:is(:hover,:focus-visible){color:#17334a!important;background:rgba(61,131,193,.12)!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] #pmlt>div:has(>#duplicate){display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:6px!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] body.sb-l-m :is(header.navbar,.navbar) .navbar-brand{display:none!important;visibility:hidden!important;pointer-events:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] body.sb-l-m :is(header.navbar,.navbar) #toggle_sidemenu_l{display:flex!important;visibility:visible!important;pointer-events:auto!important;position:fixed!important;top:11px!important;left:11px!important;z-index:1042!important;width:38px!important;height:36px!important;margin:0!important;padding:0!important;align-items:center!important;justify-content:center!important;border:1px solid var(--sc-site-border)!important;border-radius:8px!important;background:#fff!important;color:#24445c!important;box-shadow:0 5px 16px rgba(20,42,59,.12)!important;transform:none!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] body.sb-l-m #sidebar_left .sidebar-toggle-mini{display:none!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :focus-visible{outline:3px solid #315c7a;outline-offset:2px}
 @media(prefers-reduced-motion:reduce){html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
 @media print{html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"],html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] body,html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(#main,#content_wrapper,#content,.panel,.well,table,.table,th,td){color:#111!important;background:#fff!important;border-color:#bbb!important;box-shadow:none!important;backdrop-filter:none!important}}
@@ -109,9 +119,8 @@ html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] :is(.alert-danger,.text-danger){colo
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] :is(.alert-warning,.text-warning){color:#845413!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] :is(.alert-success,.text-success){color:#216a45!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand{display:inline-flex!important;align-items:center!important;gap:8px!important;color:#17212c!important;text-decoration:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand>img{display:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand::before{content:"SC";display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:#3f86c8;color:#fff;font-weight:800;font-size:12px;letter-spacing:.02em;box-shadow:0 4px 14px rgba(48,113,169,.20)}
-html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand::after{content:"SquareCoil";font-weight:750;font-size:15px;letter-spacing:-.01em}
+html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand>img[data-squarecoil-companion-logo="brand"]{display:block!important;width:100px!important;min-width:100px!important;max-width:100px!important;height:38px!important;flex:0 0 100px!important;object-fit:contain!important;padding:3px 6px!important;border-radius:7px!important;background:#fff!important}
+html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand::before,html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand::after{content:none!important;display:none!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar :is(.navbar-right,.navbar-nav)>li>a:is(:hover,:focus-visible){color:#17334a!important;background:rgba(61,131,193,.13)!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] #pmlt>div:has(>#duplicate){display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:6px!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] :focus-visible{outline:3px solid #2d6f9f!important;outline-offset:2px!important}
@@ -148,9 +157,8 @@ html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .text-warning{color:#ffd48b}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .alert-success,
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .text-success{color:#8ed8af}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand{display:inline-flex!important;align-items:center!important;gap:8px!important;color:#eef5fb!important;text-decoration:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand>img{display:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand::before{content:"SC";display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:#3f86c8;color:#fff;font-weight:800;font-size:12px;letter-spacing:.02em;box-shadow:0 5px 16px rgba(30,112,184,.28)}
-html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand::after{content:"SquareCoil";font-weight:750;font-size:15px;letter-spacing:-.01em}
+html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand>img[data-squarecoil-companion-logo="brand"]{display:block!important;width:100px!important;min-width:100px!important;max-width:100px!important;height:38px!important;flex:0 0 100px!important;object-fit:contain!important;padding:3px 6px!important;border-radius:7px!important;background:#fff!important}
+html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand::before,html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand::after{content:none!important;display:none!important}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar :is(.navbar-right,.navbar-nav)>li>a:is(:hover,:focus-visible){color:#fff!important;background:rgba(97,174,247,.14)!important}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] #pmlt>div:has(>#duplicate){display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:6px!important}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] :focus-visible{outline:3px solid #8fc4e5;outline-offset:2px}
@@ -362,28 +370,17 @@ function createThemeService(options = {}) {
   }
 
   function applyLogo(websiteTheme) {
-    if (websiteTheme !== 'SLEEK_DARK') return restoreLogo();
-    const configured = String(options.darkLogoUrl || '').trim();
-    if (!configured) {
-      restoreLogo();
-      return 'native-fallback-missing-dark-logo';
-    }
-    let parsed;
-    try { parsed = new URL(configured); } catch (_) { parsed = null; }
-    if (!parsed || !['https:', 'data:'].includes(parsed.protocol) || (parsed.protocol === 'data:' && !configured.startsWith('data:image/'))) {
-      restoreLogo();
-      return 'native-fallback-invalid-dark-logo';
-    }
+    if (websiteTheme === 'ORIGINAL') return restoreLogo();
     const logo = findLogo();
-    if (!logo) return 'native-fallback-logo-not-found';
+    if (!logo) return 'website-logo-not-found';
     if (!nativeLogoState.has(logo)) nativeLogoState.set(logo, {
       src: logo.getAttribute?.('src') ?? null,
       srcset: logo.getAttribute?.('srcset') ?? null
     });
-    logo.setAttribute?.('src', configured);
+    logo.setAttribute?.('src', WEBSITE_LOGO_SOURCE);
     logo.removeAttribute?.('srcset');
-    logo.setAttribute?.('data-squarecoil-companion-logo', 'dark');
-    return 'configured-dark-logo';
+    logo.setAttribute?.('data-squarecoil-companion-logo', 'brand');
+    return 'configured-website-logo';
   }
 
   function presentationBootstrap() {

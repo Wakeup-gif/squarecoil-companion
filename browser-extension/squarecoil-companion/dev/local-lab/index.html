@@ -7,7 +7,7 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/__companion_lab__/lab.css">
 </head>
-<body class="sb-l-m">
+<body>
   <div id="lab-safety-banner" role="status">
     <strong>LOCAL SIMULATOR</strong>
     <span>No live SquareCoil data or account access</span>
@@ -15,10 +15,13 @@
   </div>
 
   <header id="navbar" class="navbar">
-    <a class="lab-brand" href="/__companion_lab__/index.html" aria-label="SquareCoil Lab home">
-      <span class="lab-logo">SC</span>
-      <span><strong>SquareCoil</strong><small>Companion Lab</small></span>
-    </a>
+    <div class="navbar-branding">
+      <button id="toggle_sidemenu_l" type="button" aria-label="Collapse left navigation" aria-expanded="true"><span aria-hidden="true">☰</span></button>
+      <a class="navbar-brand lab-brand" href="/__companion_lab__/index.html" aria-label="SquareCoil Lab home">
+        <img src="/__companion_lab__/native-logo.svg" alt="SquareCoil Lab">
+        <span><strong>SquareCoil</strong><small>Companion Lab</small></span>
+      </a>
+    </div>
     <label class="lab-search"><span>Search fake jobs</span><input id="job-search" type="search" placeholder="Job number or name"></label>
     <div class="timeclock-container" aria-label="Simulated SquareCoil clock">
       <span id="clockin-debug"></span>
@@ -45,6 +48,7 @@
       <strong>Safe test space</strong>
       <span>Every job and customer shown here is fictional.</span>
     </div>
+    <div class="sidebar-toggle-mini"><button type="button" aria-label="Expand left navigation">›</button></div>
   </aside>
 
   <div id="content_wrapper">

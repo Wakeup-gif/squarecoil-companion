@@ -9,6 +9,7 @@ const { copyPackageFiles } = require('../../scripts/package-inventory');
 
 const ORIGIN = 'https://ussignandmill.squarecoil.net';
 const LAB_ROOT = '/__companion_lab__';
+const WEBSITE_LOGO_FILENAME = 'US-Sign&-Mill-Logo - sized for SC site.png';
 const BROWSER_PATHS = Object.freeze({
   chrome: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   edge: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
@@ -28,6 +29,8 @@ const EVIDENCE_FILES = Object.freeze({
   archiveVeil: '02-archive-veil-preview.png',
   darkGlass: '03-dark-glass-fallback.png',
   lightGlass: '04-light-glass-fallback.png',
+  refinedLight: '05-refined-light.png',
+  settings: '06-settings-nested.png',
   manifest: 'visual-evidence.json'
 });
 
@@ -279,7 +282,8 @@ async function selectAndCaptureTheme(page, theme, evidenceFile, evidence, bingPe
       return document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === expectedTheme &&
         document.documentElement.getAttribute('data-squarecoil-companion-cinematic') === 'DEGRADED_FALLBACK' &&
         host?.getAttribute('data-theme') === expectedTheme &&
-        root?.querySelector(`.sc-theme-choice[data-value="${expectedTheme}"]`)?.dataset.active === 'true';
+        root?.querySelector(`.sc-theme-choice[data-value="${expectedTheme}"]`)?.dataset.active === 'true' &&
+        root?.dataset.busy === 'false';
     }, theme, { timeout: Math.min(timeout, 8_000) });
   } catch (_) {
     const unsettled = await inspectThemeState(page, theme, bingPermissionGranted);
@@ -373,7 +377,7 @@ async function visibleBoundingBox(page, locator, timeout) {
 }
 
 async function setCompanionAppearance(page, timerTheme, panelFinish, timeout) {
-  await page.locator('#ussign-job-timer [data-action="settings-route"][data-view="timer-appearance"]').click();
+  await openSettingsDestination(page, 'appearance', 'timer-appearance', timeout);
   await page.waitForSelector('#ussign-job-timer [data-action="preference"][data-value="DARK"]', { timeout });
   const startingState = await page.evaluate(() => ({
     theme: document.querySelector('#ussign-job-timer')?.dataset.protoTheme || null,
@@ -421,7 +425,128 @@ async function setCompanionAppearance(page, timerTheme, panelFinish, timeout) {
 
 async function openSettings(page, timeout) {
   await page.locator('#ussign-job-timer [data-action="view"][data-view="settings"]').click();
-  await page.waitForSelector('#ussign-job-timer [data-action="settings-route"][data-view="website-theme"]', { state: 'attached', timeout });
+  await page.waitForSelector('#ussign-job-timer [data-action="settings-toggle-group"]', { state: 'visible', timeout });
+}
+
+async function openSettingsDestination(page, group, view, timeout) {
+  const toggle = page.locator(`#ussign-job-timer [data-action="settings-toggle-group"][data-group="${group}"]`);
+  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+  const destination = page.locator(`#ussign-job-timer [data-action="settings-route"][data-view="${view}"]`);
+  await destination.waitFor({ state: 'visible', timeout });
+  await destination.click();
+}
+
+async function verifySidebarRecovery(page, theme, timeout) {
+  await page.evaluate(() => {
+    window.__squareCoilLabTrustedSidebarReopen = false;
+    if (window.__squareCoilLabSidebarListenerInstalled) return;
+    window.__squareCoilLabSidebarListenerInstalled = true;
+    document.addEventListener('click', event => {
+      if (document.body.classList.contains('sb-l-m') && event.target?.closest?.('#toggle_sidemenu_l')) {
+        window.__squareCoilLabTrustedSidebarReopen = event.isTrusted === true;
+      }
+    }, true);
+  });
+  try {
+    await page.waitForFunction(() => {
+      const logo = document.querySelector('header.navbar .navbar-brand img[data-squarecoil-companion-logo="brand"]');
+      return logo && getComputedStyle(logo).display !== 'none' && logo.getBoundingClientRect().width > 20;
+    }, null, { timeout: Math.min(timeout, 5_000) });
+  } catch (_) {
+    const logoFailure = await page.evaluate(expectedTheme => {
+      const image = document.querySelector('header.navbar .navbar-brand img');
+      const brand = document.querySelector('header.navbar .navbar-brand');
+      const root = document.getElementById('ussign-job-timer');
+      return {
+        theme: expectedTheme,
+        bodyClass: document.body.className,
+        rootTheme: document.documentElement.getAttribute('data-squarecoil-companion-site-theme'),
+        image: image ? { src: image.src, marker: image.getAttribute('data-squarecoil-companion-logo'), complete: image.complete,
+          naturalWidth: image.naturalWidth, display: getComputedStyle(image).display, width: image.getBoundingClientRect().width } : null,
+        brand: brand ? { display: getComputedStyle(brand).display, visibility: getComputedStyle(brand).visibility,
+          width: brand.getBoundingClientRect().width } : null,
+        presentation: root?.dataset.squarecoilCompanionWebsiteTheme || null
+      };
+    }, theme);
+    throw new Error(`Website logo replacement was not visibly painted before sidebar acceptance: ${JSON.stringify(logoFailure)}`);
+  }
+  // The lab-only safety banner intentionally covers the native expanded-header
+  // lane. Enter the collapsed fixture state directly, then require the actual
+  // restore action below to be a browser-trusted pointer click.
+  await page.evaluate(() => document.getElementById('toggle_sidemenu_l')?.click());
+  await page.waitForFunction(() => document.body.classList.contains('sb-l-m'), null, { timeout });
+  const collapsed = await page.evaluate(expectedTheme => {
+    const toggle = document.getElementById('toggle_sidemenu_l');
+    const logo = document.querySelector('header.navbar .navbar-brand');
+    const rect = toggle?.getBoundingClientRect();
+    const hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
+    const style = toggle ? getComputedStyle(toggle) : null;
+    return {
+      theme: expectedTheme,
+      logoDisplay: logo ? getComputedStyle(logo).display : null,
+      toggleVisible: Boolean(toggle && rect && rect.width >= 38 && rect.height >= 34 && style?.visibility === 'visible' && style?.pointerEvents !== 'none'),
+      toggleTop: rect ? Math.round(rect.top) : null,
+      toggleLeft: rect ? Math.round(rect.left) : null,
+      toggleOwnsHitTarget: Boolean(hit && (hit === toggle || toggle?.contains(hit))),
+      expanded: toggle?.getAttribute('aria-expanded') || null
+    };
+  }, theme);
+  assertVisualCondition(collapsed.logoDisplay === 'none' && collapsed.toggleVisible && collapsed.toggleOwnsHitTarget &&
+    collapsed.expanded === 'false', 'Collapsed site navigation did not leave one unobstructed working restore control', collapsed);
+  await page.locator('#toggle_sidemenu_l').click();
+  await page.waitForFunction(() => !document.body.classList.contains('sb-l-m') &&
+    document.getElementById('toggle_sidemenu_l')?.getAttribute('aria-expanded') === 'true' &&
+    window.__squareCoilLabTrustedSidebarReopen === true, null, { timeout });
+  collapsed.trustedReopenClick = true;
+  return collapsed;
+}
+
+async function selectAndCaptureRefinedLight(page, evidenceFile, evidence, timeout) {
+  await page.locator('#ussign-job-timer .sc-theme-choice[data-value="REFINED_LIGHT"]').click();
+  await page.waitForFunction(() => {
+    const root = document.querySelector('#ussign-job-timer');
+    const logo = document.querySelector('header.navbar .navbar-brand img[data-squarecoil-companion-logo="brand"]');
+    return document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === 'REFINED_LIGHT' &&
+      document.documentElement.getAttribute('data-squarecoil-companion-cinematic') === 'DISABLED' &&
+      !document.querySelector('#squarecoil-companion-cinematic-host') &&
+      root?.querySelector('.sc-theme-choice[data-value="REFINED_LIGHT"]')?.dataset.active === 'true' &&
+      root?.dataset.busy === 'false' &&
+      Boolean(logo && logo.complete && logo.naturalWidth > 0);
+  }, null, { timeout });
+  const proof = await page.evaluate(() => {
+    const parse = value => {
+      const match = String(value || '').match(/rgba?\(\s*([\d.]+)[, ]+\s*([\d.]+)[, ]+\s*([\d.]+)/i);
+      if (!match) return null;
+      const channels = match.slice(1, 4).map(Number);
+      return { channels, brightness: channels.reduce((sum, channel) => sum + channel, 0) / 3 };
+    };
+    const samples = ['body','#content_wrapper','#content','#content .lab-metrics > .panel','#content #jobs.panel','#content #projectbox.panel'].map(selector => {
+      const element = document.querySelector(selector);
+      const style = element ? getComputedStyle(element) : null;
+      return { selector, background: parse(style?.backgroundColor), color: parse(style?.color) };
+    });
+    const logo = document.querySelector('header.navbar .navbar-brand img[data-squarecoil-companion-logo="brand"]');
+    return {
+      trustedSelection: window.__squareCoilLabTrustedThemeSelections.filter(item => item.value === 'REFINED_LIGHT').at(-1) || null,
+      rootTheme: document.documentElement.getAttribute('data-squarecoil-companion-site-theme'),
+      cinematicState: document.documentElement.getAttribute('data-squarecoil-companion-cinematic'),
+      siteStyleCount: document.querySelectorAll('#squarecoil-companion-site-theme').length,
+      logo: logo ? { src: logo.src, width: logo.naturalWidth, display: getComputedStyle(logo).display } : null,
+      companionLogoCount: document.querySelectorAll('#ussign-job-timer .sc-proto-shell img, #ussign-job-timer .sc-brand-mark').length,
+      companionTitle: document.querySelector('#ussign-job-timer .sc-proto-brand strong')?.textContent || '',
+      samples,
+      darkSurfaceCount: samples.filter(sample => sample.background && sample.background.brightness < 160).length,
+      paleTextCount: samples.filter(sample => sample.color && sample.color.brightness > 150).length
+    };
+  });
+  assertVisualCondition(proof.trustedSelection?.isTrusted === true && proof.rootTheme === 'REFINED_LIGHT' &&
+    proof.cinematicState === 'DISABLED' && proof.siteStyleCount === 1 &&
+    proof.logo?.src.includes('US-Sign&-Mill-Logo%20-%20sized%20for%20SC%20site.png') &&
+    proof.logo.width > 0 && proof.logo.display !== 'none' && proof.companionLogoCount === 0 &&
+    proof.companionTitle === 'SquareCoil Companion' && proof.darkSurfaceCount === 0 && proof.paleTextCount === 0,
+  'Refined Light did not settle as one readable light palette with the website-only logo replacement', proof);
+  if (evidence) await page.screenshot({ path: evidenceFile, fullPage: false, animations: 'disabled', caret: 'hide' });
+  return proof;
 }
 
 async function verifyThemeEvidence(page, evidence, bingPermissionGranted, timeout) {
@@ -440,17 +565,22 @@ async function verifyThemeEvidence(page, evidence, bingPermissionGranted, timeou
   await openSettings(page, timeout);
   const darkAppearance = await setCompanionAppearance(page, 'DARK', 'GLASS', timeout);
   await openSettings(page, timeout);
-  await page.locator('#ussign-job-timer [data-action="settings-route"][data-view="website-theme"]').click();
+  await openSettingsDestination(page, 'appearance', 'website-theme', timeout);
   await page.waitForSelector('#ussign-job-timer .sc-theme-choice[data-value="SLEEK_DARK"]', { timeout });
   await page.evaluate(() => window.scrollTo({ top: 360, behavior: 'instant' }));
   const darkGlass = await selectAndCaptureTheme(page, 'SLEEK_DARK', evidence?.files.darkGlass, evidence, bingPermissionGranted, timeout);
+  const darkSidebar = await verifySidebarRecovery(page, 'SLEEK_DARK', timeout);
   await closeSettings(page, timeout);
   await openSettings(page, timeout);
   const lightAppearance = await setCompanionAppearance(page, 'LIGHT', 'GLASS', timeout);
   await openSettings(page, timeout);
-  await page.locator('#ussign-job-timer [data-action="settings-route"][data-view="website-theme"]').click();
+  await openSettingsDestination(page, 'appearance', 'website-theme', timeout);
   await page.waitForSelector('#ussign-job-timer .sc-theme-choice[data-value="LIGHT_GLASS"]', { timeout });
   const lightGlass = await selectAndCaptureTheme(page, 'LIGHT_GLASS', evidence?.files.lightGlass, evidence, bingPermissionGranted, timeout);
+  const lightSidebar = await verifySidebarRecovery(page, 'LIGHT_GLASS', timeout);
+
+  const refinedLight = await selectAndCaptureRefinedLight(page, evidence?.files.refinedLight, evidence, timeout);
+  const refinedSidebar = await verifySidebarRecovery(page, 'REFINED_LIGHT', timeout);
 
   await page.locator('#ussign-job-timer .sc-theme-choice[data-value="ORIGINAL"]').click();
   await page.waitForFunction(() => {
@@ -475,8 +605,25 @@ async function verifyThemeEvidence(page, evidence, bingPermissionGranted, timeou
   await closeSettings(page, timeout);
   await openSettings(page, timeout);
   const restoredAppearance = await setCompanionAppearance(page, 'LIGHT', 'SOLID', timeout);
+  await openSettings(page, timeout);
+  await page.locator('#ussign-job-timer [data-action="settings-toggle-group"][data-group="appearance"]').click();
+  await page.waitForFunction(() => {
+    const root = document.getElementById('ussign-job-timer');
+    return root?.querySelector('[data-action="settings-toggle-group"][data-group="appearance"]')?.getAttribute('aria-expanded') === 'true' &&
+      root.querySelectorAll('[data-action="settings-toggle-group"][aria-expanded="true"]').length === 1;
+  }, null, { timeout });
+  const settings = await page.evaluate(() => ({
+    groupCount: document.querySelectorAll('#ussign-job-timer [data-action="settings-toggle-group"]').length,
+    expandedCount: document.querySelectorAll('#ussign-job-timer [data-action="settings-toggle-group"][aria-expanded="true"]').length,
+    visibleRoutes: Array.from(document.querySelectorAll('#ussign-job-timer [data-action="settings-route"]')).filter(node => node.getClientRects().length > 0).map(node => node.dataset.view)
+  }));
+  assertVisualCondition(settings.groupCount === 7 && settings.expandedCount === 1 &&
+    JSON.stringify(settings.visibleRoutes) === JSON.stringify(['timer-appearance','website-theme']),
+  'Settings did not render as one compact disclosure navigator', settings);
+  if (evidence) await page.screenshot({ path: evidence.files.settings, fullPage: false, animations: 'disabled', caret: 'hide' });
+  await closeSettings(page, timeout);
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
-  return { darkGlass, lightGlass, restored: { ...restored, appearance: restoredAppearance }, appearance: { dark: darkAppearance, light: lightAppearance } };
+  return { darkGlass, lightGlass, refinedLight, settings, sidebar: { dark: darkSidebar, light: lightSidebar, refined: refinedSidebar }, restored: { ...restored, appearance: restoredAppearance }, appearance: { dark: darkAppearance, light: lightAppearance } };
 }
 
 async function verifyVisualContract(page, evidence, timeout, options = {}) {
@@ -868,6 +1015,14 @@ async function main() {
       if (url.origin === ORIGIN && url.pathname === `${LAB_ROOT}/lab.css`) {
         return route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: loadLabAsset('lab.css') });
       }
+      if (url.origin === ORIGIN && url.pathname === `${LAB_ROOT}/native-logo.svg`) {
+        return route.fulfill({ status: 200, contentType: 'image/svg+xml; charset=utf-8', body: loadLabAsset('native-logo.svg') });
+      }
+      if (url.origin === ORIGIN && decodeURIComponent(url.pathname).endsWith(`/images/${WEBSITE_LOGO_FILENAME}`)) {
+        // The sealed lab cannot read the real tenant file. Reuse its existing
+        // fictional logo bytes while verifying the exact same-origin path contract.
+        return route.fulfill({ status: 200, contentType: 'image/svg+xml; charset=utf-8', body: loadLabAsset('native-logo.svg') });
+      }
       if (url.origin === ORIGIN && url.pathname === `${LAB_ROOT}/lab.js`) {
         return route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: loadLabAsset('lab.js') });
       }
@@ -1030,7 +1185,7 @@ async function main() {
       }
       if (evidence) {
         const screenshotDigests = Object.fromEntries([
-          EVIDENCE_FILES.tabs, EVIDENCE_FILES.archiveVeil, EVIDENCE_FILES.darkGlass, EVIDENCE_FILES.lightGlass
+          EVIDENCE_FILES.tabs, EVIDENCE_FILES.archiveVeil, EVIDENCE_FILES.darkGlass, EVIDENCE_FILES.lightGlass, EVIDENCE_FILES.refinedLight, EVIDENCE_FILES.settings
         ].map(filename => [filename, sha256File(path.join(evidence.directory, filename))]));
         fs.writeFileSync(evidence.files.manifest, `${JSON.stringify({
           kind: 'SquareCoil Companion sealed-lab visual evidence',
@@ -1043,7 +1198,9 @@ async function main() {
             tabsShortViewport: EVIDENCE_FILES.tabs,
             archiveVeilPreview: EVIDENCE_FILES.archiveVeil,
             darkGlassFallback: EVIDENCE_FILES.darkGlass,
-            lightGlassFallback: EVIDENCE_FILES.lightGlass
+            lightGlassFallback: EVIDENCE_FILES.lightGlass,
+            refinedLight: EVIDENCE_FILES.refinedLight,
+            nestedSettings: EVIDENCE_FILES.settings
           },
           screenshotDigests,
           visualProof,

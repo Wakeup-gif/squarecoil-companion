@@ -164,6 +164,15 @@
   document.querySelector('[data-lab-focus="jobs"]').addEventListener('click', () => document.getElementById('jobs').scrollIntoView({ behavior: 'smooth' }));
   document.getElementById('job-search').addEventListener('input', () => render(state.snapshot));
 
+  function setSidebarCollapsed(collapsed) {
+    document.body.classList.toggle('sb-l-m', collapsed);
+    const toggle = document.getElementById('toggle_sidemenu_l');
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', collapsed ? 'Expand left navigation' : 'Collapse left navigation');
+  }
+  document.getElementById('toggle_sidemenu_l').addEventListener('click', () => setSidebarCollapsed(!document.body.classList.contains('sb-l-m')));
+  document.querySelector('.sidebar-toggle-mini button').addEventListener('click', () => setSidebarCollapsed(false));
+
   refresh().catch(error => showToast(error.message));
   setInterval(() => refresh().catch(() => {}), 1500);
 })();

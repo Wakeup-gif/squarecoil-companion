@@ -6969,7 +6969,84 @@ html.us-sign-v230.us-sign-theme-dark-glass body #content :is(
 
 
 /* Companion integration delta: the pinned userscripts do not own the extension
- * workspace or cinematic host. Keep both out of printed SquareCoil output. */
+ * workspace, website-hosted logo recovery, collapsed-navigation recovery, or
+ * cinematic host. This final layer resolves historical sidebar patches in one place. */
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-brand>img[data-squarecoil-companion-logo="brand"] {
+  display: block !important;
+  visibility: visible !important;
+  width: 100px !important;
+  min-width: 100px !important;
+  height: 38px !important;
+  max-width: 100px !important;
+  flex: 0 0 100px !important;
+  padding: 3px 6px !important;
+  object-fit: contain !important;
+  border-radius: 7px !important;
+  background: #fff !important;
+}
+
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-brand::before,
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-brand::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* In the minified rail, the working native toggle owns the old logo lane.
+ * The logo is deliberately absent until expansion so it cannot cover or
+ * intercept the only control that restores the left navigation. */
+html:is(.us-sign-v230,.us-sign-v240) body.sb-l-m :is(header.navbar,.navbar) .navbar-brand {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html:is(.us-sign-v230,.us-sign-v240) body.sb-l-m :is(header.navbar,.navbar) #toggle_sidemenu_l {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  position: fixed !important;
+  top: 11px !important;
+  left: 11px !important;
+  right: auto !important;
+  z-index: 1042 !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  max-width: 38px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  border-radius: 8px !important;
+  transform: none !important;
+  cursor: pointer !important;
+}
+
+html.us-sign-v230 body.sb-l-m :is(header.navbar,.navbar) #toggle_sidemenu_l {
+  color: rgba(232,240,247,.92) !important;
+  background: rgba(7,18,29,.88) !important;
+  border: 1px solid rgba(190,220,243,.18) !important;
+  box-shadow: 0 5px 16px rgba(0,0,0,.24) !important;
+}
+
+html.us-sign-v240 body.sb-l-m :is(header.navbar,.navbar) #toggle_sidemenu_l {
+  color: #24445c !important;
+  background: rgba(252,254,255,.94) !important;
+  border: 1px solid rgba(63,88,111,.24) !important;
+  box-shadow: 0 5px 16px rgba(20,42,59,.12) !important;
+}
+
+html:is(.us-sign-v230,.us-sign-v240) body.sb-l-m #sidebar_left :is(.sidebar-menu,.nav.sidebar-menu) {
+  padding-top: 0 !important;
+}
+
+html:is(.us-sign-v230,.us-sign-v240) body.sb-l-m #sidebar_left .sidebar-toggle-mini {
+  display: none !important;
+}
+
 @media print {
   html:is(.us-sign-v230,.us-sign-v240) :is(#ussign-job-timer,#squarecoil-companion-cinematic-host,#squarecoil-companion-cinematic-style) {
     display: none !important;

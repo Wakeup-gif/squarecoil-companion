@@ -50,7 +50,7 @@ function media(matches = false) {
   };
 }
 
-function harness({ glass = true, darkLogoUrl = '', logoInitiallyAvailable = true,
+function harness({ glass = true, logoInitiallyAvailable = true,
   pathname = '/dashboard.php', editorFrames = [] } = {}) {
   const root = new FakeElement('html');
   const head = new FakeElement('head');
@@ -86,7 +86,7 @@ function harness({ glass = true, darkLogoUrl = '', logoInitiallyAvailable = true
     addEventListener(type, listener) { windowListeners.set(type, listener); },
     removeEventListener(type, listener) { if (windowListeners.get(type) === listener) windowListeners.delete(type); }
   };
-  const service = createThemeService({ document, window, darkLogoUrl });
+  const service = createThemeService({ document, window });
   return { service, document, window, root, head, logo, dark, forced, reducedTransparency, documentListeners, windowListeners,
     showLogo() { logoAvailable = true; } };
 }
@@ -144,12 +144,12 @@ test('UT-B5-THEME-004 forced colors yields native website presentation without r
   assert.equal(h.root.getAttribute(ROOT_ROUTE_ATTRIBUTE), null);
 });
 
-test('UT-B5-THEME-005 missing approved dark logo degrades locally to the untouched native logo', () => {
+test('UT-B5-THEME-005 non-native themes use the repository-established website PNG path without a packaged asset', () => {
   const h = harness();
   const snapshot = h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
   assert.equal(snapshot.websiteThemeEffective, 'SLEEK_DARK');
-  assert.equal(snapshot.logoStatus, 'native-fallback-missing-dark-logo');
-  assert.equal(h.logo.getAttribute('src'), '/native-logo.png');
+  assert.equal(snapshot.logoStatus, 'configured-website-logo');
+  assert.equal(h.logo.getAttribute('src'), 'images/US-Sign&-Mill-Logo - sized for SC site.png');
 });
 
 test('UT-B5-THEME-006 teardown removes listeners and Companion-owned presentation resources', () => {
@@ -179,14 +179,14 @@ test('UT-B5-THEME-007 reduced transparency keeps Glass durable but resolves it t
   assert.equal(snapshot.reducedTransparency, true);
 });
 
-test('UT-B5-THEME-008 document-ready recovery applies a configured dark logo that appeared after document start', () => {
-  const h = harness({ darkLogoUrl: 'https://assets.example.test/dark-logo.png', logoInitiallyAvailable: false });
+test('UT-B5-THEME-008 document-ready recovery applies the fixed website logo when the header appears after document start', () => {
+  const h = harness({ logoInitiallyAvailable: false });
   const before = h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
-  assert.equal(before.logoStatus, 'native-fallback-logo-not-found');
+  assert.equal(before.logoStatus, 'website-logo-not-found');
   h.showLogo();
   h.documentListeners.get('DOMContentLoaded')();
-  assert.equal(h.service.snapshot().logoStatus, 'configured-dark-logo');
-  assert.equal(h.logo.getAttribute('src'), 'https://assets.example.test/dark-logo.png');
+  assert.equal(h.service.snapshot().logoStatus, 'configured-website-logo');
+  assert.equal(h.logo.getAttribute('src'), 'images/US-Sign&-Mill-Logo - sized for SC site.png');
   assert.equal(h.document.querySelectorAll(`#${STYLE_ID}`).length, 1);
 });
 
@@ -301,7 +301,7 @@ test('UT-B5-THEME-018 Light Glass owns one pale translucent layer and a same-ori
   assert.equal(h.root.getAttribute(ROOT_THEME_ATTRIBUTE), 'LIGHT_GLASS');
   assert.equal(h.document.querySelectorAll(`#${STYLE_ID}`).length, 1);
   const css = h.document.querySelectorAll(`#${STYLE_ID}`)[0].textContent;
-  for (const marker of ['--sc-site-shell:rgba(248,251,254,.82)', '.navbar-brand::before', '#pmlt>div:has(>#duplicate)', '.fc .fc-event', 'backdrop-filter:none!important']) {
+  for (const marker of ['--sc-site-shell:rgba(248,251,254,.82)', 'data-squarecoil-companion-logo="brand"', '#pmlt>div:has(>#duplicate)', '.fc .fc-event', 'backdrop-filter:none!important']) {
     assert.match(css, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.equal(editor.frame.getAttribute(EDITOR_FRAME_ATTRIBUTE), 'light-glass');
@@ -309,11 +309,11 @@ test('UT-B5-THEME-018 Light Glass owns one pale translucent layer and a same-ori
   h.service.teardown();
 });
 
-test('UT-B5-THEME-019 Dark Glass keeps semantic colors SC lockup and single-row project actions without remote assets', () => {
+test('UT-B5-THEME-019 Dark Glass keeps semantic colors website-logo treatment and single-row project actions without remote CSS assets', () => {
   const h = harness({ pathname: '/project_milestones.php' });
   h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
   const css = h.document.querySelectorAll(`#${STYLE_ID}`)[0].textContent;
-  for (const marker of ['--sc-site-shell:rgba(7,15,23,.62)', 'content:"SC"', '#pmlt>div:has(>#duplicate)', '.alert-danger', '.alert-warning', '.alert-success']) {
+  for (const marker of ['--sc-site-shell:rgba(7,15,23,.62)', 'data-squarecoil-companion-logo="brand"', '#pmlt>div:has(>#duplicate)', '.alert-danger', '.alert-warning', '.alert-success']) {
     assert.match(css, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.doesNotMatch(css, /https?:\/\/|@import|fonts\.googleapis/);
@@ -332,5 +332,38 @@ test('UT-B5-THEME-026 an existing CKEditor layer updates when authoritative Glas
   assert.match(style.textContent, /background:#f8fafc/);
   assert.equal(style.getAttribute('data-squarecoil-companion-editor-theme'), 'LIGHT_GLASS');
   assert.equal(editor.frame.getAttribute(EDITOR_FRAME_ATTRIBUTE), 'light-glass');
+  h.service.teardown();
+});
+
+test('UT-B5-THEME-030 every non-native theme uses only the fixed website PNG path and Original restores native attributes', () => {
+  const h = harness();
+  h.logo.setAttribute('srcset', '/native-logo-2x.png 2x');
+  for (const [revision, websiteTheme] of ['REFINED_LIGHT', 'SLEEK_DARK', 'LIGHT_GLASS'].entries()) {
+    const snapshot = h.service.apply(preferences({ websiteTheme, preferenceRevision: revision + 1 }));
+    assert.equal(snapshot.logoStatus, 'configured-website-logo');
+    assert.equal(h.logo.getAttribute('src'), 'images/US-Sign&-Mill-Logo - sized for SC site.png');
+    assert.equal(h.logo.getAttribute('srcset'), null);
+    assert.equal(h.logo.getAttribute('data-squarecoil-companion-logo'), 'brand');
+  }
+  const restored = h.service.apply(preferences({ websiteTheme: 'ORIGINAL', preferenceRevision: 4 }));
+  assert.equal(restored.logoStatus, 'native-logo');
+  assert.equal(h.logo.getAttribute('src'), '/native-logo.png');
+  assert.equal(h.logo.getAttribute('srcset'), '/native-logo-2x.png 2x');
+  assert.equal(h.logo.getAttribute('data-squarecoil-companion-logo'), null);
+});
+
+test('UT-B5-THEME-032 Refined Light owns one coherent canvas panel control and collapsed-navigation palette', () => {
+  const h = harness();
+  h.service.apply(preferences({ websiteTheme: 'REFINED_LIGHT' }));
+  const css = h.document.querySelectorAll(`#${STYLE_ID}`)[0].textContent;
+  for (const marker of [
+    '--sc-site-canvas:#e8eef3',
+    ':is(#main,#content_wrapper,#content)',
+    ':is(.card,.panel,.panel-default,.well,.modal-content,.dropdown-menu,.tab-content)',
+    ':is(input,select,textarea,.form-control,.gui-input,.gui-textarea)',
+    'data-squarecoil-companion-logo="brand"',
+    'body.sb-l-m :is(header.navbar,.navbar) #toggle_sidemenu_l'
+  ]) assert.match(css, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(css, /content:"SC"/);
   h.service.teardown();
 });

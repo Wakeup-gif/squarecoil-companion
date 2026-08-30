@@ -70,6 +70,21 @@ test('UT-B5-THEME-029 terminal Dark compatibility replaces old graphite generic 
   assert.match(dark, /body #content :is\([\s\S]*?#customer-name,#customer-info[\s\S]*?\) :is\(\.panel,\.well,\.panel-body,\.panel-footer,\.table-responsive\) \{[\s\S]*?background-color:\s*transparent\s*!important[\s\S]*?backdrop-filter:\s*none\s*!important/);
 });
 
+test('UT-B5-THEME-031 final Glass integration gives the collapsed restore control the hidden logo lane', () => {
+  for (const relative of ['src/presentation/ports/dark-glass.css', 'src/presentation/ports/light-glass.css']) {
+    const css = read(relative);
+    assert.match(css, /img\[data-squarecoil-companion-logo="brand"\][\s\S]*display:\s*block\s*!important/);
+    assert.match(css, /body\.sb-l-m[\s\S]*\.navbar-brand\s*\{[\s\S]*display:\s*none\s*!important[\s\S]*pointer-events:\s*none\s*!important/);
+    const toggle = /body\.sb-l-m :is\(header\.navbar,\.navbar\) #toggle_sidemenu_l \{[\s\S]*?\}/.exec(css)?.[0];
+    assert.ok(toggle);
+    assert.match(toggle, /top:\s*11px\s*!important/);
+    assert.match(toggle, /left:\s*11px\s*!important/);
+    assert.match(toggle, /visibility:\s*visible\s*!important/);
+    assert.match(toggle, /pointer-events:\s*auto\s*!important/);
+    assert.match(css, /body\.sb-l-m #sidebar_left \.sidebar-toggle-mini \{[\s\S]*display:\s*none\s*!important/);
+  }
+});
+
 test('UT-B5-THEME-021 document start orders the bounded fail-open presentation bootstrap before authority startup', () => {
   const manifest = JSON.parse(read('manifest.json'));
   assert.deepEqual(manifest.content_scripts[0].js, ['dist/presentation-bootstrap.js', 'dist/content-controller.js']);
