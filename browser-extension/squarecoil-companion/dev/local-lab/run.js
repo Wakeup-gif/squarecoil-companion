@@ -290,7 +290,7 @@ async function selectAndCaptureTheme(page, theme, evidenceFile, evidence, bingPe
       const root = document.querySelector('#ussign-job-timer');
       return Array.from(root?.querySelectorAll('.sc-note') || []).some(node =>
         node.textContent.replace(/\s+/g, ' ').trim() ===
-          'Background status: Built-in gradient active; allow Bing access in the toolbar popup.');
+          'Background status: Bing permission required; built-in gradient fallback active.');
     }, null, { timeout: Math.min(timeout, 8_000) });
   } catch (_) {
     const unsettled = await inspectThemeState(page, theme, bingPermissionGranted);
@@ -305,7 +305,7 @@ async function selectAndCaptureTheme(page, theme, evidenceFile, evidence, bingPe
   assertVisualCondition(proof.hostCount === 1 && proof.cinematicStyleCount === 1 && proof.hostTheme === theme &&
     proof.siteStyleAuthoritative === 'authoritative' && proof.hostBackgroundImage !== 'none', 'Theme/background host is not active and singular', proof);
   assertVisualCondition(proof.activeImageLayers === 0 && proof.inlineImageLayers === 0 &&
-    proof.backgroundStatus === 'Background status: Built-in gradient active; allow Bing access in the toolbar popup.',
+    proof.backgroundStatus === 'Background status: Bing permission required; built-in gradient fallback active.',
   'No-permission background fallback or status wording is not truthful', proof);
   assertVisualCondition(proof.outerSurfaceCount >= 5 && proof.nestedSurfaceCount >= 5 && proof.oppositeSurfaceCount === 0,
     'Representative outer or nested lab surfaces contain an opposite-theme card', proof);

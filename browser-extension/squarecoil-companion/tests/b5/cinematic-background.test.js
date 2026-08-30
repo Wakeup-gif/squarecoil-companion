@@ -3,14 +3,20 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  CINEMATIC_STYLE_ID, CINEMATIC_HOST_ID, CINEMATIC_ATTRIBUTE, createCinematicBackground
+  CINEMATIC_STYLE_ID, CINEMATIC_HOST_ID, CINEMATIC_ATTRIBUTE, CINEMATIC_STATUS,
+  decodedImageSizeIsSafe, createCinematicBackground
 } = require('../../src/presentation/cinematic-background');
 
 class Element {
   constructor(tag = 'div') {
     this.tagName = tag.toUpperCase(); this.id = ''; this.className = ''; this.parent = null; this.children = [];
-    this.attributes = new Map(); this.styleValues = new Map();
-    this.style = { setProperty: (name, value) => this.styleValues.set(name, value) };
+    this.attributes = new Map(); this.styleValues = new Map(); this.stylePriorities = new Map();
+    this.style = {
+      setProperty: (name, value, priority = '') => { this.styleValues.set(name, value); this.stylePriorities.set(name, priority); },
+      removeProperty: name => { const value = this.styleValues.get(name) || ''; this.styleValues.delete(name); this.stylePriorities.delete(name); return value; },
+      getPropertyValue: name => this.styleValues.get(name) || '',
+      getPropertyPriority: name => this.stylePriorities.get(name) || ''
+    };
   }
   setAttribute(name, value) { this.attributes.set(name, String(value)); if (name === 'id') this.id = String(value); }
   getAttribute(name) { return name === 'id' ? this.id || null : this.attributes.get(name) ?? null; }
@@ -111,7 +117,9 @@ test('UT-B5-CINE-005 failed candidate readiness never replaces the current accep
     provider: async (_request, count) => ({ ok: true, source: 'REMOTE', dataUrl: `data:image/png;base64,${count === 1 ? 'AAAA' : 'BBBB'}` }) });
   h.service.apply(prefs(), sleek); await h.service.refresh();
   await h.service.refresh('manual');
-  assert.equal(h.service.snapshot().state, 'SHOWING'); assert.equal(h.service.snapshot().reason, 'candidate-rejected-current-retained');
+  assert.equal(h.service.snapshot().state, 'SHOWING');
+  assert.equal(h.service.snapshot().reason, 'bing-response-rejected');
+  assert.equal(h.service.snapshot().failureCode, CINEMATIC_STATUS.RESPONSE_REJECTED);
 });
 
 test('UT-B5-CINE-006 a late request cannot overwrite a newer theme generation', async () => {
@@ -191,6 +199,7 @@ test('UT-B5-CINE-020 fresh cache is healthy presentation evidence rather than re
     dataUrl: 'data:image/jpeg;base64,AQ==' }) });
   h.service.apply(prefs(), sleek); await h.service.refresh();
   assert.equal(h.service.snapshot().state, 'SHOWING'); assert.equal(h.service.snapshot().source, 'CACHE_FRESH');
+  assert.equal(h.service.snapshot().statusCode, CINEMATIC_STATUS.RECENT_CACHE);
 });
 
 test('UT-B5-CINE-022 a no-permission fallback keeps its truthful reason across Dark to Light restoration', async () => {
@@ -237,16 +246,62 @@ test('UT-B5-CINE-024 a retained remote image keeps its truthful source across a 
 });
 
 test('UT-B5-CINE-025 a retained cache image restores as degraded cache instead of losing provenance', async () => {
-  const h = harness({ provider: async () => ({ ok: true, source: 'CACHE', reason: 'remote-failed-cache-used',
+  const h = harness({ provider: async () => ({ ok: true, source: 'CACHE_RETAINED', reason: 'network-unavailable',
+    failureCode: CINEMATIC_STATUS.NETWORK_UNAVAILABLE,
     dataUrl: 'data:image/jpeg;base64,AQ==' }) });
   h.service.apply(prefs(), sleek); await h.service.refresh();
   assert.equal(h.service.snapshot().state, 'DEGRADED_CACHE');
-  assert.equal(h.service.snapshot().source, 'CACHE');
+  assert.equal(h.service.snapshot().source, 'CACHE_RETAINED');
+  assert.equal(h.service.snapshot().statusCode, CINEMATIC_STATUS.RETAINED_CACHE);
+  assert.equal(h.service.snapshot().failureCode, CINEMATIC_STATUS.NETWORK_UNAVAILABLE);
 
   h.service.apply(prefs({ revision: 2 }), { websiteThemeEffective: 'ORIGINAL' });
   const restored = h.service.apply(prefs({ revision: 3 }), sleek);
   assert.equal(restored.state, 'DEGRADED_CACHE');
-  assert.equal(restored.source, 'CACHE');
+  assert.equal(restored.source, 'CACHE_RETAINED');
   assert.equal(restored.imageDisplayed, true);
   assert.equal(h.calls(), 1);
+});
+
+test('UT-B5-CINE-039 the active layer owns an important authoritative image property under both Glass themes', async () => {
+  const h = harness();
+  h.service.apply(prefs(), sleek); await h.service.refresh();
+  let host = h.document.getElementById(CINEMATIC_HOST_ID);
+  let active = host.children.find(child => child.getAttribute('data-active') === 'true');
+  assert.match(active.style.getPropertyValue('--us-squarecoil-cine-image'), /^url\("data:image\/png/);
+  assert.equal(active.style.getPropertyPriority('--us-squarecoil-cine-image'), 'important');
+  assert.equal(active.style.getPropertyValue('background-image'), '');
+
+  h.service.apply(prefs({ revision: 2, theme: 'LIGHT_GLASS' }), light);
+  host = h.document.getElementById(CINEMATIC_HOST_ID);
+  active = host.children.find(child => child.getAttribute('data-active') === 'true');
+  assert.equal(host.getAttribute('data-theme'), 'LIGHT_GLASS');
+  assert.equal(active.style.getPropertyPriority('--us-squarecoil-cine-image'), 'important');
+});
+
+test('UT-B5-CINE-040 decoded image dimensions reject empty, excessive-axis, and decompression-bomb candidates', () => {
+  assert.equal(decodedImageSizeIsSafe(3840, 2160), true);
+  assert.equal(decodedImageSizeIsSafe(0, 2160), false);
+  assert.equal(decodedImageSizeIsSafe(9000, 1000), false);
+  assert.equal(decodedImageSizeIsSafe(8000, 6000), false);
+  assert.equal(decodedImageSizeIsSafe(100.5, 100), false);
+});
+
+test('UT-B5-CINE-041 fallback, permission, rejection, network, cache, and accessibility statuses remain distinct', async () => {
+  for (const [reason, expected] of [
+    ['optional-origin-permission-required', CINEMATIC_STATUS.PERMISSION_REQUIRED],
+    ['bing-response-rejected', CINEMATIC_STATUS.RESPONSE_REJECTED],
+    ['network-unavailable', CINEMATIC_STATUS.NETWORK_UNAVAILABLE]
+  ]) {
+    const h = harness({ provider: async () => ({ ok: false, reason, failureCode: expected, statusCode: expected }) });
+    h.service.apply(prefs(), sleek); await h.service.refresh();
+    const snapshot = h.service.snapshot();
+    assert.equal(snapshot.statusCode, expected);
+    assert.equal(snapshot.failureCode, expected);
+    assert.equal(snapshot.fallbackStatus, CINEMATIC_STATUS.GRADIENT_FALLBACK);
+  }
+  const accessible = harness();
+  const snapshot = accessible.service.apply(prefs(), { websiteThemeEffective: 'ORIGINAL', forcedColors: true });
+  assert.equal(snapshot.statusCode, CINEMATIC_STATUS.ACCESSIBILITY_OVERRIDE);
+  assert.equal(snapshot.fallbackStatus, 'NONE');
 });

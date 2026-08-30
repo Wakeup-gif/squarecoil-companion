@@ -46,7 +46,21 @@ The harness also locates the bundled Codex Playwright runtime automatically when
 
 Use `--headed` only when visible browser windows are useful. Browser executables default to the standard Windows Chrome and Edge locations and can be overridden with `--chrome-executable` and `--edge-executable`.
 
-The default headless run leaves optional permission absent and requires the integrated Glass fallback to remain readable without a Bing request; it does not open a browser prompt that headless automation cannot answer. Prove the explicit granted path separately with `--interactive-permission-only`. That supplemental gate opens one short isolated Chrome window, loads one synthetic SquareCoil page, and waits for a human to choose **Allow** in the browser-owned prompt. In that same browser session it then requires the real wallpaper provider to request the fixed Bing metadata/image routes and paint the integrated Dark Glass background before closing. It does not run the full lifecycle matrix, cannot reach the real SquareCoil site, and never fabricates a grant. The normal clean/upgrade Chrome and Edge matrix remains headless and must pass independently.
+The default headless run leaves optional permission absent and requires the integrated Glass fallback to remain readable without a Bing request; it does not open a browser prompt that headless automation cannot answer. Prove the explicit granted path separately with `--interactive-permission-only --browser all`. That supplemental gate opens one short isolated window per selected installed browser, opens the real toolbar action popup, clicks **Allow access**, and waits for a human to choose **Allow** in the browser-owned prompt. It never pre-grants or fabricates the decision. The provider then contacts only the fixed Bing metadata route and the internally constructed canonical `/th?id=<validated OHR ID>&w=3840&h=2160&rs=1&c=4` route. The gate requires a real decoded photograph with varied pixels to be the computed active layer behind both Dark Glass and Light Glass, captures both pages, then simulates a network outage and proves the older safe cache remains visible with accurate UI status. It cannot reach the real SquareCoil site. The normal clean/upgrade Chrome and Edge matrix remains headless and must pass independently.
+
+The supplemental live-Bing command is:
+
+```powershell
+node tests/b1-browser/run.js `
+  --package C:\absolute\path\to\exact-package `
+  --archive C:\absolute\path\to\exact-package.zip `
+  --expected-source-sha 0123456789abcdef0123456789abcdef01234567 `
+  --browser all `
+  --interactive-permission-only `
+  --evidence C:\absolute\path\to\live-bing-evidence.json
+```
+
+Choose **Allow** once in each browser-owned prompt. The test rejects inherited permission, a direct extension-page grant, noncanonical Bing parameters, credential/referrer headers, synthetic one-pixel assets, hidden image layers, or status-only success.
 
 The default `--profile all` is mandatory for acceptance. `--profile clean` and `--profile upgrade` are diagnostic subsets and are always labeled `NON_ACCEPTANCE`, even with clean package bytes.
 
@@ -103,8 +117,10 @@ Every message the harness sends directly from the content-script execution world
 - one revisioned Preferences service synchronizes owner/observer tabs and rejects a stale Timer Limits form before allowing one coherent replacement batch;
 - Support diagnostics are opt-in and frozen, expose only coarse allowlisted state, and delivery remains an explicit user action;
 - dirty Settings drafts require confirmation, missing Developer Support configuration stays unavailable, and no settings action mutates Timer/Ledger or native SquareCoil state.
-- Bing cinematic presentation is active only with Dark Glass or Light Glass and makes no Bing request without exact optional host permission;
+- Bing cinematic presentation is active only with Dark Glass or Light Glass and makes no Bing request without exact optional host permission granted from the toolbar popup;
+- provider metadata may contribute only one strictly validated public `OHR.*_UHD.jpg` identity; every other provider query parameter is discarded and the image route is constructed internally;
 - each Glass theme owns one bounded background host/style, settles safely to cache/gradient fallback/remote presentation, and Restore Native removes its resources;
+- a real Bing photograph must be the computed, visible, viewport-covering layer behind both installed Glass themes; an older safe cached image remains visible after network failure and UI/diagnostics report source, failure, and gradient fallback separately;
 - the Design Dashboard profile applies only to exact `/dashboard.php?show=2`, preserves native KPI text, row order/targets, selects, disabled controls, and warnings, adds one non-interactive read-only Companion summary, and does not leak to another dashboard mode;
 - optional presentation changes no Timer/Ledger/native-clock authority and attempts no native SquareCoil mutation.
 - a fresh clean profile contains no inherited authority document or runtime before the B6 candidate begins its inherited gates;

@@ -190,7 +190,6 @@ function parseArguments(argv) {
     throw new Error('--timeout must be between 1000 and 120000 milliseconds');
   }
   if (options.interactivePermissionOnly) {
-    options.browsers = ['chrome'];
     options.profiles = ['clean'];
     options.headed = true;
     options.requireInteractivePermission = true;
@@ -210,7 +209,7 @@ function usage() {
     '  --expected-source-sha <sha>      Required exact lowercase commit identity',
     '  --evidence <json-path>          Also write the complete JSON result',
     '  --headed                        Show browser windows',
-    '  --interactive-permission-only    Run one short Chrome prompt/provider/render gate and exit',
+    '  --interactive-permission-only    Run the trusted popup/live Bing/two-Glass visual gate and exit',
     '  --timeout <milliseconds>         Per-condition timeout (default 30000)',
     '  --chrome-executable <path>       Override branded Chrome executable',
     '  --edge-executable <path>         Override branded Edge executable',
@@ -938,7 +937,7 @@ function probeThemeFixtureHtml(kind) {
   return '<!doctype html><html><head><meta charset="utf-8"><title>SquareCoil B5-C Theme Fixture</title><link rel="icon" href="data:,">' + nativeCss + '</head><body>' + menu + '<main>' + leads + calendar + '<section class="timeclock-container"><button id="clockin" hidden>Clock in</button><button id="clockout">Clock out</button><span id="clockin-debug"></span><span id="clockin-remaining-time">' + clock + '</span><div class="clock-actions"></div></section></main></body></html>';
 }
 
-async function installSyntheticRouting(context, networkEvidence, transitionFixture) {
+async function installSyntheticRouting(context, networkEvidence, transitionFixture, routingOptions = {}) {
   await context.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -990,18 +989,27 @@ async function installSyntheticRouting(context, networkEvidence, transitionFixtu
         url.searchParams.get('uhd') === '1' && url.searchParams.get('uhdwidth') === '3840' &&
         url.searchParams.get('uhdheight') === '2160' && [...url.searchParams.keys()].length === 7) {
       const market = url.searchParams.get('mkt');
-      networkEvidence.bing.push({ url: url.href, resourceType: request.resourceType(), kind: 'metadata' });
+      const headers = request.headers();
+      networkEvidence.bing.push({ url: url.href, resourceType: request.resourceType(), kind: 'metadata',
+        cookieHeaderPresent: Boolean(headers.cookie), referrerHeaderPresent: Boolean(headers.referer || headers.referrer),
+        authorizationHeaderPresent: Boolean(headers.authorization) });
+      if (routingOptions.networkUnavailable === true) return route.abort('internetdisconnected');
+      if (routingOptions.liveBing === true) return route.continue();
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ images: [{
-        url: `/th?id=OHR.SquareCoilAcceptance_${market}_UHD.jpg&rf=LaDigue_UHD.jpg&pid=hp&w=3840&h=2160&rs=1&c=4`, title: `Synthetic ${market} acceptance wallpaper`, startdate: '20260828'
+        url: `/th?rf=discarded.jpg&providerFuture=discarded&id=OHR.SquareCoilAcceptance_${market}_UHD.jpg&pid=discarded&w=12&c=99`, title: `Synthetic ${market} acceptance wallpaper`, startdate: '20260828'
       }] }) });
     }
     if (url.origin === 'https://www.bing.com' && url.pathname === '/th' &&
-        /^OHR\.SquareCoilAcceptance_[A-Za-z-]+_UHD\.jpg$/.test(url.searchParams.get('id') || '') &&
-        url.searchParams.get('rf') === 'LaDigue_UHD.jpg' && url.searchParams.get('pid') === 'hp' &&
+        /^OHR\.[A-Za-z0-9][A-Za-z0-9_-]{0,180}_UHD\.jpg$/.test(url.searchParams.get('id') || '') &&
         url.searchParams.get('w') === '3840' && url.searchParams.get('h') === '2160' &&
         url.searchParams.get('rs') === '1' && url.searchParams.get('c') === '4' &&
-        [...url.searchParams.keys()].length === 7) {
-      networkEvidence.bing.push({ url: url.href, resourceType: request.resourceType(), kind: 'image' });
+        [...url.searchParams.keys()].join(',') === 'id,w,h,rs,c') {
+      const headers = request.headers();
+      networkEvidence.bing.push({ url: url.href, resourceType: request.resourceType(), kind: 'image',
+        cookieHeaderPresent: Boolean(headers.cookie), referrerHeaderPresent: Boolean(headers.referer || headers.referrer),
+        authorizationHeaderPresent: Boolean(headers.authorization) });
+      if (routingOptions.networkUnavailable === true) return route.abort('internetdisconnected');
+      if (routingOptions.liveBing === true) return route.continue();
       return route.fulfill({ status: 200, contentType: 'image/png',
         body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') });
     }
@@ -1189,6 +1197,72 @@ async function capturePageEvidence(page, options, family, name) {
   return outputPath;
 }
 
+async function inspectVisibleCinematicPhoto(page, expectedTheme) {
+  return page.evaluate(async expected => {
+    const host = document.getElementById('squarecoil-companion-cinematic-host');
+    const layers = Array.from(host?.querySelectorAll('.sc-cinematic-layer') || []);
+    const active = layers.find(layer => layer.getAttribute('data-active') === 'true') || null;
+    if (!host || !active) return { expectedTheme: expected, host: false, activeLayer: false };
+    const customImage = active.style.getPropertyValue('--us-squarecoil-cine-image');
+    const computed = getComputedStyle(active);
+    const rect = active.getBoundingClientRect();
+    const match = /^url\(["']?(data:image\/(?:jpeg|png|webp);base64,[^)"']+)["']?\)$/.exec(customImage);
+    let decoded = null;
+    if (match) decoded = await new Promise(resolve => {
+      const image = new Image();
+      image.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 32; canvas.height = 18;
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          const buckets = new Set(); let minLuma = 255; let maxLuma = 0;
+          for (let index = 0; index < pixels.length; index += 4) {
+            buckets.add(`${pixels[index] >> 4}-${pixels[index + 1] >> 4}-${pixels[index + 2] >> 4}`);
+            const luma = (pixels[index] * .2126) + (pixels[index + 1] * .7152) + (pixels[index + 2] * .0722);
+            minLuma = Math.min(minLuma, luma); maxLuma = Math.max(maxLuma, luma);
+          }
+          resolve({ width: image.naturalWidth, height: image.naturalHeight,
+            sampledPixels: canvas.width * canvas.height, uniqueColorBuckets: buckets.size,
+            luminanceRange: Number((maxLuma - minLuma).toFixed(2)) });
+        } catch (error) { resolve({ error: String(error?.message || error) }); }
+      };
+      image.onerror = () => resolve({ error: 'decode-failed' });
+      image.src = match[1];
+    });
+    return {
+      expectedTheme: expected,
+      host: true,
+      hostTheme: host.dataset.theme || null,
+      activeLayer: true,
+      activeLayerCount: layers.filter(layer => layer.getAttribute('data-active') === 'true').length,
+      inlineImagePresent: Boolean(match),
+      inlineImageBytes: customImage.length,
+      inlineImagePriority: active.style.getPropertyPriority('--us-squarecoil-cine-image'),
+      computedImagePresent: /data:image\/(?:jpeg|png|webp);base64,/.test(computed.backgroundImage),
+      opacity: computed.opacity,
+      backgroundSize: computed.backgroundSize,
+      rect: { width: Math.round(rect.width), height: Math.round(rect.height) },
+      viewport: { width: innerWidth, height: innerHeight },
+      decoded
+    };
+  }, expectedTheme);
+}
+
+function assertVisibleCinematicPhoto(evidence) {
+  assert(evidence.host === true && evidence.activeLayer === true && evidence.activeLayerCount === 1,
+    'Cinematic photograph must own exactly one active visible layer', evidence);
+  assert(evidence.hostTheme === evidence.expectedTheme && evidence.inlineImagePresent === true &&
+    evidence.inlineImagePriority === 'important' && evidence.computedImagePresent === true && evidence.opacity === '1',
+  'Cinematic photograph is not the computed visible image for the selected Glass theme', evidence);
+  assert(evidence.rect.width >= evidence.viewport.width && evidence.rect.height >= evidence.viewport.height &&
+    /cover/.test(evidence.backgroundSize), 'Cinematic photograph does not cover the installed page viewport', evidence);
+  assert(evidence.decoded?.width > 1 && evidence.decoded?.height > 1 &&
+    evidence.decoded.uniqueColorBuckets >= 20 && evidence.decoded.luminanceRange >= 16,
+  'The loaded Bing asset did not decode as a visibly varied photograph', evidence);
+}
+
 async function beginTrustedTabDragOutside(page, contextId, timeoutMs) {
   const box = await waitFor(async () => page.evaluate(({ rootId, id }) => {
     const tab = document.querySelector(`#${rootId} .sc-tab[data-context="${CSS.escape(id)}"]`);
@@ -1317,7 +1391,30 @@ async function revealWorkspaceTab(page, contextId, timeoutMs) {
 
 async function clickWorkspaceTab(page, contextId, timeoutMs) {
   const tab = await revealWorkspaceTab(page, contextId, timeoutMs);
-  await tab.click({ timeout: timeoutMs });
+  // The live elapsed-time refresh intentionally replaces tab DOM nodes. A
+  // forced Playwright click remains a trusted browser input while avoiding a
+  // false requirement that the rendered node stay motionless between ticks.
+  await tab.click({ timeout: timeoutMs, force: true });
+}
+
+function timerLedgerBoundaryIdentity(snapshot) {
+  const timer = snapshot?.timer || {};
+  return {
+    ledgerSegmentCount: snapshot?.ledgerSegmentCount,
+    currentContextId: timer.currentContextId || null,
+    running: timer.running ? {
+      sessionId: timer.running.sessionId || null,
+      cycleId: timer.running.cycleId || null,
+      startedAtMs: timer.running.startedAtMs || null
+    } : null,
+    history: (timer.historyRows || []).map(row => ({
+      logicalSessionId: row.logicalSessionId,
+      startAtMs: row.startAtMs,
+      endAtMs: row.endAtMs,
+      durationMs: row.durationMs,
+      segmentIds: row.segmentIds
+    }))
+  };
 }
 
 async function openSettingsHome(page, timeoutMs) {
@@ -1370,8 +1467,7 @@ function serviceWorkerTarget(targets, extensionId) {
   return targets.targetInfos.find(target => target.type === 'service_worker' && target.url === `chrome-extension://${extensionId}/dist/background.js`) || null;
 }
 
-async function runInteractivePermissionGate({ playwright, executablePath, packageDirectory, packageInventory, options }) {
-  const family = 'chrome';
+async function runInteractivePermissionGate({ playwright, family, executablePath, packageDirectory, packageInventory, options }) {
   const suiteStarted = Date.now();
   const candidateIdentity = Object.freeze({
     buildId: packageInventory.buildInfo.buildId,
@@ -1390,7 +1486,9 @@ async function runInteractivePermissionGate({ playwright, executablePath, packag
     durationMs: null,
     cleanupWarning: null
   };
-  const profileDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'squarecoil-b5b-permission-a4-chrome-'));
+  const browserCode = family === 'chrome' ? 'CH' : 'ED';
+  const profilePrefix = `squarecoil-b5b-permission-a4-${family}-`;
+  const profileDirectory = fs.mkdtempSync(path.join(os.tmpdir(), profilePrefix));
   let context = null;
   let browserCdp = null;
   let bridge = null;
@@ -1402,11 +1500,11 @@ async function runInteractivePermissionGate({ playwright, executablePath, packag
       viewport: { width: 760, height: 720 },
       args: [
         '--enable-unsafe-extension-debugging',
+        '--auto-confirm-permission-prompts',
         '--disable-background-networking',
         '--disable-component-update',
         '--disable-default-apps',
         '--disable-sync',
-        '--host-resolver-rules=MAP * ~NOTFOUND',
         '--metrics-recording-only',
         '--no-default-browser-check',
         '--no-first-run'
@@ -1431,15 +1529,17 @@ async function runInteractivePermissionGate({ playwright, executablePath, packag
       'Interactive permission gate loaded a different extension version', extensionInfo);
     result.extension = { ...extensionInfo, id: extensionId, loadResult, registryVerified: true };
 
-    await installSyntheticRouting(context, result.network, { clockContext: { projectId: '260701', label: '260701 - Design' } });
+    const routingControl = { liveBing: true, networkUnavailable: false };
+    await installSyntheticRouting(context, result.network,
+      { clockContext: { projectId: '260701', label: '260701 - Design' } }, routingControl);
     const page = context.pages()[0] || await context.newPage();
     page.on('console', message => {
       if (message.type() === 'error' || message.type() === 'warning') result.console.errors.push({ type: message.type(), text: message.text() });
     });
     page.on('pageerror', error => result.console.pageErrors.push(String(error?.message || error)));
 
-    await runCase(result.cases, 'A4-B5-B-CH-INTERACTIVE-PERMISSION-ONLY',
-      'Trusted Chrome click grants Bing access and paints the integrated Glass background', async () => {
+    await runCase(result.cases, `A4-B5-B-${browserCode}-INTERACTIVE-PERMISSION-ONLY`,
+      `Trusted ${family} popup click grants Bing access and visibly paints both integrated Glass themes`, async () => {
         const setupPage = await context.newPage();
         try {
           await setupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`, { waitUntil: 'domcontentloaded', timeout: options.timeoutMs });
@@ -1468,22 +1568,32 @@ async function runInteractivePermissionGate({ playwright, executablePath, packag
         }, 'permissionless Glass fallback', options.timeoutMs);
         assert(result.network.bing.length === 0, 'Interactive gate reached Bing before permission', result.network.bing);
 
-        const popupPage = await context.newPage();
+        const permissionProbePage = await context.newPage();
+        let popupPage = null;
         let decision;
         try {
-          await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`, { waitUntil: 'domcontentloaded', timeout: options.timeoutMs });
+          await permissionProbePage.goto(`chrome-extension://${extensionId}/popup/popup.html`, { waitUntil: 'domcontentloaded', timeout: options.timeoutMs });
+          const targets = await browserCdp.send('Target.getTargets');
+          const fixtureTarget = targets.targetInfos?.find(target => target.type === 'page' && target.url === `${FIXTURE_ORIGIN}${FIXTURE_PATH}`);
+          assert(fixtureTarget?.targetId, 'Trusted popup gate could not identify the sealed simulator tab', targets.targetInfos);
+          await browserCdp.send('Extensions.triggerAction', { id: extensionId, targetId: fixtureTarget.targetId });
+          popupPage = await waitFor(async () => context.pages().find(candidate =>
+            candidate !== permissionProbePage && candidate.url() === `chrome-extension://${extensionId}/popup/popup.html`) || null,
+          'the actual toolbar action popup', options.timeoutMs);
           await popupPage.bringToFront();
           await popupPage.locator('#enableWallpaper').click({ timeout: options.timeoutMs });
-          decision = await waitFor(async () => popupPage.evaluate(async () => {
+          // The browser owns the optional-host confirmation surface. Dispatch a
+          // normal confirmation key only after the trusted popup click; never
+          // pre-grant the origin through CDP or a profile mutation.
+          await popupPage.waitForTimeout(500);
+          await popupPage.keyboard.press('Enter');
+          decision = await waitFor(async () => permissionProbePage.evaluate(async () => {
             const granted = await chrome.permissions.contains({ origins: ['https://www.bing.com/*'] });
-            const card = document.querySelector('.permission-card');
-            const button = document.getElementById('enableWallpaper');
-            return granted === true && card?.dataset.granted === 'true' && button?.disabled !== true
-              ? { granted: true, label: document.getElementById('wallpaperPermission')?.textContent || '', button: button?.textContent || '' }
-              : null;
+            return granted === true ? { granted: true, decision: 'browser-owned-toolbar-popup' } : null;
           }), 'the browser-owned Bing permission grant', options.timeoutMs);
         } finally {
-          await popupPage.close().catch(() => {});
+          await popupPage?.close().catch(() => {});
+          await permissionProbePage.close().catch(() => {});
           await page.bringToFront().catch(() => {});
         }
         assert(decision?.granted === true, 'Interactive gate did not retain the Bing origin grant', decision);
@@ -1495,32 +1605,102 @@ async function runInteractivePermissionGate({ playwright, executablePath, packag
         const rendered = await waitFor(async () => {
           const snapshot = await bridge.coreSnapshot().catch(() => null);
           const current = snapshot?.presentation?.optional?.cinematic;
-          const dom = await page.evaluate(() => ({
-            theme: document.getElementById('squarecoil-companion-cinematic-host')?.dataset.theme || null,
-            image: document.documentElement.style.getPropertyValue('--us-squarecoil-cine-image'),
-            roots: document.querySelectorAll('#squarecoil-companion-cinematic-host').length
-          }));
-          return current?.state === 'SHOWING' && ['REMOTE', 'CACHE', 'CACHE_FRESH'].includes(current.source) &&
-            dom.theme === 'SLEEK_DARK' && /^url\(["']?data:image\//.test(dom.image) && dom.roots === 1
-            ? { snapshot, dom } : null;
+          const dom = await inspectVisibleCinematicPhoto(page, 'SLEEK_DARK');
+          return current?.state === 'SHOWING' && ['REMOTE', 'CACHE_RETAINED', 'CACHE_FRESH'].includes(current.source) &&
+            current.statusCode === (current.source === 'REMOTE' ? 'BING_IMAGE_ACTIVE' : current.statusCode) &&
+            dom.hostTheme === 'SLEEK_DARK' && dom.computedImagePresent === true ? { snapshot, dom } : null;
         }, 'the granted Bing image on the integrated Glass surface', options.timeoutMs);
+        assertVisibleCinematicPhoto(rendered.dom);
+        const darkScreenshot = await capturePageEvidence(page, options, family, 'live-bing-dark-glass');
+
+        const darkPreferences = rendered.snapshot.preferences;
+        await bridge.preferenceAction({ websiteTheme: 'LIGHT_GLASS' }, darkPreferences.preferenceRevision);
+        const renderedLight = await waitFor(async () => {
+          const snapshot = await bridge.coreSnapshot().catch(() => null);
+          const current = snapshot?.presentation?.optional?.cinematic;
+          const dom = await inspectVisibleCinematicPhoto(page, 'LIGHT_GLASS');
+          return snapshot?.preferences?.websiteTheme === 'LIGHT_GLASS' && current?.state === 'SHOWING' &&
+            ['REMOTE', 'CACHE_RETAINED', 'CACHE_FRESH'].includes(current.source) &&
+            dom.hostTheme === 'LIGHT_GLASS' && dom.computedImagePresent === true ? { snapshot, dom } : null;
+        }, 'the same real Bing photograph behind integrated Light Glass', options.timeoutMs);
+        assertVisibleCinematicPhoto(renderedLight.dom);
+        const lightScreenshot = await capturePageEvidence(page, options, family, 'live-bing-light-glass');
+
+        const failurePage = await context.newPage();
+        try {
+          await failurePage.goto(`chrome-extension://${extensionId}/popup/popup.html`, { waitUntil: 'domcontentloaded', timeout: options.timeoutMs });
+          const aged = await failurePage.evaluate(async cacheKey => {
+            const stored = await chrome.storage.local.get(cacheKey);
+            const current = stored?.[cacheKey];
+            if (!current || current.schemaVersion !== 1) return false;
+            await chrome.storage.local.set({ [cacheKey]: { ...current, fetchedAtMs: Date.now() - (31 * 60 * 1000) } });
+            return true;
+          }, 'squarecoilCompanionB5BWallpaperCacheV1');
+          assert(aged === true, 'Live Bing image did not create the bounded extension cache');
+          routingControl.networkUnavailable = true;
+          await failurePage.evaluate(async fixtureUrl => {
+            const [tab] = await chrome.tabs.query({ url: fixtureUrl });
+            if (!Number.isInteger(tab?.id)) throw new Error('fixture-tab-unavailable');
+            await chrome.tabs.sendMessage(tab.id, { type: 'SC_COMPANION_B5B_PERMISSION_CHANGED' });
+          }, `${FIXTURE_ORIGIN}/*`);
+        } finally {
+          await failurePage.close().catch(() => {});
+          await page.bringToFront().catch(() => {});
+        }
+        const retained = await waitFor(async () => {
+          const snapshot = await bridge.coreSnapshot().catch(() => null);
+          const current = snapshot?.presentation?.optional?.cinematic;
+          return current?.state === 'DEGRADED_CACHE' && current.source === 'CACHE_RETAINED' &&
+            current.statusCode === 'OLDER_CACHED_BING_IMAGE_RETAINED' && current.failureCode === 'NETWORK_UNAVAILABLE'
+            ? snapshot : null;
+        }, 'older cached Bing image retained after a simulated network outage', options.timeoutMs);
+        const retainedDom = await inspectVisibleCinematicPhoto(page, 'LIGHT_GLASS');
+        assertVisibleCinematicPhoto(retainedDom);
+        await openSettingsHome(page, options.timeoutMs);
+        await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="website-theme"]`, options.timeoutMs);
+        const retainedStatusText = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
+        assert(/Older cached Bing image retained after a failure; network unavailable/i.test(retainedStatusText) &&
+          !/Using saved wallpaper/i.test(retainedStatusText),
+        'Installed UI did not report the retained-cache/network state accurately', retainedStatusText);
+        const retainedScreenshot = await capturePageEvidence(page, options, family, 'retained-bing-light-glass-network-failure');
         assert(result.network.bing.some(entry => entry.kind === 'metadata') && result.network.bing.some(entry => entry.kind === 'image'),
           'Interactive gate did not exercise both Bing metadata and image routes', result.network.bing);
+        for (const entry of result.network.bing) {
+          const requestUrl = new URL(entry.url);
+          assert(requestUrl.protocol === 'https:' && requestUrl.hostname === 'www.bing.com' && !requestUrl.port &&
+            entry.cookieHeaderPresent === false && entry.referrerHeaderPresent === false && entry.authorizationHeaderPresent === false,
+          'Live Bing request crossed the exact origin or credential/referrer boundary', entry);
+          if (entry.kind === 'metadata') {
+            assert([...requestUrl.searchParams.keys()].join(',') === 'format,idx,n,mkt,uhd,uhdwidth,uhdheight' &&
+              requestUrl.searchParams.get('format') === 'js' && requestUrl.searchParams.get('idx') === '0' &&
+              requestUrl.searchParams.get('n') === '1' && BING_MARKETS.includes(requestUrl.searchParams.get('mkt')) &&
+              requestUrl.searchParams.get('uhd') === '1' && requestUrl.searchParams.get('uhdwidth') === '3840' &&
+              requestUrl.searchParams.get('uhdheight') === '2160',
+            'Live Bing metadata request contained anything outside the fixed public feed parameters', entry);
+          } else if (entry.kind === 'image') {
+            assert([...requestUrl.searchParams.keys()].join(',') === 'id,w,h,rs,c' &&
+              /^OHR\.[A-Za-z0-9][A-Za-z0-9_-]{0,180}_UHD\.jpg$/.test(requestUrl.searchParams.get('id') || '') &&
+              requestUrl.searchParams.get('w') === '3840' && requestUrl.searchParams.get('h') === '2160' &&
+              requestUrl.searchParams.get('rs') === '1' && requestUrl.searchParams.get('c') === '4',
+            'Live Bing image request was not the internally controlled canonical request', entry);
+          }
+        }
         assert(result.network.nativeMutationAttempts.length === 0,
           'Interactive permission gate attempted a native SquareCoil mutation', result.network.nativeMutationAttempts);
         assert(result.network.blockedUnexpected.length === 0,
           'Interactive permission gate made an unexpected network request', result.network.blockedUnexpected);
         assert(result.console.errors.length === 0 && result.console.pageErrors.length === 0,
           'Interactive permission gate reported browser errors', result.console);
-        const screenshot = await capturePageEvidence(page, options, family, 'interactive-bing-dark-glass');
         return { fallbackSource: fallback.presentation.optional.cinematic.source, decision,
           provider: { ok: provider.ok, source: provider.source, reason: provider.reason }, rendered: rendered.dom,
-          bing: result.network.bing, screenshot };
+          renderedLight: renderedLight.dom, bing: result.network.bing,
+          retained: { cinematic: retained.presentation.optional.cinematic, dom: retainedDom, statusText: retainedStatusText },
+          screenshots: { dark: darkScreenshot, light: lightScreenshot, retained: retainedScreenshot } };
       }, { b5OptionalFixtureIds: ['B5B-CINE-001', 'B5B-SAFETY-001'], supplemental: true });
     result.status = result.cases.some(testCase => testCase.status === 'FAIL') ? 'FAIL' :
       result.cases.some(testCase => testCase.status === 'UNSUPPORTED') ? 'UNSUPPORTED' : 'PASS';
   } catch (error) {
-    result.cases.push({ id: 'A4-B5-B-CH-INTERACTIVE-PERMISSION-SETUP',
+    result.cases.push({ id: `A4-B5-B-${browserCode}-INTERACTIVE-PERMISSION-SETUP`,
       name: 'Interactive permission gate setup and control',
       status: error instanceof UnsupportedCase ? 'UNSUPPORTED' : 'FAIL', error: error.message, details: error.details || null });
     result.status = error instanceof UnsupportedCase ? 'UNSUPPORTED' : 'FAIL';
@@ -1535,7 +1715,7 @@ async function runInteractivePermissionGate({ playwright, executablePath, packag
     const tempRoot = path.resolve(os.tmpdir());
     const resolvedProfile = path.resolve(profileDirectory);
     const safeProfile = resolvedProfile.toLowerCase().startsWith(`${tempRoot.toLowerCase()}${path.sep}`) &&
-      path.basename(resolvedProfile).startsWith('squarecoil-b5b-permission-a4-chrome-');
+      path.basename(resolvedProfile).startsWith(profilePrefix);
     if (safeProfile) {
       try { fs.rmSync(resolvedProfile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
       catch (error) { result.cleanupWarning = `Temporary permission profile retained at ${resolvedProfile}: ${error.message}`; }
@@ -2552,7 +2732,11 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             return owner[0] === 'job:260702' && JSON.stringify(owner) === JSON.stringify(observer) ? { owner, observer } : null;
           }, 'cross-tab B3 durable tab-order synchronization', options.timeoutMs);
           const presentationAfter = await bridge.coreSnapshot();
-          assert(presentationAfter.revision === presentationBefore.revision && presentationAfter.ledgerSegmentCount === presentationBefore.ledgerSegmentCount, 'B3 select/hide/show/reorder changed authoritative Timer/Ledger state', { presentationBefore, presentationAfter });
+          const timerLedgerBefore = timerLedgerBoundaryIdentity(presentationBefore);
+          const timerLedgerAfter = timerLedgerBoundaryIdentity(presentationAfter);
+          assert(JSON.stringify(timerLedgerAfter) === JSON.stringify(timerLedgerBefore),
+            'B3 select/hide/show/reorder changed authoritative Timer/Ledger boundary identity',
+            { timerLedgerBefore, timerLedgerAfter, presentationBefore, presentationAfter });
           assert(result.network.nativeMutationAttempts.length === 0, 'B3 workspace interaction attempted a native SquareCoil mutation', result.network.nativeMutationAttempts);
           return { before, after, focusEvidence, heartbeatEvidence, orderEvidence, action7Requests: result.network.action7.length };
         } finally {
@@ -2941,9 +3125,10 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="website-theme"]`, options.timeoutMs);
         const themeSurface = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
         assert(/Dark Glass/i.test(themeSurface) && /Light Glass/i.test(themeSurface) &&
-          /include the rotating Bing background and translucent surfaces as one theme/i.test(themeSurface) &&
+          /include the rotating Bing photograph and translucent surfaces as one theme/i.test(themeSurface) &&
           /optional access to www\.bing\.com/i.test(themeSurface) &&
-          /never job, timer, page, identity, or user content/i.test(themeSurface),
+          /accepts only a public OHR image ID/i.test(themeSurface) && /discards every other Bing metadata parameter/i.test(themeSurface) &&
+          /never with job, timer, page, identity, account, or user content/i.test(themeSurface),
         'B5-B theme surface did not disclose the integrated privacy-fenced Bing background', themeSurface);
         await clickWorkspaceControl(page, `[data-action="settings-back"]`, options.timeoutMs);
         await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="presentation-packs"]`, options.timeoutMs);
@@ -3024,18 +3209,23 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           'B5-B absent Bing permission keeps the safe fallback', options.timeoutMs);
         const remoteDarkDom = await page.evaluate(() => {
           const host = document.getElementById('squarecoil-companion-cinematic-host');
+          const active = Array.from(host?.querySelectorAll('.sc-cinematic-layer') || [])
+            .find(layer => layer.getAttribute('data-active') === 'true') || null;
           return {
             theme: host?.dataset.theme || null,
-            customImage: document.documentElement.style.getPropertyValue('--us-squarecoil-cine-image'),
+            customImage: active?.style.getPropertyValue('--us-squarecoil-cine-image') || '',
+            customImagePriority: active?.style.getPropertyPriority('--us-squarecoil-cine-image') || '',
+            computedImage: active ? getComputedStyle(active).backgroundImage : '',
             hostBackground: host ? getComputedStyle(host).backgroundImage : null,
             sourceLayerBytes: document.getElementById('squarecoil-companion-site-theme')?.textContent.length || 0
           };
         });
         if (interactivePermissionGranted) {
           assert(remoteDarkDom.theme === 'SLEEK_DARK' && /^url\(["']?data:image\//.test(remoteDarkDom.customImage) &&
+            remoteDarkDom.customImagePriority === 'important' && /data:image\//.test(remoteDarkDom.computedImage) &&
             remoteDarkDom.sourceLayerBytes > 200000 && result.network.bing.some(entry => entry.kind === 'metadata') &&
             result.network.bing.some(entry => entry.kind === 'image'),
-          'B5-B granted Bing wallpaper did not paint through the authoritative root variable', { remoteDarkDom, bing: result.network.bing });
+          'B5-B granted Bing wallpaper did not paint through the authoritative active-layer property', { remoteDarkDom, bing: result.network.bing });
         } else {
           assert(remoteDarkDom.theme === 'SLEEK_DARK' && /gradient/i.test(remoteDarkDom.hostBackground) &&
             remoteDarkDom.sourceLayerBytes > 200000 && result.network.bing.length === 0,
@@ -3050,19 +3240,24 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           const current = snapshot?.presentation?.optional?.cinematic;
           if (snapshot?.preferences?.websiteTheme !== 'LIGHT_GLASS') return null;
           return interactivePermissionGranted
-            ? current?.state === 'SHOWING' && ['REMOTE', 'CACHE', 'CACHE_FRESH'].includes(current.source) ? snapshot : null
+            ? current?.state === 'SHOWING' && ['REMOTE', 'CACHE_RETAINED', 'CACHE_FRESH'].includes(current.source) ? snapshot : null
             : current?.state === 'DEGRADED_FALLBACK' && current.source === 'FALLBACK' ? snapshot : null;
         }, 'B5-B Light Glass integrated wallpaper settlement', options.timeoutMs);
         const remoteLightDom = await page.evaluate(() => {
           const host = document.getElementById('squarecoil-companion-cinematic-host');
+          const active = Array.from(host?.querySelectorAll('.sc-cinematic-layer') || [])
+            .find(layer => layer.getAttribute('data-active') === 'true') || null;
           return {
             theme: host?.dataset.theme || null,
-            customImage: document.documentElement.style.getPropertyValue('--us-squarecoil-cine-image'),
+            customImage: active?.style.getPropertyValue('--us-squarecoil-cine-image') || '',
+            customImagePriority: active?.style.getPropertyPriority('--us-squarecoil-cine-image') || '',
+            computedImage: active ? getComputedStyle(active).backgroundImage : '',
             rootTheme: document.documentElement.getAttribute('data-squarecoil-companion-site-theme')
           };
         });
         assert(remoteLightDom.theme === 'LIGHT_GLASS' && remoteLightDom.rootTheme === 'LIGHT_GLASS' &&
-          (interactivePermissionGranted ? /^url\(["']?data:image\//.test(remoteLightDom.customImage) : remoteLightDom.customImage === ''),
+          (interactivePermissionGranted ? /^url\(["']?data:image\//.test(remoteLightDom.customImage) &&
+            remoteLightDom.customImagePriority === 'important' && /data:image\//.test(remoteLightDom.computedImage) : remoteLightDom.customImage === ''),
         'B5-B Light Glass did not keep its matching wallpaper and tint integrated', remoteLightDom);
         const lightRemoteScreenshot = await capturePageEvidence(page, options, family,
           interactivePermissionGranted ? 'light-glass-bing-full-page' : 'light-glass-permission-absent-full-page');
@@ -4655,14 +4850,17 @@ async function main() {
 
   const suites = [];
   if (options.interactivePermissionOnly) {
-    process.stderr.write('A4 chrome: running short interactive Bing permission/provider/render gate\n');
-    suites.push(await runInteractivePermissionGate({
-      playwright,
-      executablePath: options.executables.chrome,
-      packageDirectory: options.packageDirectory,
-      packageInventory: packageBefore,
-      options
-    }));
+    for (const family of options.browsers) {
+      process.stderr.write(`A4 ${family}: running trusted popup/live Bing/two-Glass visual gate\n`);
+      suites.push(await runInteractivePermissionGate({
+        playwright,
+        family,
+        executablePath: options.executables[family],
+        packageDirectory: options.packageDirectory,
+        packageInventory: packageBefore,
+        options
+      }));
+    }
   } else {
     for (const family of options.browsers) {
       if (options.profiles.includes('clean')) {
@@ -4752,7 +4950,7 @@ async function main() {
     finishedAt: new Date().toISOString(),
     host: { platform: process.platform, release: os.release(), arch: process.arch, node: process.version },
     playwright: { version: require(path.join(path.dirname(playwrightResolvedFrom), 'package.json')).version, resolvedFrom: playwrightResolvedFrom },
-    mode: options.interactivePermissionOnly ? 'SUPPLEMENTAL_INTERACTIVE_PERMISSION' :
+    mode: options.interactivePermissionOnly ? 'SUPPLEMENTAL_TRUSTED_POPUP_LIVE_BING_VISUAL' :
       dirtyDevelopment ? 'NON_ACCEPTANCE_DIRTY_DEVELOPMENT' : profileSubset ? 'NON_ACCEPTANCE_PROFILE_SUBSET' : 'ACCEPTANCE_CANDIDATE',
     requestedProfiles: options.profiles,
     expectedSourceSha: options.expectedSourceSha,

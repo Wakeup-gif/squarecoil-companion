@@ -214,6 +214,7 @@ function translateCss(css, cursorDataUrls) {
     .replaceAll('${FADE_MS}', '7200')
     .replaceAll('#us-squarecoil-cinematic-wallpaper', '#squarecoil-companion-cinematic-host')
     .replaceAll('.us-squarecoil-cine-layer', '.sc-cinematic-layer')
+    .replaceAll('var(--us-squarecoil-cine-image)', 'var(--us-squarecoil-cine-image, none)')
     .replace(
       /https:\/\/raw\.githubusercontent\.com\/Wakeup-gif\/test_repo\/main\/tampermonkey\/assets\/us-sign-cursor-cutout-v2123\.svg/g,
       cursorDataUrls.default

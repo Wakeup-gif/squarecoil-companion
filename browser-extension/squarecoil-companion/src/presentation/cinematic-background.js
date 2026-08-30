@@ -8,13 +8,25 @@ const CINEMATIC_HOST_ID = 'squarecoil-companion-cinematic-host';
 const CINEMATIC_ATTRIBUTE = 'data-squarecoil-companion-cinematic';
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 const IMAGE_TIMEOUT_MS = 12_000;
+const MAX_DECODED_IMAGE_DIMENSION = 8192;
+const MAX_DECODED_IMAGE_PIXELS = 40_000_000;
+const CINEMATIC_STATUS = Object.freeze({
+  ACTIVE: 'BING_IMAGE_ACTIVE',
+  RECENT_CACHE: 'RECENT_CACHED_BING_IMAGE_ACTIVE',
+  RETAINED_CACHE: 'OLDER_CACHED_BING_IMAGE_RETAINED',
+  PERMISSION_REQUIRED: 'BING_PERMISSION_REQUIRED',
+  RESPONSE_REJECTED: 'BING_RESPONSE_REJECTED',
+  NETWORK_UNAVAILABLE: 'NETWORK_UNAVAILABLE',
+  GRADIENT_FALLBACK: 'BUILT_IN_GRADIENT_FALLBACK',
+  ACCESSIBILITY_OVERRIDE: 'ACCESSIBILITY_OVERRIDE'
+});
 const CINEMATIC_CSS = `
 html[${CINEMATIC_ATTRIBUTE}="active"]{min-height:100%;background:#090d12!important}
 html[${CINEMATIC_ATTRIBUTE}="active"] body{min-height:100%;isolation:isolate;background-color:transparent!important;background-image:none!important}
 #${CINEMATIC_HOST_ID}{position:fixed;inset:-4%;z-index:-1;overflow:hidden;pointer-events:none;background:#090d12}
 #${CINEMATIC_HOST_ID}[data-theme="SLEEK_DARK"]{background:radial-gradient(circle at 18% 10%,rgba(49,117,151,.92) 0,rgba(26,55,73,.76) 24%,transparent 47%),radial-gradient(circle at 82% 16%,rgba(76,56,123,.62) 0,transparent 38%),linear-gradient(145deg,#132531 0%,#0b141d 48%,#070b10 100%)}
 #${CINEMATIC_HOST_ID}[data-theme="LIGHT_GLASS"]{background:radial-gradient(circle at 18% 10%,rgba(255,255,255,.98) 0,rgba(223,239,248,.86) 30%,transparent 55%),radial-gradient(circle at 78% 18%,rgba(163,205,226,.58) 0,transparent 43%),linear-gradient(145deg,#d9e9f2 0%,#bfd4e0 52%,#91adbd 100%)}
-#${CINEMATIC_HOST_ID} .sc-cinematic-layer{position:absolute;inset:0;opacity:0;background-position:center;background-size:cover;background-repeat:no-repeat;transform:scale(1.08);transition:opacity 1200ms ease;will-change:transform,opacity}
+#${CINEMATIC_HOST_ID} .sc-cinematic-layer{--us-squarecoil-cine-image:none;position:absolute;inset:0;opacity:0;background-image:var(--us-squarecoil-cine-image,none);background-position:center;background-size:cover;background-repeat:no-repeat;transform:scale(1.08);transition:opacity 1200ms ease;will-change:transform,opacity}
 #${CINEMATIC_HOST_ID} .sc-cinematic-layer[data-active="true"]{opacity:1;animation:sc-companion-cinematic-drift 42s linear infinite alternate}
 #${CINEMATIC_HOST_ID}::after{content:"";position:absolute;inset:0;pointer-events:none}
 #${CINEMATIC_HOST_ID}[data-theme="SLEEK_DARK"]::after{background:linear-gradient(180deg,rgba(3,8,12,.30),rgba(3,8,12,.58))}
@@ -36,7 +48,15 @@ function mediaListener(media, listener, enabled) {
 
 function safeImageDataUrl(value) {
   const text = String(value || '');
-  return /^data:image\/(?:jpeg|png|webp|svg\+xml);/i.test(text) && text.length <= 6_000_000 ? text : null;
+  return /^data:image\/(?:jpeg|png|webp);base64,/i.test(text) && text.length <= 6_000_000 ? text : null;
+}
+
+function decodedImageSizeIsSafe(widthValue, heightValue) {
+  const width = Number(widthValue || 0);
+  const height = Number(heightValue || 0);
+  return Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0 &&
+    width <= MAX_DECODED_IMAGE_DIMENSION && height <= MAX_DECODED_IMAGE_DIMENSION &&
+    width * height <= MAX_DECODED_IMAGE_PIXELS;
 }
 
 function cssUrl(value) { return `url("${String(value).replace(/["\\\r\n]/g, character => encodeURIComponent(character))}")`; }
@@ -65,17 +85,39 @@ function createCinematicBackground(options = {}) {
   let currentImageSource = null;
   let fallbackVisible = false;
   let fallbackReason = null;
+  let failureCode = null;
   let activeLayer = 'a';
   let inFlight = null;
   let refreshTimer = null;
   let nextRefreshAtMs = null;
 
+  function reasonStatus(value) {
+    if (value === 'optional-origin-permission-required') return CINEMATIC_STATUS.PERMISSION_REQUIRED;
+    if (value === 'bing-response-rejected') return CINEMATIC_STATUS.RESPONSE_REJECTED;
+    if (value === 'network-unavailable') return CINEMATIC_STATUS.NETWORK_UNAVAILABLE;
+    return null;
+  }
+
+  function presentationStatus() {
+    if (state === 'SUSPENDED_ACCESSIBILITY') return CINEMATIC_STATUS.ACCESSIBILITY_OVERRIDE;
+    if (currentImageSource === 'REMOTE') return CINEMATIC_STATUS.ACTIVE;
+    if (currentImageSource === 'CACHE_FRESH') return CINEMATIC_STATUS.RECENT_CACHE;
+    if (currentImageSource === 'CACHE_RETAINED' || currentImageSource === 'CACHE') return CINEMATIC_STATUS.RETAINED_CACHE;
+    if (failureCode || reasonStatus(reason)) return failureCode || reasonStatus(reason);
+    if (fallbackVisible || ['LOADING_INITIAL', 'LOADING', 'REFRESHING'].includes(state)) return CINEMATIC_STATUS.GRADIENT_FALLBACK;
+    return state;
+  }
+
   function snapshot() {
+    const hostVisible = Boolean(document.getElementById?.(CINEMATIC_HOST_ID));
+    const gradientActive = Boolean(hostVisible && !currentImage &&
+      !['DISABLED', 'SUSPENDED_ACCESSIBILITY', 'SUSPENDED_THEME'].includes(state));
     return Object.freeze({
       featureId: OPTIONAL_PRESENTATION_FEATURES.CINEMATIC_BACKGROUND.id,
       featureVersion: OPTIONAL_PRESENTATION_FEATURES.CINEMATIC_BACKGROUND.version,
       preference: preferences.cinematicBackground,
-      state, reason, source,
+      state, reason, source, statusCode: presentationStatus(), failureCode,
+      fallbackStatus: fallbackVisible || gradientActive ? CINEMATIC_STATUS.GRADIENT_FALLBACK : 'NONE',
       imageDisplayed: Boolean((currentImage || fallbackVisible) && document.getElementById?.(CINEMATIC_HOST_ID)),
       reducedMotion: motionMedia?.matches === true,
       requestInFlight: Boolean(inFlight),
@@ -108,6 +150,7 @@ function createCinematicBackground(options = {}) {
       currentImageSource = null;
       fallbackVisible = false;
       fallbackReason = null;
+      failureCode = null;
       source = null;
       activeLayer = 'a';
     }
@@ -170,7 +213,7 @@ function createCinematicBackground(options = {}) {
         if (settled) return;
         settled = true;
         if (timer !== null) window.clearTimeout?.(timer);
-        resolve(value === true && Number(image.naturalWidth || 0) > 0 && Number(image.naturalHeight || 0) > 0);
+        resolve(value === true && decodedImageSizeIsSafe(image.naturalWidth, image.naturalHeight));
       };
       image.onload = () => finish(true);
       image.onerror = () => finish(false);
@@ -190,8 +233,7 @@ function createCinematicBackground(options = {}) {
     // The authoritative source composes the photograph with its light/dark
     // overlays through this custom property. A direct background-image alone
     // loses to that pinned !important declaration and makes the photo vanish.
-    incomingNode.style?.setProperty?.('--us-squarecoil-cine-image', cssUrl(dataUrl));
-    incomingNode.style?.setProperty?.('background-image', cssUrl(dataUrl));
+    incomingNode.style?.setProperty?.('--us-squarecoil-cine-image', cssUrl(dataUrl), 'important');
     incomingNode.setAttribute?.('data-active', 'true');
     outgoingNode.setAttribute?.('data-active', 'false');
     activeLayer = incoming;
@@ -237,7 +279,8 @@ function createCinematicBackground(options = {}) {
       let result;
       try { result = await fetchWallpaper({ trigger, generation: requestGeneration,
         websiteTheme: basePresentation.websiteThemeEffective }); }
-      catch (error) { result = { ok: false, reason: String(error?.message || error) }; }
+      catch (_) { result = { ok: false, reason: 'network-unavailable',
+        failureCode: CINEMATIC_STATUS.NETWORK_UNAVAILABLE, statusCode: CINEMATIC_STATUS.NETWORK_UNAVAILABLE }; }
       if (disposed || requestGeneration !== generation || eligible()) return snapshot();
       const candidate = result?.ok === true ? safeImageDataUrl(result.dataUrl) : null;
       const candidateSource = result?.source || null;
@@ -245,18 +288,20 @@ function createCinematicBackground(options = {}) {
         let ready = false;
         try { ready = await loadImage(candidate); } catch (_) { ready = false; }
         if (disposed || requestGeneration !== generation || eligible()) return snapshot();
-        const acceptedSource = candidateSource === 'CACHE' ? 'CACHE' :
+        const acceptedSource = candidateSource === 'CACHE_RETAINED' || candidateSource === 'CACHE' ? 'CACHE_RETAINED' :
           candidateSource === 'CACHE_FRESH' ? 'CACHE_FRESH' : 'REMOTE';
         if (ready && showImage(candidate, acceptedSource)) {
+          failureCode = result?.failureCode || null;
           scheduleRefresh();
-          if (candidateSource === 'CACHE') return publish('DEGRADED_CACHE', result?.reason || 'remote-failed-cache-used', 'CACHE');
+          if (acceptedSource === 'CACHE_RETAINED') return publish('DEGRADED_CACHE', result?.reason || 'remote-failed-cache-used', 'CACHE_RETAINED');
           if (candidateSource === 'CACHE_FRESH') return publish('SHOWING', result?.reason || 'fresh-cache-reused', 'CACHE_FRESH');
           return publish('SHOWING', 'valid-image-ready', 'REMOTE');
         }
       }
       scheduleRefresh();
-      if (currentImage) return publish(currentImageSource === 'CACHE' ? 'DEGRADED_CACHE' : 'SHOWING',
-        'candidate-rejected-current-retained', currentImageSource);
+      failureCode = result?.failureCode || reasonStatus(result?.reason) || CINEMATIC_STATUS.RESPONSE_REJECTED;
+      if (currentImage) return publish(currentImageSource === 'CACHE_RETAINED' || currentImageSource === 'CACHE' ? 'DEGRADED_CACHE' : 'SHOWING',
+        result?.reason || 'bing-response-rejected', currentImageSource);
       const nextFallbackReason = result?.reason || 'fallback-used';
       if (showFallback(nextFallbackReason)) return publish('DEGRADED_FALLBACK', nextFallbackReason, 'FALLBACK');
       removeOwned({ retainImage: false });
@@ -271,17 +316,17 @@ function createCinematicBackground(options = {}) {
       generation += 1;
       inFlight = null;
       removeOwned({ retainImage: disposition.state === 'SUSPENDED_THEME' });
+      if (disposition.state === 'SUSPENDED_ACCESSIBILITY') failureCode = null;
       return publish(disposition.state, disposition.reason, null);
     }
     const host = ensureOwned();
     if (!host) return publish('DEGRADED_NONE', 'owned-host-unavailable', null);
     if (currentImage) {
       const layer = host.querySelector?.(`[data-layer="${activeLayer}"]`);
-      layer?.style?.setProperty?.('--us-squarecoil-cine-image', cssUrl(currentImage));
-      layer?.style?.setProperty?.('background-image', cssUrl(currentImage));
+      layer?.style?.setProperty?.('--us-squarecoil-cine-image', cssUrl(currentImage), 'important');
       layer?.setAttribute?.('data-active', 'true');
       scheduleRefresh();
-      return publish(currentImageSource === 'CACHE' ? 'DEGRADED_CACHE' : 'SHOWING',
+      return publish(currentImageSource === 'CACHE_RETAINED' || currentImageSource === 'CACHE' ? 'DEGRADED_CACHE' : 'SHOWING',
         'eligible-current-restored', currentImageSource);
     }
     if (fallbackVisible) {
@@ -345,4 +390,6 @@ function createCinematicBackground(options = {}) {
 }
 
 module.exports = { CINEMATIC_STYLE_ID, CINEMATIC_HOST_ID, CINEMATIC_ATTRIBUTE, REFRESH_INTERVAL_MS,
-  safeImageDataUrl, createCinematicBackground };
+  MAX_DECODED_IMAGE_DIMENSION, MAX_DECODED_IMAGE_PIXELS, CINEMATIC_STATUS, safeImageDataUrl,
+  decodedImageSizeIsSafe,
+  createCinematicBackground };

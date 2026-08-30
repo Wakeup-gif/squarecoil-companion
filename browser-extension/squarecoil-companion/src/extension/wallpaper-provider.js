@@ -11,6 +11,16 @@ const MAX_METADATA_BYTES = 256_000;
 const MAX_IMAGE_BYTES = 4_000_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 const ACCEPTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const BING_IMAGE_ID_PATTERN = /^OHR\.[A-Za-z0-9][A-Za-z0-9_-]{0,180}_UHD\.jpg$/;
+const BING_IMAGE_PARAMETERS = Object.freeze({ w: '3840', h: '2160', rs: '1', c: '4' });
+const WALLPAPER_STATUS = Object.freeze({
+  ACTIVE: 'BING_IMAGE_ACTIVE',
+  RECENT_CACHE: 'RECENT_CACHED_BING_IMAGE_ACTIVE',
+  RETAINED_CACHE: 'OLDER_CACHED_BING_IMAGE_RETAINED',
+  PERMISSION_REQUIRED: 'BING_PERMISSION_REQUIRED',
+  RESPONSE_REJECTED: 'BING_RESPONSE_REJECTED',
+  NETWORK_UNAVAILABLE: 'NETWORK_UNAVAILABLE'
+});
 const BING_MARKETS = Object.freeze([
   'en-US', 'en-GB', 'en-CA', 'en-IN', 'de-DE', 'fr-FR',
   'fr-CA', 'es-ES', 'it-IT', 'ja-JP', 'pt-BR', 'zh-CN'
@@ -21,32 +31,37 @@ function metadataUrl(market = 'en-US') {
   return `${BING_ORIGIN}/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=${encodeURIComponent(acceptedMarket)}&uhd=1&uhdwidth=3840&uhdheight=2160`;
 }
 
-function normalizeBingImageUrl(raw) {
+function extractBingImageId(raw) {
   let parsed;
   try { parsed = new URL(String(raw || ''), `${BING_ORIGIN}/`); } catch (_) { return null; }
-  if (parsed.protocol !== 'https:' || parsed.hostname !== 'www.bing.com' || parsed.port) return null;
-  if (parsed.pathname !== '/th') return null;
-  const allowed = new Set(['id', 'rf', 'pid', 'w', 'h', 'rs', 'c']);
-  const keys = [...parsed.searchParams.keys()];
-  if (keys.some(key => !allowed.has(key)) || new Set(keys).size !== keys.length) return null;
-  const id = parsed.searchParams.get('id') || '';
-  if (!/^OHR\.[A-Za-z0-9_.-]+(?:_UHD\.jpg)?$/i.test(id)) return null;
-  const rf = parsed.searchParams.get('rf');
-  if (rf !== null && !/^[A-Za-z0-9_.-]{1,160}\.jpg$/i.test(rf)) return null;
-  const pid = parsed.searchParams.get('pid');
-  if (pid !== null && pid !== 'hp') return null;
-  const fixedKeys = ['w', 'h', 'rs', 'c'];
-  const fixedValues = { w: '3840', h: '2160', rs: '1', c: '4' };
-  const fixedCount = fixedKeys.filter(key => parsed.searchParams.has(key)).length;
-  if (fixedCount !== 0 && (fixedCount !== fixedKeys.length || fixedKeys.some(key => parsed.searchParams.get(key) !== fixedValues[key]))) {
-    return null;
-  }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'www.bing.com' || parsed.port ||
+      parsed.username || parsed.password || parsed.pathname !== '/th' || parsed.hash) return null;
+  const ids = parsed.searchParams.getAll('id');
+  if (ids.length !== 1 || !BING_IMAGE_ID_PATTERN.test(ids[0])) return null;
+  return ids[0];
+}
+
+function canonicalBingImageUrl(imageId) {
+  if (!BING_IMAGE_ID_PATTERN.test(String(imageId || ''))) return null;
   const canonical = new URL('/th', BING_ORIGIN);
-  for (const key of ['id', 'rf', 'pid', ...fixedKeys]) {
-    const value = parsed.searchParams.get(key);
-    if (value !== null) canonical.searchParams.set(key, value);
-  }
+  canonical.searchParams.set('id', imageId);
+  for (const [key, value] of Object.entries(BING_IMAGE_PARAMETERS)) canonical.searchParams.set(key, value);
   return canonical.href;
+}
+
+function normalizeBingImageUrl(raw) {
+  const imageId = extractBingImageId(raw);
+  return imageId ? canonicalBingImageUrl(imageId) : null;
+}
+
+function failureClassification(error) {
+  const detail = String(error?.message || error?.name || error || 'network-unavailable');
+  const responseRejected = /^(?:metadata-|image-|response-origin-policy-rejected|body-size-rejected|response-body-unavailable)/.test(detail);
+  return Object.freeze({
+    reason: responseRejected ? 'bing-response-rejected' : 'network-unavailable',
+    statusCode: responseRejected ? WALLPAPER_STATUS.RESPONSE_REJECTED : WALLPAPER_STATUS.NETWORK_UNAVAILABLE,
+    detail: /^[A-Za-z0-9_.:+-]{1,120}$/.test(detail) ? detail : 'request-failed'
+  });
 }
 
 function cachedWallpaper(raw, nowMs) {
@@ -86,16 +101,6 @@ function createWallpaperProvider(options = {}) {
     try { return await permissions.contains({ origins: [BING_ORIGIN_PATTERN] }); } catch (_) { return false; }
   }
 
-  async function requestPermission() {
-    try {
-      const granted = await permissions.request({ origins: [BING_ORIGIN_PATTERN] });
-      return Object.freeze({ ok: granted === true, granted: granted === true,
-        reason: granted === true ? 'optional-origin-granted' : 'optional-origin-denied' });
-    } catch (error) {
-      return Object.freeze({ ok: false, granted: false, reason: String(error?.message || error) });
-    }
-  }
-
   async function removePermission() {
     permissionRemovalInProgress = true;
     generation += 1;
@@ -126,13 +131,20 @@ function createWallpaperProvider(options = {}) {
     } catch (_) { return null; }
   }
 
-  async function cacheFallback(reason, requestGeneration = generation) {
+  async function cacheFallback(failure, requestGeneration = generation) {
     if (permissionRemovalInProgress || requestGeneration !== generation) return invalidatedResult();
     const cached = await readCache();
     if (permissionRemovalInProgress || requestGeneration !== generation) return invalidatedResult();
-    if (cached) return Object.freeze({ ok: true, source: 'CACHE', dataUrl: cached.dataUrl,
-      title: cached.title || 'Cached Bing wallpaper', imageDate: cached.imageDate || '', reason });
-    return Object.freeze({ ok: false, source: null, reason });
+    const normalized = typeof failure === 'string'
+      ? { reason: failure, statusCode: failure === 'optional-origin-permission-required'
+        ? WALLPAPER_STATUS.PERMISSION_REQUIRED : WALLPAPER_STATUS.NETWORK_UNAVAILABLE, detail: failure }
+      : failure;
+    if (cached) return Object.freeze({ ok: true, source: 'CACHE_RETAINED', dataUrl: cached.dataUrl,
+      title: cached.title || 'Cached Bing wallpaper', imageDate: cached.imageDate || '',
+      reason: normalized.reason, failureCode: normalized.statusCode, detail: normalized.detail,
+      statusCode: WALLPAPER_STATUS.RETAINED_CACHE });
+    return Object.freeze({ ok: false, source: null, reason: normalized.reason,
+      failureCode: normalized.statusCode, detail: normalized.detail, statusCode: normalized.statusCode });
   }
 
   async function readBoundedBody(response, maxBytes) {
@@ -192,7 +204,10 @@ function createWallpaperProvider(options = {}) {
   }
 
   function invalidatedResult(reason = 'provider-invalidated') {
-    return Object.freeze({ ok: false, source: null, reason });
+    const statusCode = reason === 'optional-origin-permission-required'
+      ? WALLPAPER_STATUS.PERMISSION_REQUIRED : WALLPAPER_STATUS.NETWORK_UNAVAILABLE;
+    return Object.freeze({ ok: false, source: null, reason,
+      failureCode: statusCode, statusCode });
   }
 
   async function retrieveWallpaper(requestGeneration) {
@@ -200,8 +215,10 @@ function createWallpaperProvider(options = {}) {
     const freshCache = await readCache(FRESH_CACHE_MAX_AGE_MS);
     if (permissionRemovalInProgress || requestGeneration !== generation) return invalidatedResult();
     if (freshCache) return Object.freeze({ ok: true, source: 'CACHE_FRESH', dataUrl: freshCache.dataUrl,
-      title: freshCache.title || 'Cached Bing wallpaper', imageDate: freshCache.imageDate || '', reason: 'fresh-cache-reused' });
-    if (!await hasPermission()) return cacheFallback('optional-origin-permission-required', requestGeneration);
+      title: freshCache.title || 'Cached Bing wallpaper', imageDate: freshCache.imageDate || '',
+      reason: 'fresh-cache-reused', failureCode: null, statusCode: WALLPAPER_STATUS.RECENT_CACHE });
+    if (!await hasPermission()) return cacheFallback({ reason: 'optional-origin-permission-required',
+      statusCode: WALLPAPER_STATUS.PERMISSION_REQUIRED, detail: 'optional-origin-permission-required' }, requestGeneration);
     try {
       const metadataResults = await Promise.allSettled(markets.map(async market => {
         const { response: metadataResponse, bytes } = await fetchBounded(metadataUrl(market),
@@ -212,9 +229,10 @@ function createWallpaperProvider(options = {}) {
         let payload;
         try { payload = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { throw new Error('metadata-json-invalid'); }
         const image = Array.isArray(payload?.images) ? payload.images[0] : null;
-        const imageUrl = normalizeBingImageUrl(image?.url);
-        if (!imageUrl) throw new Error('metadata-image-policy-rejected');
-        return { ...image, imageUrl, market };
+        const imageId = extractBingImageId(image?.url);
+        const imageUrl = canonicalBingImageUrl(imageId);
+        if (!imageId || !imageUrl) throw new Error('metadata-image-policy-rejected');
+        return { ...image, imageId, imageUrl, market };
       }));
       const candidates = [];
       const seenUrls = new Set();
@@ -223,7 +241,14 @@ function createWallpaperProvider(options = {}) {
         seenUrls.add(result.value.imageUrl);
         candidates.push(result.value);
       }
-      if (!candidates.length) return cacheFallback('metadata-no-accepted-images', requestGeneration);
+      if (!candidates.length) {
+        const failures = metadataResults.filter(result => result.status === 'rejected')
+          .map(result => failureClassification(result.reason));
+        const classification = failures.length && failures.every(item => item.statusCode === WALLPAPER_STATUS.NETWORK_UNAVAILABLE)
+          ? { reason: 'network-unavailable', statusCode: WALLPAPER_STATUS.NETWORK_UNAVAILABLE, detail: 'metadata-network-unavailable' }
+          : { reason: 'bing-response-rejected', statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: 'metadata-no-accepted-images' };
+        return cacheFallback(classification, requestGeneration);
+      }
       const dated = candidates.filter(candidate => /^\d{8}$/.test(String(candidate.startdate || '')));
       const newestDate = dated.reduce((latest, candidate) => String(candidate.startdate) > latest ? String(candidate.startdate) : latest, '');
       const newestTime = newestDate ? Date.UTC(Number(newestDate.slice(0, 4)), Number(newestDate.slice(4, 6)) - 1,
@@ -236,14 +261,18 @@ function createWallpaperProvider(options = {}) {
       });
       const pool = freshCandidates.length ? freshCandidates : candidates;
       const image = pool[Math.floor(now() / ROTATION_INTERVAL_MS) % pool.length];
-      const imageUrl = normalizeBingImageUrl(image?.url);
-      if (!imageUrl) return cacheFallback('metadata-image-policy-rejected', requestGeneration);
+      const imageUrl = canonicalBingImageUrl(image?.imageId);
+      if (!imageUrl) return cacheFallback({ reason: 'bing-response-rejected',
+        statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: 'metadata-image-policy-rejected' }, requestGeneration);
       const { response: imageResponse, bytes } = await fetchBounded(imageUrl,
-        { headers: { Accept: 'image/avif,image/webp,image/png,image/jpeg' } }, MAX_IMAGE_BYTES);
-      if (!imageResponse?.ok) return cacheFallback(`image-http-${imageResponse?.status || 0}`, requestGeneration);
+        { headers: { Accept: 'image/webp,image/png,image/jpeg' } }, MAX_IMAGE_BYTES);
+      if (!imageResponse?.ok) return cacheFallback({ reason: 'bing-response-rejected',
+        statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: `image-http-${imageResponse?.status || 0}` }, requestGeneration);
       const contentType = String(imageResponse.headers?.get?.('content-type') || '').split(';')[0].toLowerCase();
-      if (!ACCEPTED_IMAGE_TYPES.has(contentType)) return cacheFallback('image-content-type-rejected', requestGeneration);
-      if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return cacheFallback('image-size-rejected', requestGeneration);
+      if (!ACCEPTED_IMAGE_TYPES.has(contentType)) return cacheFallback({ reason: 'bing-response-rejected',
+        statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: 'image-content-type-rejected' }, requestGeneration);
+      if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return cacheFallback({ reason: 'bing-response-rejected',
+        statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: 'image-size-rejected' }, requestGeneration);
       const dataUrl = bytesToDataUrl(bytes, contentType);
       const cache = { schemaVersion: 1, fetchedAtMs: now(), dataUrl,
         title: String(image?.title || image?.copyright || 'Bing wallpaper').slice(0, 300),
@@ -258,10 +287,11 @@ function createWallpaperProvider(options = {}) {
         return invalidatedResult('optional-origin-permission-required');
       }
       return Object.freeze({ ok: true, source: 'REMOTE', dataUrl: cache.dataUrl, title: cache.title,
-        imageDate: cache.imageDate, reason: 'fresh-bing-image' });
+        imageDate: cache.imageDate, reason: 'fresh-bing-image', failureCode: null,
+        statusCode: WALLPAPER_STATUS.ACTIVE });
     } catch (error) {
       if (permissionRemovalInProgress || requestGeneration !== generation) return invalidatedResult();
-      return cacheFallback(`provider-failed:${String(error?.message || error?.name || error)}`, requestGeneration);
+      return cacheFallback(failureClassification(error), requestGeneration);
     }
   }
 
@@ -274,9 +304,11 @@ function createWallpaperProvider(options = {}) {
     return record.promise;
   }
 
-  return Object.freeze({ hasPermission, requestPermission, removePermission, getWallpaper });
+  return Object.freeze({ hasPermission, removePermission, getWallpaper });
 }
 
 module.exports = { BING_ORIGIN_PATTERN, BING_ORIGIN, CACHE_KEY, CACHE_MAX_AGE_MS, ROTATION_INTERVAL_MS,
   FRESH_CACHE_MAX_AGE_MS, MAX_MARKET_DATE_LAG_DAYS, BING_MARKETS, MAX_METADATA_BYTES, MAX_IMAGE_BYTES,
-  metadataUrl, normalizeBingImageUrl, cachedWallpaper, bytesToDataUrl, createWallpaperProvider };
+  BING_IMAGE_ID_PATTERN, BING_IMAGE_PARAMETERS, WALLPAPER_STATUS, metadataUrl, extractBingImageId,
+  canonicalBingImageUrl, normalizeBingImageUrl, cachedWallpaper, bytesToDataUrl, failureClassification,
+  createWallpaperProvider };

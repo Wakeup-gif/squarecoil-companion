@@ -49,7 +49,11 @@ async function harness({ confirms = [], clipboardAvailable = true, cinematicPerm
       if (patch.websiteTheme) {
         core.presentation.websiteThemeEffective = patch.websiteTheme;
         core.preferences.cinematicBackground = ['SLEEK_DARK', 'LIGHT_GLASS'].includes(patch.websiteTheme) ? 'CINEMATIC' : 'NONE';
-        core.presentation.optional.cinematic.state = core.preferences.cinematicBackground === 'CINEMATIC' ? 'SHOWING' : 'DISABLED';
+        core.presentation.optional.cinematic = core.preferences.cinematicBackground !== 'CINEMATIC'
+          ? { state: 'DISABLED' }
+          : cinematicPermission
+            ? { state: 'SHOWING', source: 'REMOTE', statusCode: 'BING_IMAGE_ACTIVE' }
+            : { state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BING_PERMISSION_REQUIRED' };
       }
       if (patch.cinematicBackground) core.presentation.optional.cinematic.state = patch.cinematicBackground === 'CINEMATIC' ? 'DEGRADED_FALLBACK' : 'DISABLED';
       if (patch.dashboardProfile) core.presentation.optional.dashboard.state = patch.dashboardProfile === 'ON' ? 'INACTIVE_PAGE' : 'INACTIVE_THEME';
@@ -192,7 +196,7 @@ test('UT-B5-UI-009 Glass selection commits the integrated fallback without attem
   assert.deepEqual(denied.preferenceCommands[0], { patch: { websiteTheme: 'SLEEK_DARK' }, expectedPreferenceRevision: 1 });
   assert.equal(denied.core.preferences.websiteTheme, 'SLEEK_DARK');
   assert.equal(denied.core.preferences.cinematicBackground, 'CINEMATIC');
-  assert.match(denied.root.innerHTML, /readable gradient fallback/i);
+  assert.match(denied.root.innerHTML, /built-in gradient fallback active/i);
   denied.ui.teardown();
 
   const granted = await harness({ cinematicPermission: true });
@@ -201,7 +205,8 @@ test('UT-B5-UI-009 Glass selection commits the integrated fallback without attem
   assert.deepEqual(granted.permissionCalls, []);
   assert.deepEqual(granted.preferenceCommands[0], { patch: { websiteTheme: 'SLEEK_DARK' }, expectedPreferenceRevision: 1 });
   assert.equal(granted.core.preferences.cinematicBackground, 'CINEMATIC');
-  assert.match(granted.root.innerHTML, /rotating Bing background and translucent surfaces as one theme/i);
+  assert.match(granted.root.innerHTML, /rotating Bing photograph and translucent surfaces as one theme/i);
+  assert.match(granted.root.innerHTML, /accepts only a public OHR image ID.*discards every other Bing metadata parameter/i);
   granted.ui.teardown();
 });
 
@@ -283,11 +288,11 @@ test('UT-B5-UI-017 SquareCoil theme reports the real Bing source instead of call
   h.core.presentation.optional.cinematic = { state: 'DEGRADED_FALLBACK', source: 'FALLBACK', reason: 'optional-origin-permission-required' };
   h.click({ action: 'view', view: 'settings' });
   h.click({ action: 'settings-route', view: 'website-theme' });
-  assert.match(h.root.innerHTML, /Built-in gradient active; allow Bing access in the toolbar popup/);
+  assert.match(h.root.innerHTML, /Bing permission required; built-in gradient fallback active/);
   assert.doesNotMatch(h.root.innerHTML, /Using saved wallpaper/);
   h.core.presentation.optional.cinematic = { state: 'SHOWING', source: 'REMOTE', reason: 'remote-loaded' };
   h.ui.render();
-  assert.match(h.root.innerHTML, /Bing background active/);
+  assert.match(h.root.innerHTML, /Bing image active/);
   h.ui.teardown();
 });
 
@@ -296,11 +301,34 @@ test('UT-B5-UI-018 initial Bing loading and accessibility suspension have truthf
   h.core.presentation.optional.cinematic = { state: 'LOADING_INITIAL', source: null, reason: 'initial' };
   h.click({ action: 'view', view: 'settings' });
   h.click({ action: 'settings-route', view: 'website-theme' });
-  assert.match(h.root.innerHTML, /Loading the Bing background; the readable gradient remains active/);
+  assert.match(h.root.innerHTML, /Loading Bing image; built-in gradient fallback active/);
 
   h.core.presentation.optional.cinematic = { state: 'SUSPENDED_ACCESSIBILITY', source: null, reason: 'accessibility-override' };
   h.ui.render();
-  assert.match(h.root.innerHTML, /Built-in background only for accessibility/);
+  assert.match(h.root.innerHTML, /Accessibility override; built-in background only/);
   assert.doesNotMatch(h.root.innerHTML, /Choose Dark Glass or Light Glass/);
+  h.ui.teardown();
+});
+
+test('UT-B5-UI-019 Bing presentation statuses use exact source and failure wording without saved-wallpaper ambiguity', async () => {
+  const h = await harness();
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'settings-route', view: 'website-theme' });
+  const cases = [
+    [{ state: 'SHOWING', source: 'REMOTE', statusCode: 'BING_IMAGE_ACTIVE' }, /Bing image active/],
+    [{ state: 'SHOWING', source: 'CACHE_FRESH', statusCode: 'RECENT_CACHED_BING_IMAGE_ACTIVE' }, /Recent cached Bing image active/],
+    [{ state: 'DEGRADED_CACHE', source: 'CACHE_RETAINED', statusCode: 'OLDER_CACHED_BING_IMAGE_RETAINED', failureCode: 'NETWORK_UNAVAILABLE' }, /Older cached Bing image retained after a failure; network unavailable/],
+    [{ state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BING_PERMISSION_REQUIRED' }, /Bing permission required; built-in gradient fallback active/],
+    [{ state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BING_RESPONSE_REJECTED' }, /Bing response rejected; built-in gradient fallback active/],
+    [{ state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'NETWORK_UNAVAILABLE' }, /Network unavailable; built-in gradient fallback active/],
+    [{ state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BUILT_IN_GRADIENT_FALLBACK' }, /Built-in gradient fallback active/],
+    [{ state: 'SUSPENDED_ACCESSIBILITY', source: null, statusCode: 'ACCESSIBILITY_OVERRIDE' }, /Accessibility override; built-in background only/]
+  ];
+  for (const [cinematic, expected] of cases) {
+    h.core.presentation.optional.cinematic = cinematic;
+    h.ui.render();
+    assert.match(h.root.innerHTML, expected);
+    assert.doesNotMatch(h.root.innerHTML, /Using saved wallpaper/);
+  }
   h.ui.teardown();
 });

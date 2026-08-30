@@ -622,3 +622,38 @@ test('UT-B5-POPUP-003 popup requests exact Bing access from its trusted click an
   assert.match(nodes.get('wallpaperPermission').textContent, /Allowed for rotating Bing images/);
   assert.equal(tabMessages.some(item => item.message.type === 'SC_COMPANION_B5B_PERMISSION_CHANGED'), true);
 });
+
+test('UT-B5-POPUP-004 denied Bing access remains permission-required and sends no grant notification', async () => {
+  const listeners = new Map(); const nodes = new Map();
+  for (const id of ['classification', 'lifecycle', 'reason', 'runtimeId', 'retryCleanup', 'startFresh', 'enabled', 'refresh',
+    'version', 'stage', 'friendlyStatus', 'friendlyMessage', 'statusIcon', 'enableWallpaper', 'wallpaperPermission']) {
+    nodes.set(id, { id, textContent: '', hidden: false, checked: true, disabled: false,
+      addEventListener(type, listener) { this[`on${type}`] = listener; } });
+  }
+  const permissionCard = { dataset: {} }; const messages = []; let requestCalls = 0;
+  const document = { body: { dataset: {} }, getElementById: id => nodes.get(id) || null,
+    querySelector: selector => selector === '.permission-card' ? permissionCard : null,
+    addEventListener: (type, listener) => listeners.set(type, listener) };
+  const chrome = {
+    permissions: { contains: async () => false, request: async request => {
+      requestCalls += 1;
+      assert.equal(JSON.stringify(request), JSON.stringify({ origins: ['https://www.bing.com/*'] }));
+      return false;
+    } },
+    tabs: { query: async () => [{ id: 19 }], sendMessage: async (_tabId, message) => {
+      messages.push(message); return message.type === 'SC_COMPANION_GET_POPUP_SUMMARY' ? { ok: false } : { ok: true };
+    } },
+    storage: { local: { get: async () => ({ timerEnabled: true }), set: async () => {} } },
+    runtime: { getManifest: () => ({ version: '0.7.1' }), sendMessage: async () => ({
+      ok: true, ready: true, classification: 'HEALTHY_SAME_BUILD', health: { state: 'READY', reason: 'ready' }
+    }) }
+  };
+  const source = fs.readFileSync(path.resolve(__dirname, '../../src/popup/popup.js'), 'utf8');
+  vm.runInNewContext(source, { chrome, document, console }, { filename: 'src/popup/popup.js' });
+  await listeners.get('DOMContentLoaded')();
+  await nodes.get('enableWallpaper').onclick();
+  assert.equal(requestCalls, 1);
+  assert.equal(permissionCard.dataset.granted, 'false');
+  assert.match(nodes.get('wallpaperPermission').textContent, /Not allowed.*built-in gradient/i);
+  assert.equal(messages.some(message => message.type === 'SC_COMPANION_B5B_PERMISSION_CHANGED'), false);
+});

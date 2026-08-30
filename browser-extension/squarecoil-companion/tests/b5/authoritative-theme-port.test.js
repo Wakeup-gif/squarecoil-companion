@@ -86,8 +86,9 @@ test('UT-B5-THEME-022 wallpaper paint uses the authoritative custom property abo
   const cinematic = read('src/presentation/cinematic-background.js');
   assert.match(dark, /body\s*\{[\s\S]*?isolation:\s*isolate\s*!important/);
   assert.match(dark, /html body #main,[\s\S]*?background:\s*transparent\s*!important/);
-  assert.match(dark, /var\(--us-squarecoil-cine-image\)\s*!important/);
-  assert.match(cinematic, /setProperty\?\.\('--us-squarecoil-cine-image'/);
+  assert.match(dark, /var\(--us-squarecoil-cine-image,\s*none\)\s*!important/);
+  assert.match(cinematic, /setProperty\?\.\('--us-squarecoil-cine-image',\s*cssUrl\(dataUrl\),\s*'important'\)/);
+  assert.match(cinematic, /background-image:var\(--us-squarecoil-cine-image,none\)/);
   assert.match(cinematic, /z-index:-1/);
 });
 

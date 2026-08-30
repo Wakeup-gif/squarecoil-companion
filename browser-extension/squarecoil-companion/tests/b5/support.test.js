@@ -37,7 +37,8 @@ test('UT-B5-SUPPORT-003 diagnostics use only the frozen whitelist and omit priva
     bridgeGeneration: 3, bridgeReason: 'native-observation-current', lastTechnicalError: 'private customer failure',
     preferences: { timerAppearance: 'AUTO', panelFinish: 'GLASS', websiteTheme: 'SLEEK_DARK', cinematicBackground: 'CINEMATIC' },
     presentation: { timerAppearanceEffective: 'DARK', panelFinishEffective: 'GLASS', websiteThemeEffective: 'SLEEK_DARK',
-      optional: { cinematic: { state: 'SHOWING', source: 'REMOTE', reason: 'remote-image-ready', ownedHostCount: 1, ownedStyleCount: 1 } } },
+      optional: { cinematic: { state: 'SHOWING', source: 'REMOTE', reason: 'remote-image-ready',
+        statusCode: 'BING_IMAGE_ACTIVE', failureCode: null, fallbackStatus: 'NONE', ownedHostCount: 1, ownedStyleCount: 1 } } },
     rootCount: 1, capturedAtMs: Date.parse('2026-08-28T15:00:00Z'),
     customerName: 'VeryPrivate', contextId: 'job:260701', history: ['private']
   });
@@ -52,9 +53,30 @@ test('UT-B5-SUPPORT-003 diagnostics use only the frozen whitelist and omit priva
   assert.match(diagnostics.text, /Bridge generation: 3/);
   assert.match(diagnostics.text, /Last internal error: none/);
   assert.match(diagnostics.text, /Cinematic: CINEMATIC \/ SHOWING \/ REMOTE/);
+  assert.match(diagnostics.text, /Cinematic status: BING_IMAGE_ACTIVE/);
+  assert.match(diagnostics.text, /Cinematic failure: none/);
+  assert.match(diagnostics.text, /Cinematic fallback: NONE/);
   assert.match(diagnostics.text, /Cinematic reason: remote-image-ready/);
   assert.match(diagnostics.text, /Cinematic layers: 1 host \/ 1 style/);
   assert.doesNotMatch(diagnostics.text, /260701|VeryPrivate|customer|history|project\.php/);
+});
+
+test('UT-B5-SUPPORT-008 diagnostics distinguish retained cache, failure class, and the actual fallback layer', () => {
+  const diagnostics = createDiagnosticSnapshot({
+    packageVersion: '0.7.1', buildId: 'rebuild-b6-release-candidate', buildStage: 'B6',
+    candidateFingerprint: 'b'.repeat(64), userAgent: 'Chrome/151.0.0.0',
+    url: 'https://ussignandmill.squarecoil.net/dashboard.php',
+    preferences: { cinematicBackground: 'CINEMATIC' },
+    presentation: { optional: { cinematic: {
+      state: 'DEGRADED_CACHE', source: 'CACHE_RETAINED', reason: 'network-unavailable',
+      statusCode: 'OLDER_CACHED_BING_IMAGE_RETAINED', failureCode: 'NETWORK_UNAVAILABLE',
+      fallbackStatus: 'NONE', ownedHostCount: 1, ownedStyleCount: 1
+    } } }, capturedAtMs: Date.parse('2026-08-30T12:00:00Z')
+  });
+  assert.match(diagnostics.text, /Cinematic status: OLDER_CACHED_BING_IMAGE_RETAINED/);
+  assert.match(diagnostics.text, /Cinematic failure: NETWORK_UNAVAILABLE/);
+  assert.match(diagnostics.text, /Cinematic fallback: NONE/);
+  assert.doesNotMatch(diagnostics.text, /260701|VeryPrivate|customer-name|cookie-value|account-token/i);
 });
 
 test('UT-B5-SUPPORT-004 email composition uses the exact visible frozen diagnostics and safely encoded mailto fields', () => {

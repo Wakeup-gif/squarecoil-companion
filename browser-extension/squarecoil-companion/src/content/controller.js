@@ -23,7 +23,6 @@ const DEFAULTS = Object.freeze({ timerEnabled: true });
 const BOOT_MESSAGE = 'SC_COMPANION_BOOT';
 const ENABLE_MESSAGE = 'SC_COMPANION_SET_ENABLED';
 const REVALIDATE_MESSAGE = 'SC_COMPANION_REVALIDATE';
-const B5B_PERMISSION_MESSAGE = 'SC_COMPANION_B5B_REQUEST_PERMISSION';
 const B5B_REMOVE_PERMISSION_MESSAGE = 'SC_COMPANION_B5B_REMOVE_PERMISSION';
 const B5B_PERMISSION_CHANGED_MESSAGE = 'SC_COMPANION_B5B_PERMISSION_CHANGED';
 const B5B_WALLPAPER_MESSAGE = 'SC_COMPANION_B5B_GET_WALLPAPER';
@@ -275,13 +274,6 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
       preferenceAction: async (patch, expectedPreferenceRevision) => {
         if (!trustedCore) throw new Error('trusted-transition-core-unavailable');
         return trustedCore.preferenceCommand(patch, expectedPreferenceRevision);
-      },
-      requestCinematicAccess: async () => {
-        const response = await sendB5B(B5B_PERMISSION_MESSAGE);
-        if (response?.ok === true && response?.granted === true && cinematicService) {
-          void cinematicService.refresh('permission-granted');
-        }
-        return response;
       },
       removeCinematicAccess: async () => {
         const response = await sendB5B(B5B_REMOVE_PERMISSION_MESSAGE);

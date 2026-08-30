@@ -580,7 +580,7 @@ function createWorkspaceUi(options = {}) {
     const state = String(feature?.state || 'DISABLED');
     if (state === 'APPLIED') return 'On';
     if (state === 'PARTIAL_SAFE') return 'Limited on this page';
-    if (state === 'DEGRADED_FALLBACK') return 'Using saved wallpaper';
+    if (state === 'DEGRADED_FALLBACK') return 'Built-in gradient fallback';
     if (state === 'SUSPENDED_ACCESSIBILITY') return 'Off for accessibility';
     if (state === 'SUSPENDED_THEME') return 'Choose a Glass theme first';
     if (state === 'INACTIVE_PAGE') return 'Ready on supported pages';
@@ -591,15 +591,21 @@ function createWorkspaceUi(options = {}) {
     const state = String(feature?.state || 'DISABLED');
     const source = String(feature?.source || 'NONE');
     const reason = String(feature?.reason || '');
-    if (state === 'SHOWING' && source === 'REMOTE') return 'Bing background active';
-    if (state === 'SHOWING' && source === 'CACHE_FRESH') return 'Recent Bing background active';
-    if (state === 'DEGRADED_CACHE' || source === 'CACHE') return 'Saved Bing background active; refresh unavailable';
-    if (state === 'DEGRADED_FALLBACK' || source === 'FALLBACK') {
-      if (/permission|access|provider-unavailable/i.test(reason)) return 'Built-in gradient active; allow Bing access in the toolbar popup';
-      return 'Built-in gradient active; the Bing response was unavailable or rejected';
+    const status = String(feature?.statusCode || '');
+    const failure = String(feature?.failureCode || '');
+    if (status === 'ACCESSIBILITY_OVERRIDE' || state === 'SUSPENDED_ACCESSIBILITY') return 'Accessibility override; built-in background only';
+    if (status === 'BING_IMAGE_ACTIVE' || (state === 'SHOWING' && source === 'REMOTE')) return 'Bing image active';
+    if (status === 'RECENT_CACHED_BING_IMAGE_ACTIVE' || (state === 'SHOWING' && source === 'CACHE_FRESH')) return 'Recent cached Bing image active';
+    if (status === 'OLDER_CACHED_BING_IMAGE_RETAINED' || state === 'DEGRADED_CACHE' || ['CACHE_RETAINED', 'CACHE'].includes(source)) {
+      if (failure === 'BING_PERMISSION_REQUIRED' || /permission|access/i.test(reason)) return 'Older cached Bing image retained after a failure; Bing permission required';
+      if (failure === 'BING_RESPONSE_REJECTED' || /rejected/i.test(reason)) return 'Older cached Bing image retained after a failure; Bing response rejected';
+      return 'Older cached Bing image retained after a failure; network unavailable';
     }
-    if (state === 'LOADING_INITIAL' || state === 'LOADING' || state === 'REFRESHING') return 'Loading the Bing background; the readable gradient remains active';
-    if (state === 'SUSPENDED_ACCESSIBILITY') return 'Built-in background only for accessibility';
+    if (status === 'BING_PERMISSION_REQUIRED' || /optional-origin-permission-required/.test(reason)) return 'Bing permission required; built-in gradient fallback active';
+    if (status === 'BING_RESPONSE_REJECTED' || /bing-response-rejected/.test(reason)) return 'Bing response rejected; built-in gradient fallback active';
+    if (status === 'NETWORK_UNAVAILABLE' || /network-unavailable/.test(reason)) return 'Network unavailable; built-in gradient fallback active';
+    if (state === 'DEGRADED_FALLBACK' || source === 'FALLBACK') return 'Built-in gradient fallback active';
+    if (state === 'LOADING_INITIAL' || state === 'LOADING' || state === 'REFRESHING') return 'Loading Bing image; built-in gradient fallback active';
     if (state === 'SUSPENDED_THEME') return 'Choose Dark Glass or Light Glass to use a Bing background';
     if (state === 'INACTIVE_PAGE') return 'Bing background ready on supported SquareCoil pages';
     return 'Background off';
@@ -629,7 +635,7 @@ function createWorkspaceUi(options = {}) {
       ['SLEEK_DARK', 'Dark Glass', 'v2.3.4 · cinematic night scene + glass'],
       ['LIGHT_GLASS', 'Light Glass', 'v1.0.0 · cinematic daylight scene + glass'],
       ['REFINED_LIGHT', 'Refined Light', 'v1.0.1 · bright, high-clarity workspace']
-    ].map(([value, label, detail]) => `<button class="sc-theme-choice" data-action="preference-site" data-value="${value}" data-active="${websiteTheme === value}"${busyAction ? ' disabled aria-disabled="true"' : ''}><span class="sc-theme-swatch" data-theme-swatch="${value}">SC</span><span><strong>${label}</strong><small>${detail}</small></span><span class="sc-radio" aria-hidden="true"></span></button>`).join('')}</div><div class="sc-note"><strong>Background status:</strong> ${escapeHtml(cinematicStateLabel(cinematic))}.</div><div class="sc-note">Dark Glass and Light Glass include the rotating Bing background and translucent surfaces as one theme. Use Allow access in the Companion toolbar popup to grant optional access to www.bing.com. Requests use fixed public image-feed parameters only—never job, timer, page, identity, or user content. If access is unavailable, Companion uses a readable gradient fallback. SquareCoil controls and data remain untouched.</div></div>`;
+    ].map(([value, label, detail]) => `<button class="sc-theme-choice" data-action="preference-site" data-value="${value}" data-active="${websiteTheme === value}"${busyAction ? ' disabled aria-disabled="true"' : ''}><span class="sc-theme-swatch" data-theme-swatch="${value}">SC</span><span><strong>${label}</strong><small>${detail}</small></span><span class="sc-radio" aria-hidden="true"></span></button>`).join('')}</div><div class="sc-note"><strong>Background status:</strong> ${escapeHtml(cinematicStateLabel(cinematic))}.</div><div class="sc-note">Dark Glass and Light Glass include the rotating Bing photograph and translucent surfaces as one theme. Use Allow access in the Companion toolbar popup to grant optional access to www.bing.com. Companion accepts only a public OHR image ID, discards every other Bing metadata parameter, and constructs the fixed image request itself—never with job, timer, page, identity, account, or user content. If no safe image is available, Companion uses a readable built-in gradient. SquareCoil controls and data remain untouched.</div></div>`;
   }
 
   function presentationPacksView() {
