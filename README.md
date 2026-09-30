@@ -8,7 +8,7 @@ The active extension source is [browser-extension/squarecoil-companion](browser-
 
 - `browser-extension/squarecoil-companion/` — active MV3 extension source and release metadata
 - `.github/workflows/squarecoil-extension-validate.yml` — active extension validation and packaging
-- `tampermonkey/` — legacy Tampermonkey prototypes to study when rebuilding selected features as extension code; these are not a supported companion runtime
+- `tampermonkey/` — legacy prototype systems, logic, and styles to assess and adapt into extension-native features; Tampermonkey is a retired runtime
 - `scripts/` and the other `.github/workflows/` files — historical userscript build and patch tools, now manual-only
 - `packages/` — historical Tampermonkey package and checksum, not an extension release
 - `restore-points/` — historical rollback notes
