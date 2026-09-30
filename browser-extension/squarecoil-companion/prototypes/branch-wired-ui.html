@@ -1,0 +1,3574 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>SquareCoil Companion | Branch-wired UI Prototype</title>
+  <!-- Repo-safe prototype: embedded demo wallpaper removed. Functional UI/wiring is unchanged. -->
+  <style>
+:root {
+  color-scheme: dark;
+  --page-bg: #06070c;
+  --panel: rgba(13, 20, 33, 0.34);
+  --panel-soft: rgba(18, 24, 40, 0.28);
+  --card: rgba(27, 35, 51, 0.24);
+  --line: rgba(235, 243, 255, 0.17);
+  --line-strong: rgba(235, 243, 255, 0.26);
+  --text: #f5f7fb;
+  --muted: #b7c2d0;
+  --blue: #86d3ff;
+  --active-accent: #f1a15a;
+  --glass-highlight: rgba(255, 255, 255, 0.14);
+  --glass-shadow: rgba(0, 0, 0, 0.28);
+  /* Shared material: settings is another shape of the same timer window. */
+  --dock-glass-fill: rgba(7, 14, 25, .24);
+  --dock-glass-border: rgba(255, 255, 255, .13);
+  --dock-glass-backdrop: blur(36px) saturate(145%);
+  --dock-glass-scene-filter: blur(24px) saturate(120%) brightness(.72);
+  --dock-glass-scene-opacity: .96;
+  --dock-glass-tint: rgba(7, 14, 24, .30);
+  --dock-glass-toolbar: rgba(7, 14, 24, .18);
+  --dock-glass-card: rgba(18, 27, 43, .10);
+  --dock-glass-control: rgba(18, 26, 39, .34);
+  --dock-secondary-text: #d5ddea;
+  --radius-lg: 18px;
+  --radius-md: 13px;
+  --ease-spring: cubic-bezier(.2, .82, .2, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  --scene-image: linear-gradient(135deg, #18304a 0%, #486a78 32%, #aa825b 62%, #26394c 100%);
+  min-height: 100vh;
+  overflow-x: hidden;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(8, 15, 28, 0.20), rgba(4, 10, 20, 0.34)),
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.10), transparent 38%),
+    var(--scene-image) center / cover fixed,
+    var(--page-bg);
+}
+
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+.demo-stage {
+  display: flex;
+  min-height: 100vh;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 190px 24px 28px;
+}
+
+.timer-widget {
+  --expand-lift: 142px;
+  --current-accent: #df8a4f;
+  --current-rgb: 223,138,79;
+  width: min(680px, calc(100vw - 48px));
+  filter: drop-shadow(0 26px 42px rgba(0, 0, 0, 0.46));
+  isolation: isolate;
+  transform: translateY(0);
+  transition: transform 390ms var(--ease-spring);
+}
+
+.timer-tabs {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 48px;
+  padding-top: 6px;
+  width: calc(100% - 88px);
+  margin-bottom: -1px;
+  margin-left: 44px;
+  overflow-x: auto;
+  overflow-y: visible;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  /* The carousel fades clipped tabs instead of ending on a hard edge. */
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  transition: -webkit-mask-image 180ms ease, mask-image 180ms ease;
+}
+
+.timer-tabs.has-right-overflow:not(.has-left-overflow) {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 34px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 34px), transparent 100%);
+}
+
+.timer-tabs.has-left-overflow:not(.has-right-overflow) {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 34px, #000 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 34px, #000 100%);
+}
+
+.timer-tabs.has-left-overflow.has-right-overflow {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 34px, #000 calc(100% - 34px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 34px, #000 calc(100% - 34px), transparent 100%);
+}
+
+.timer-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-scroll-button {
+  position: absolute;
+  top: 6px;
+  z-index: 5;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 11px;
+  background: rgba(14, 21, 33, 0.34);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 10px 24px rgba(0, 0, 0, 0.14);
+  color: #eaf1fa;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease, transform 160ms ease;
+}
+
+.tab-scroll-button[data-scroll-tabs="prev"] { left: 0; }
+.tab-scroll-button[data-scroll-tabs="next"] { right: 0; }
+
+.tab-scroll-button:hover,
+.tab-scroll-button:focus-visible {
+  border-color: rgba(210, 219, 235, 0.36);
+  background: rgba(28, 39, 56, 0.48);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.tab-scroll-button:disabled {
+  cursor: default;
+  opacity: .42;
+  transform: none;
+}
+
+
+.tab-scroll-button.is-hover-scrolling {
+  border-color: rgba(210, 219, 235, 0.42);
+  background: rgba(34, 47, 66, 0.52);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.025), inset 0 1px rgba(255,255,255,.05);
+}
+
+.timer-tabs.is-hover-scrolling {
+  scroll-behavior: auto;
+}
+
+.tab-scroll-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.timer-widget[data-state="compact"] .tab-scroll-button {
+  display: grid;
+}
+
+.timer-tab {
+  flex: 0 0 var(--tab-width);
+  --tab-accent: #79a9ff;
+  --tab-rgb: 121,169,255;
+  --tab-width: 168px;
+  position: relative;
+  display: grid;
+  grid-template-columns: 7px max-content minmax(0, 1fr) 25px;
+  width: var(--tab-width);
+  height: 42px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 10px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+  border-radius: 14px 14px 0 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03) 18%, rgba(10, 18, 29, 0.28) 72%),
+    rgba(11, 18, 28, 0.22);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 8px 18px rgba(0, 0, 0, 0.10);
+  color: #f6f7fa;
+  outline: none;
+  transition:
+    transform 220ms var(--ease-spring),
+    border-color 220ms ease,
+    background 220ms ease,
+    box-shadow 220ms ease,
+    opacity 200ms ease,
+    width 250ms var(--ease-spring),
+    padding 250ms var(--ease-spring),
+    margin 250ms var(--ease-spring);
+}
+
+.timer-tab.has-no-close {
+  grid-template-columns: 7px max-content minmax(0, 1fr);
+  padding-right: 11px;
+}
+
+.timer-tab::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: rgba(18, 19, 24, 0.98);
+  opacity: 0;
+  transition: opacity 180ms ease, height 220ms ease, transform 220ms ease;
+}
+
+.timer-tab:hover,
+.timer-tab:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.timer-tab.is-active:hover,
+.timer-tab.is-active:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.17);
+}
+
+.timer-tab:focus-visible {
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.16),
+    inset 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.timer-tab.is-active {
+  z-index: 8;
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.17);
+  border-bottom-color: transparent;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02) 18%, rgba(7,14,25,.18) 70%),
+    rgba(7, 14, 25, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+.timer-tab.is-active::after {
+  display: none;
+}
+
+
+.timer-tab.is-closing {
+  width: 0 !important;
+  padding-right: 0;
+  padding-left: 0;
+  margin-right: -3px;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(8px) scale(.92);
+}
+
+.timer-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tab-accent);
+  box-shadow: 0 0 10px rgba(var(--tab-rgb), 0.34);
+}
+
+.tab-label {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(248, 251, 255, 0.90);
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timer-tab.is-active .tab-label {
+  color: #ffffff;
+}
+
+.tab-time {
+  color: rgba(248, 251, 255, 0.96);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  justify-self: end;
+}
+
+.tab-close {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid rgba(177, 185, 202, 0.22);
+  border-radius: 50%;
+  background: rgba(8, 9, 12, 0.52);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.tab-close:hover,
+.tab-close:focus-visible {
+  border-color: rgba(235, 239, 246, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.05);
+  outline: none;
+}
+
+.tab-close svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.9;
+}
+
+
+
+.timer-panel {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--dock-glass-border);
+  border-top-color: transparent;
+  border-radius: var(--radius-lg);
+  background: var(--dock-glass-fill);
+  backdrop-filter: var(--dock-glass-backdrop);
+  -webkit-backdrop-filter: var(--dock-glass-backdrop);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.24);
+  transition:
+    border-radius 360ms var(--ease-spring),
+    box-shadow 360ms ease;
+}
+
+
+.panel-top-seam {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  width: 100%;
+  height: 1px;
+  pointer-events: none;
+}
+
+.panel-top-seam::before,
+.panel-top-seam::after {
+  position: absolute;
+  top: 0;
+  height: 1px;
+  content: "";
+  background: rgba(255,255,255,.13);
+}
+
+.panel-top-seam::before {
+  left: 0;
+  width: max(0px, var(--active-tab-left, 0px));
+}
+
+.panel-top-seam::after {
+  right: 0;
+  left: calc(var(--active-tab-left, 0px) + var(--active-tab-width, 0px));
+}
+
+/* A single material recipe, including the blurred scene, for both views. */
+.timer-panel::before,
+.settings-menu::before {
+  position: absolute;
+  inset: -34px;
+  z-index: 0;
+  content: "";
+  pointer-events: none;
+  background-image: var(--scene-image);
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+  filter: var(--dock-glass-scene-filter);
+  transform: scale(1.10);
+  opacity: var(--dock-glass-scene-opacity);
+}
+
+.timer-panel::after,
+.settings-menu::after {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015) 14%, transparent 22%),
+    linear-gradient(180deg, rgba(var(--current-rgb, 223,138,79), .045), transparent 20%),
+    var(--dock-glass-tint);
+  box-shadow: none;
+}
+
+.timer-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.timer-summary {
+  display: flex;
+  height: 55px;
+  background: var(--dock-glass-toolbar);
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 11px 0 14px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+.summary-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 2px;
+  cursor: pointer;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  text-align: left;
+  outline: none;
+}
+
+.summary-main:hover {
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.summary-main:focus-visible {
+  box-shadow: 0 0 0 2px rgba(var(--current-rgb), 0.34);
+}
+
+.timer-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: var(--current-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.85;
+}
+
+.summary-title,
+.summary-job {
+  color: #edf3fb;
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.summary-job {
+  position: relative;
+  display: inline-flex;
+  max-width: 170px;
+  align-items: center;
+  overflow: hidden;
+  color: var(--current-accent);
+  opacity: 1;
+  text-shadow: 0 0 16px rgba(var(--current-rgb), 0.16);
+  transition:
+    max-width 330ms var(--ease-spring),
+    margin 330ms var(--ease-spring),
+    opacity 190ms ease,
+    transform 330ms var(--ease-spring),
+    color 180ms ease;
+}
+
+.summary-job::before {
+  width: 1px;
+  height: 20px;
+  margin-right: 14px;
+  content: "";
+  background: rgba(169, 177, 193, 0.15);
+}
+
+.summary-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.summary-time {
+  min-width: 76px;
+  color: #f8fbff;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 820;
+  letter-spacing: -0.02em;
+  text-align: right;
+}
+
+.icon-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(18, 26, 39, 0.34);
+  color: #e0e8f2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  transition:
+    border-color 170ms ease,
+    background 170ms ease,
+    color 170ms ease,
+    transform 170ms ease;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible {
+  border-color: rgba(180, 193, 216, 0.38);
+  background: rgba(30, 42, 60, 0.48);
+  color: #f3f6fb;
+  outline: none;
+}
+
+.icon-button:active {
+  transform: scale(.96);
+}
+
+.icon-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.expand-button svg {
+  opacity: .32;
+  transform: rotate(0deg);
+  transition:
+    opacity 180ms ease,
+    transform 360ms var(--ease-spring);
+}
+
+.expand-button:hover svg,
+.expand-button:focus-visible svg {
+  opacity: .90;
+}
+
+
+
+
+
+
+
+.settings-wrap {
+  position: relative;
+}
+
+.settings-menu {
+  position: fixed;
+  inset: auto;
+  top: 12px;
+  left: 12px;
+  z-index: 2147483647; /* Fallback only; native popovers use the browser top layer. */
+  margin: 0;
+  padding: 0;
+  width: min(370px, calc(100vw - 24px));
+  height: min(520px, calc(100vh - 24px));
+  max-width: calc(100vw - 24px);
+  min-height: 0;
+  color: var(--text);
+  overflow: hidden;
+  border: 1px solid var(--dock-glass-border);
+  border-radius: var(--radius-lg);
+  background: var(--dock-glass-fill);
+  backdrop-filter: var(--dock-glass-backdrop);
+  -webkit-backdrop-filter: var(--dock-glass-backdrop);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.035),
+    0 24px 48px rgba(0,0,0,.54);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px) scale(.985);
+  transform-origin: top right;
+  transition: opacity 180ms ease, transform 240ms var(--ease-spring);
+}
+
+.settings-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+/* Keep the timer's scene crop while the shared window changes aspect ratio.
+   Resizing must not suddenly reveal a different part of the background image. */
+.settings-menu::before {
+  inset: var(--dock-scene-inset-y, -34px) var(--dock-scene-inset-x, -34px);
+  background-size: var(--dock-scene-crop, cover);
+  background-attachment: scroll;
+}
+
+.settings-shell {
+  position: relative;
+  z-index: 1; /* Keep all text and controls above the shared glass paint layers. */
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.settings-toolbar {
+  display: grid;
+  grid-template-columns: 36px minmax(0,1fr) 36px;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 10px;
+  border-bottom: 1px solid rgba(255,255,255,.09);
+  background: var(--dock-glass-toolbar);
+}
+
+.settings-nav-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 10px;
+  background: var(--dock-glass-control);
+  color: #e0e8f2;
+}
+
+.settings-nav-button:hover,
+.settings-nav-button:focus-visible {
+  border-color: rgba(255,255,255,.25);
+  background: rgba(255,255,255,.085);
+  outline: none;
+}
+
+.settings-nav-button[hidden] {
+  visibility: hidden;
+}
+
+.settings-heading {
+  min-width: 0;
+}
+
+.settings-title {
+  margin: 0;
+  color: #f7f9fc;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.settings-subtitle {
+  margin: 3px 0 0;
+  color: var(--dock-secondary-text);
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+
+.settings-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.18) transparent;
+  padding: 10px;
+}
+
+.settings-view {
+  display: none;
+}
+
+.settings-view.is-active {
+  display: block;
+}
+
+.settings-intro {
+  margin: 0 2px 10px;
+  color: var(--dock-secondary-text);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.settings-section-label {
+  margin: 14px 3px 7px;
+  color: rgba(229,236,247,.76);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.settings-card {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 7px;
+  padding: 11px 12px;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 13px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018)),
+    var(--dock-glass-card);
+  color: #f3f6fb;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.settings-card:hover,
+.settings-card:focus-visible {
+  border-color: rgba(255,255,255,.21);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.025)),
+    rgba(12,21,34,.32);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.settings-card-copy {
+  min-width: 0;
+}
+
+.settings-card-title {
+  display: block;
+  color: #f5f7fb;
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1.15;
+}
+
+.settings-card-detail {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--dock-secondary-text);
+  font-size: 10px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-card-chevron {
+  flex: 0 0 auto;
+  color: rgba(231,238,248,.58);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.settings-card.is-accent {
+  border-color: rgba(var(--current-rgb), .26);
+  background:
+    linear-gradient(180deg, rgba(var(--current-rgb), .12), rgba(var(--current-rgb), .035)),
+    var(--dock-glass-card);
+}
+
+.settings-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  background: var(--dock-glass-toolbar);
+  color: var(--dock-secondary-text);
+  font-size: 9.5px;
+}
+
+.settings-footer button {
+  padding: 6px 9px;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  background: rgba(255,255,255,.04);
+  color: rgba(242,246,252,.78);
+  font-size: 9.5px;
+}
+
+.settings-footer button:hover,
+.settings-footer button:focus-visible {
+  background: rgba(255,255,255,.08);
+  outline: none;
+}
+
+/* Geometry is clamped to the visual viewport by positionSettingsMenu(). */
+#settingsMenu[hidden] {
+  display: none !important;
+}
+
+.settings-menu::backdrop {
+  background: transparent;
+  pointer-events: none;
+}
+
+.settings-menu:focus {
+  outline: none;
+}
+
+.settings-menu.is-open {
+  animation: settings-reveal 180ms var(--ease-spring) both;
+}
+
+.settings-nav-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.settings-nav-button:focus-visible,
+.settings-card:focus-visible,
+.settings-footer button:focus-visible {
+  outline: 2px solid rgba(235, 243, 255, .7);
+  outline-offset: -3px;
+}
+
+@keyframes settings-reveal {
+  from { opacity: 0; transform: translateY(-6px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.timer-details {
+  height: 0;
+  overflow: hidden;
+  border-top: 1px solid transparent;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    height 390ms var(--ease-spring),
+    border-color 180ms ease,
+    opacity 210ms ease,
+    transform 390ms var(--ease-spring);
+}
+
+.job-card {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  height: 118px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 12px;
+  padding: 16px 14px 12px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  background: rgba(18, 27, 43, 0.10);
+  backdrop-filter: blur(28px) saturate(175%);
+  -webkit-backdrop-filter: blur(28px) saturate(175%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.job-card::before {
+  position: absolute;
+  inset: -26px;
+  z-index: 0;
+  content: "";
+  pointer-events: none;
+  background-image: var(--scene-image);
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+  filter: blur(18px) saturate(118%) brightness(.70);
+  transform: scale(1.10);
+  opacity: .58;
+}
+
+.job-card::after {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(180deg, rgba(var(--current-rgb), .10), rgba(255,255,255,.025)),
+    rgba(10, 19, 31, .14);
+}
+
+.job-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.job-copy {
+  min-width: 0;
+  padding-right: 82px;
+}
+
+.job-link {
+  display: block;
+  width: min(430px, 100%);
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  outline: none;
+}
+
+.job-link:focus-visible {
+  box-shadow: 0 0 0 2px rgba(var(--current-rgb), 0.34);
+}
+
+.job-number {
+  margin: 0 0 6px;
+  color: var(--current-accent);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-shadow: 0 0 18px rgba(var(--current-rgb), 0.18);
+  transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+.job-link:hover .job-number,
+.job-link:focus-visible .job-number {
+  color: #ffffff;
+}
+
+.job-description-viewport {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
+}
+
+.job-description-track {
+  display: inline-block;
+  min-width: max-content;
+  transform: translateX(0);
+  will-change: transform;
+}
+
+.job-description {
+  margin: 0;
+  color: #d5ddea;
+  font-size: 14.5px;  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.job-link:hover .job-description,
+.job-link:focus-visible .job-description {
+  color: #c2c5ce;
+}
+
+.hero-time {
+  display: block;
+  margin-top: 12px;
+  color: #f7f8fa;
+  font-size: clamp(34px, 7vw, 40px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 790;
+  letter-spacing: -0.045em;
+  line-height: .98;
+}
+
+
+.hero-timer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.hero-timer-row .hero-time {
+  margin-top: 0;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 1px;
+}
+
+.timer-action-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(19, 27, 40, 0.30);
+  color: #e0e8f2;
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease, color 160ms ease;
+}
+
+.timer-action-button:hover,
+.timer-action-button:focus-visible {
+  border-color: rgba(var(--current-rgb), 0.34);
+  background: rgba(var(--current-rgb), 0.12);
+  color: #f4f6fb;
+  outline: none;
+}
+
+.timer-action-button:active { transform: scale(.95); }
+
+.timer-action-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.timer-action-button .play-icon { display: none; }
+.timer-action-button.is-paused .pause-icon { display: none; }
+.timer-action-button.is-paused .play-icon { display: block; }
+
+.status-badge {
+  position: absolute;
+  top: 15px;
+  right: 14px;
+  display: grid;
+  width: 66px;
+  height: 39px;
+  place-items: center;
+  border: 1px solid rgba(var(--current-rgb), 0.30);
+  border-radius: 10px;
+  background: rgba(var(--current-rgb), 0.13);
+  color: var(--current-accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .01em;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.status-badge.is-paused {
+  border-color: rgba(var(--current-rgb), 0.22);
+  background: rgba(var(--current-rgb), 0.08);
+  color: rgba(255,255,255,0.82);
+}
+
+
+.timer-widget[data-state="expanded"] {
+  transform: translateY(calc(-1 * var(--expand-lift)));
+}
+
+.timer-widget[data-state="expanded"] .summary-job {
+  max-width: 0;
+  margin-left: -10px;
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
+.timer-widget[data-state="expanded"] .expand-button svg {
+  opacity: .78;
+  transform: rotate(180deg);
+}
+
+.timer-widget[data-state="expanded"] .timer-details {
+  height: 142px;
+  border-top-color: rgba(167, 176, 193, 0.12);
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.timer-widget[data-state="expanded"] .timer-panel {
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.035),
+    0 24px 48px rgba(0, 0, 0, 0.54);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 570px) {
+  .demo-stage {
+    padding: 190px 12px 28px;
+  }
+
+  .timer-widget {
+    width: calc(100vw - 24px);
+  }
+
+  .timer-tabs {
+    width: calc(100% - 88px);
+    max-width: none;
+    margin-left: 44px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .timer-panel {
+    width: 100%;
+    max-width: none;
+  }
+
+  .timer-tab {
+    flex: 0 0 var(--tab-width);
+  }
+
+  .summary-controls {
+    gap: 7px;
+  }
+
+  .summary-job {
+    max-width: 92px;
+  }
+
+  .summary-job::before {
+    margin-right: 9px;
+  }
+
+  .summary-time {
+    min-width: 72px;
+    font-size: 16px;
+  }
+
+  .job-description {
+    max-width: calc(100vw - 170px);
+  }
+}
+
+@media (max-width: 430px) {
+  .timer-summary {
+    padding-left: 10px;
+  }
+
+  .summary-main {
+    gap: 8px;
+  }
+
+  .summary-title {
+    font-size: 13px;
+  }
+
+  .summary-job {
+    display: none;
+  }
+
+  .summary-time {
+    min-width: 66px;
+    font-size: 15px;
+  }
+
+  .icon-button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .job-copy {
+    padding-right: 72px;
+  }
+
+  .hero-time {
+    font-size: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+/* Settings is the next state of the same bottom-right dock, not a second window. */
+html, body { margin: 0; }
+.demo-stage {
+  position: fixed;
+  inset: 0;
+  min-height: 0;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 24px;
+}
+.timer-widget,
+.timer-widget[data-state="expanded"] {
+  position: relative;
+  transform: none;
+  transition: none;
+}
+.timer-widget.is-settings-covered .timer-panel {
+  visibility: hidden;
+  pointer-events: none;
+}
+.settings-menu {
+  /* The DOM stays in the browser top layer. Its visual anchor is the timer. */
+  top: auto;
+  left: auto;
+  transform: none;
+  transform-origin: bottom right;
+  transition: none;
+}
+.settings-menu.is-open {
+  animation: none;
+  transform: none;
+}
+.settings-menu[data-phase="opening"],
+.settings-menu[data-phase="switching"],
+.settings-menu[data-phase="closing"] {
+  pointer-events: auto;
+}
+.settings-menu[data-phase="opening"] .settings-shell,
+.settings-menu[data-phase="switching"] .settings-shell,
+.settings-menu[data-phase="closing"] .settings-shell {
+  visibility: hidden;
+  pointer-events: none;
+}
+.settings-menu.is-revealing .settings-heading,
+.settings-menu.is-revealing .settings-intro,
+.settings-menu.is-revealing .settings-section-label,
+.settings-menu.is-revealing .settings-card,
+.settings-menu.is-revealing .settings-footer {
+  animation: dock-copy-in 170ms ease-out both;
+}
+.settings-menu.is-revealing .settings-card:nth-of-type(2) { animation-delay: 15ms; }
+.settings-menu.is-revealing .settings-card:nth-of-type(3) { animation-delay: 30ms; }
+.settings-menu.is-revealing .settings-card:nth-of-type(4) { animation-delay: 45ms; }
+.settings-menu.is-revealing .settings-card:nth-of-type(5) { animation-delay: 60ms; }
+.settings-menu.is-revealing .settings-card:nth-of-type(6) { animation-delay: 75ms; }
+.settings-morph-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.morph-line {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+.morph-label {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+.morph-block {
+  position: absolute;
+  inset: 12% 0;
+  overflow: hidden;
+  border-radius: 5px;
+  background: rgba(240, 247, 255, .045);
+  opacity: 0;
+}
+.morph-block::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(108deg,
+    transparent 18%, rgba(246, 250, 255, .045) 33%,
+    rgba(246, 250, 255, .17) 47%, rgba(246, 250, 255, .05) 62%,
+    transparent 80%);
+  background-size: 240% 100%;
+  animation: dock-glass-wave 1.15s linear infinite;
+}
+@keyframes dock-glass-wave {
+  from { background-position: 145% 0; }
+  to { background-position: -80% 0; }
+}
+@keyframes dock-copy-in {
+  from { opacity: 0; transform: translateY(3px); filter: blur(2px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+@media (max-width: 570px) {
+  .demo-stage { padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .morph-block::after,
+  .settings-menu.is-revealing .settings-heading,
+  .settings-menu.is-revealing .settings-intro,
+  .settings-menu.is-revealing .settings-section-label,
+  .settings-menu.is-revealing .settings-card,
+  .settings-menu.is-revealing .settings-footer { animation: none !important; }
+}
+.timer-widget.is-returning .summary-title,
+.timer-widget.is-returning .summary-job,
+.timer-widget.is-returning .summary-time,
+.timer-widget.is-returning .job-link,
+.timer-widget.is-returning .hero-timer-row,
+.timer-widget.is-returning .status-badge {
+  animation: dock-copy-in 170ms ease-out both;
+}
+.timer-widget.is-returning .timer-tabs,
+.timer-widget.is-returning .tab-scroll-button {
+  animation: dock-tabs-return 170ms ease-out both;
+}
+@keyframes dock-tabs-return {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.morph-block::after { animation-delay: var(--wave-delay, 0ms); }
+@media (prefers-reduced-motion: reduce) {
+  .timer-widget.is-returning * { animation: none !important; }
+}
+
+
+/* Companion IA surfaces */
+.home-button svg { width: 16px; height: 16px; }
+.settings-card[disabled],
+.settings-card.is-unavailable {
+  cursor: not-allowed;
+  opacity: .48;
+  transform: none !important;
+}
+.settings-card[disabled]:hover,
+.settings-card.is-unavailable:hover {
+  border-color: rgba(255,255,255,.11);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018)),
+    rgba(10,18,30,.25);
+}
+.home-current-card {
+  cursor: default;
+  align-items: flex-start;
+}
+.home-current-card:hover { transform: none; }
+.home-current-controls {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+.home-current-time {
+  color: #f8fbff;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 840;
+  letter-spacing: -.02em;
+}
+.surface-mini-button,
+.recent-action {
+  min-width: 58px;
+  padding: 6px 9px;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 9px;
+  background: rgba(255,255,255,.045);
+  color: rgba(245,249,255,.88);
+  font-size: 10px;
+  font-weight: 760;
+}
+.surface-mini-button:hover,
+.surface-mini-button:focus-visible,
+.recent-action:hover,
+.recent-action:focus-visible {
+  border-color: rgba(var(--current-rgb), .28);
+  background: rgba(var(--current-rgb), .09);
+  outline: none;
+}
+.settings-search {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 7px;
+}
+.settings-search input {
+  min-width: 0;
+  height: 37px;
+  padding: 0 11px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  background: rgba(8,15,26,.28);
+  color: #f4f7fb;
+  outline: none;
+}
+.settings-search input:focus {
+  border-color: rgba(var(--current-rgb), .34);
+  box-shadow: 0 0 0 2px rgba(var(--current-rgb), .10);
+}
+.settings-search button {
+  height: 37px;
+  padding: 0 13px;
+  cursor: pointer;
+  border: 1px solid rgba(var(--current-rgb), .24);
+  border-radius: 10px;
+  background: rgba(var(--current-rgb), .10);
+  color: #f7f9fc;
+  font-size: 11px;
+  font-weight: 780;
+}
+.settings-search-status {
+  min-height: 14px;
+  margin: 6px 2px 0;
+  color: rgba(222,230,241,.66);
+  font-size: 10px;
+}
+.settings-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.metric-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 13px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015)),
+    rgba(10,18,30,.24);
+}
+.metric-label {
+  color: rgba(220,229,240,.63);
+  font-size: 9.5px;
+  font-weight: 760;
+}
+.metric-value {
+  display: block;
+  margin-top: 5px;
+  color: #f7f9fc;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 840;
+  letter-spacing: -.025em;
+}
+.metric-detail {
+  display: block;
+  margin-top: 3px;
+  color: rgba(214,224,237,.55);
+  font-size: 9.5px;
+}
+.recent-row {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 7px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 13px;
+  background: rgba(10,18,30,.24);
+}
+.recent-row.is-archived { opacity: .62; }
+.recent-row-title {
+  color: var(--row-accent, #f5f7fb);
+  font-size: 11.5px;
+  font-weight: 820;
+}
+.recent-row-detail {
+  margin-top: 3px;
+  overflow: hidden;
+  color: rgba(214,224,237,.62);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-row-actions { display: flex; gap: 5px; }
+.recent-action { min-width: auto; padding-inline: 7px; }
+
+/* Drag-to-retire interaction */
+.timer-tab[data-timer-id]:not([data-timer-id="general"]) {
+  cursor: grab;
+  touch-action: none;
+}
+
+.timer-tab.is-drag-source {
+  opacity: .18;
+  transform: translateY(-2px) scale(.97);
+}
+
+body.is-tab-dragging,
+body.is-tab-dragging * {
+  cursor: grabbing !important;
+}
+
+/* While a tracked job is lifted, the real tab strip is removed from the visual scene.
+   JavaScript also applies inline !important visibility so this cannot be defeated by
+   stacking contexts, transitions, or later component styles. */
+body.is-tab-dragging .timer-tabs,
+body.is-tab-dragging .tab-scroll-button,
+body.is-tab-dragging .timer-tab:not(.drag-tab-proxy) {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+.drag-tab-proxy {
+  --drag-accent: var(--tab-accent, #df8a4f);
+  --drag-rgb: var(--tab-rgb, 223,138,79);
+  position: fixed;
+  z-index: 2147483000;
+  display: grid;
+  grid-template-columns: 8px minmax(0,1fr) max-content;
+  width: var(--drag-start-width, 168px);
+  height: var(--drag-start-height, 42px);
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 14px 14px 0 0;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.035)),
+    rgba(7,14,25,.68);
+  color: #f7f9fc;
+  box-shadow: 0 18px 44px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.12);
+  backdrop-filter: blur(24px) saturate(155%);
+  -webkit-backdrop-filter: blur(24px) saturate(155%);
+  transform: translate(-50%, -50%) scale(.98);
+  transform-origin: center;
+  transition:
+    width 230ms var(--ease-spring),
+    height 230ms var(--ease-spring),
+    border-radius 230ms var(--ease-spring),
+    background 230ms ease,
+    box-shadow 230ms ease,
+    transform 180ms var(--ease-spring),
+    opacity 160ms ease;
+}
+
+.drag-tab-proxy.is-lifted {
+  width: 214px;
+  height: 58px;
+  border-radius: 17px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.15), rgba(var(--drag-rgb),.07) 32%, rgba(255,255,255,.025)),
+    rgba(7,14,25,.76);
+  box-shadow: 0 24px 54px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.14);
+  transform: translate(-50%, -50%) scale(1.02);
+}
+
+.drag-tab-proxy .tab-close { display: none !important; }
+.drag-tab-proxy .timer-dot { background: var(--drag-accent); box-shadow: 0 0 13px rgba(var(--drag-rgb), .44); }
+.drag-tab-proxy .tab-label { color: var(--drag-accent); }
+.drag-tab-proxy .tab-time { color: rgba(248,251,255,.95); }
+.drag-tab-proxy::after { display: none !important; }
+.drag-tab-proxy.is-over-retire {
+  border-color: rgba(255,104,104,.55);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.12), rgba(244,74,74,.13)),
+    rgba(42,9,12,.78);
+  box-shadow: 0 24px 58px rgba(58,0,0,.42), inset 0 1px 0 rgba(255,255,255,.13);
+}
+
+.retire-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482500;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  background: rgba(86, 4, 9, 0);
+  transition: opacity 180ms ease, background 220ms ease, visibility 0s linear 220ms;
+}
+
+.retire-overlay.is-visible {
+  opacity: 1;
+  visibility: visible;
+  background: rgba(86, 4, 9, .22);
+  transition-delay: 0s;
+}
+
+.retire-zone {
+  position: relative;
+  width: min(610px, 72vw);
+  height: min(340px, 46vh);
+  min-height: 210px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border: 1px solid rgba(255,118,118,.28);
+  border-radius: 28px;
+  background:
+    repeating-linear-gradient(0deg,
+      transparent 0 33px,
+      rgba(255,115,115,.10) 34px,
+      rgba(255,115,115,.10) 35px),
+    radial-gradient(circle at 50% 48%, rgba(231,46,55,.20), rgba(86,5,10,.24) 66%, rgba(31,4,8,.34));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 28px 90px rgba(62,0,4,.24);
+  backdrop-filter: blur(13px) saturate(125%);
+  -webkit-backdrop-filter: blur(13px) saturate(125%);
+  transform: scale(.975);
+  transition: transform 190ms var(--ease-spring), border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.retire-zone::before,
+.retire-zone::after {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 14px;
+  content: "";
+  background: repeating-linear-gradient(135deg,
+    rgba(255,195,195,.42) 0 9px,
+    rgba(165,17,27,.36) 9px 18px);
+  opacity: .58;
+}
+.retire-zone::before { top: 0; }
+.retire-zone::after { bottom: 0; }
+
+.retire-zone.is-hot {
+  border-color: rgba(255,124,124,.65);
+  background:
+    repeating-linear-gradient(0deg,
+      transparent 0 33px,
+      rgba(255,132,132,.16) 34px,
+      rgba(255,132,132,.16) 35px),
+    radial-gradient(circle at 50% 48%, rgba(246,56,65,.31), rgba(107,6,13,.36) 68%, rgba(39,4,8,.42));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 30px 100px rgba(92,0,6,.34);
+  transform: scale(1);
+}
+
+.retire-zone-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 420px;
+  padding: 26px;
+}
+.retire-zone-kicker {
+  display: block;
+  margin-bottom: 7px;
+  color: rgba(255,203,203,.72);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+.retire-zone-title {
+  display: block;
+  color: #fff4f4;
+  font-size: clamp(20px, 3.2vw, 30px);
+  font-weight: 830;
+  letter-spacing: -.025em;
+}
+.retire-zone-detail {
+  display: block;
+  margin-top: 8px;
+  color: rgba(255,226,226,.72);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.retire-zone.is-hot .retire-zone-title::after {
+  content: " · release to retire";
+  color: rgba(255,205,205,.78);
+  font-size: .48em;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.retire-pop {
+  position: fixed;
+  z-index: 2147483200;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  pointer-events: none;
+  border: 2px solid rgba(255,116,116,.78);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 8px rgba(255,81,81,.08), 0 0 0 1px rgba(255,255,255,.10);
+  animation: retire-pop 520ms cubic-bezier(.15,.76,.28,1) forwards;
+}
+.retire-pop::before,
+.retire-pop::after {
+  position: absolute;
+  inset: 9px;
+  content: "";
+  border: 1px solid rgba(255,166,166,.58);
+  border-radius: 50%;
+}
+.retire-pop::after { inset: 19px; }
+@keyframes retire-pop {
+  0% { opacity: 1; transform: scale(.25); filter: blur(0); }
+  52% { opacity: .92; transform: scale(1.25); }
+  100% { opacity: 0; transform: scale(2.15); filter: blur(2px); }
+}
+
+.history-retired-list:empty { display: none; }
+.history-retired-list:not(:empty) { margin-bottom: 12px; }
+.history-retired-list:not(:empty)::before {
+  display: block;
+  margin: 0 3px 7px;
+  content: "Retired tracked jobs";
+  color: rgba(229,236,247,.54);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.history-item.is-retired {
+  border-color: rgba(255,128,128,.16);
+  background: rgba(63,16,20,.12);
+}
+.history-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.history-reclock {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 9px;
+  background: rgba(255,255,255,.045);
+  color: rgba(245,249,255,.86);
+  font-size: 9.5px;
+  font-weight: 760;
+}
+.history-reclock:hover,
+.history-reclock:focus-visible {
+  border-color: rgba(var(--current-rgb),.30);
+  background: rgba(var(--current-rgb),.10);
+  outline: none;
+}
+
+.drag-status-live {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 570px) {
+  .retire-overlay { padding: 16px; }
+  .retire-zone { width: calc(100vw - 32px); height: 280px; min-height: 200px; border-radius: 22px; }
+  .drag-tab-proxy.is-lifted { width: min(214px, calc(100vw - 32px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drag-tab-proxy,
+  .retire-overlay,
+  .retire-zone { transition: none !important; }
+  .retire-pop { animation-duration: .001ms !important; }
+}
+
+.history-item {
+  margin-bottom: 7px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 12px;
+  background: rgba(10,18,30,.22);
+}
+.history-title { color:#f4f7fb; font-size:11.5px; font-weight:780; }
+.history-detail { margin-top:4px; color:rgba(214,224,237,.61); font-size:9.5px; }
+.settings-note {
+  margin: 8px 2px 0;
+  color: rgba(214,224,237,.55);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+@media (max-width: 430px) {
+  .settings-metrics { grid-template-columns: 1fr; }
+  .recent-row { grid-template-columns: 1fr; }
+  .recent-row-actions { justify-content: flex-start; }
+}
+
+
+
+/* Branch-wired UI additions: codex/implement-squarecoil-native-completion-observation */
+.operational-truth{display:none;align-items:center;justify-content:space-between;gap:12px;margin:10px 12px 0;padding:9px 11px;border:1px solid rgba(255,255,255,.12);border-radius:11px;background:rgba(7,14,25,.22);backdrop-filter:blur(18px) saturate(145%);-webkit-backdrop-filter:blur(18px) saturate(145%)}
+.operational-truth.is-visible{display:flex}.operational-copy{min-width:0}.operational-eyebrow{display:block;color:rgba(231,238,248,.58);font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}.operational-label{display:block;margin-top:2px;color:#f7f9fc;font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.operational-meta{display:block;margin-top:2px;color:rgba(220,229,241,.68);font-size:10px}.operational-view{flex:0 0 auto;border:1px solid rgba(255,255,255,.15);border-radius:9px;background:rgba(255,255,255,.05);padding:6px 9px;color:#f4f7fb;cursor:pointer}
+.branch-readout{display:flex;align-items:flex-end;gap:16px;min-width:0}.branch-metric{display:flex;flex-direction:column;gap:2px;padding-bottom:2px}.branch-metric-label{color:rgba(219,228,241,.60);font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.branch-metric-value{color:#eef4fb;font-size:13px;font-variant-numeric:tabular-nums;font-weight:800}.branch-session{display:block;margin-top:5px;color:rgba(220,229,241,.62);font-size:9.5px}.branch-session strong{color:rgba(245,249,255,.88);font-weight:800}
+.timer-tab[data-threshold="yellow"]{box-shadow:inset 0 2px 0 rgba(224,196,84,.75),0 8px 18px rgba(0,0,0,.10)}.timer-tab[data-threshold="orange"]{box-shadow:inset 0 2px 0 rgba(239,146,68,.78),0 8px 18px rgba(0,0,0,.10)}.timer-tab[data-threshold="red"]{box-shadow:inset 0 2px 0 rgba(229,91,91,.78),0 8px 18px rgba(0,0,0,.10)}.timer-tab[data-status="RUNNING"] .timer-dot{box-shadow:0 0 0 3px rgba(var(--tab-rgb),.13),0 0 10px rgba(var(--tab-rgb),.32)}.timer-tab[data-status="RUNNING_PROVISIONAL"] .timer-dot{outline:1px dashed rgba(255,255,255,.75);outline-offset:2px}.timer-tab[data-status="VERIFICATION_HOLD"] .timer-dot{background:#e15d5d!important;box-shadow:0 0 0 3px rgba(225,93,93,.12)}.timer-tab[data-status="LOCALLY_PAUSED"] .timer-dot{opacity:.48}
+.status-badge[data-status="RUNNING_PROVISIONAL"]{color:#ffd27a;border-color:rgba(255,190,88,.34);background:rgba(115,78,22,.22)}.status-badge[data-status="VERIFICATION_HOLD"]{color:#ffb0b0;border-color:rgba(238,100,100,.36);background:rgba(108,37,37,.22)}.status-badge[data-status="AWAITING_CHOICE"]{color:#ffd27a;border-color:rgba(255,190,88,.34);background:rgba(115,78,22,.22)}.status-badge[data-status="NOT_RUNNING"],.status-badge[data-status="LOCALLY_PAUSED"]{color:rgba(238,244,252,.74);border-color:rgba(255,255,255,.15);background:rgba(255,255,255,.04)}
+.choice-group{margin:0 0 10px;padding:11px 12px;border:1px solid rgba(255,255,255,.11);border-radius:13px;background:rgba(10,18,30,.20)}.choice-label{display:block;color:#f5f7fb;font-size:12px;font-weight:800}.choice-detail{display:block;margin-top:2px;color:rgba(214,224,237,.62);font-size:10px}.segmented{display:grid;grid-template-columns:repeat(var(--segments,2),1fr);gap:5px;margin-top:9px}.segmented button{min-height:32px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:rgba(255,255,255,.035);color:rgba(239,245,252,.76);font-size:10px;font-weight:750;cursor:pointer}.segmented button[aria-pressed="true"]{border-color:rgba(var(--current-rgb),.34);background:rgba(var(--current-rgb),.12);color:#fff}.segmented button:focus-visible{outline:2px solid rgba(var(--current-rgb),.42);outline-offset:2px}
+.limit-grid{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}.limit-row{display:grid;grid-template-columns:70px minmax(0,1fr) 42px;align-items:center;gap:8px}.limit-name{font-size:10px;font-weight:800}.limit-row input{width:100%;min-width:0;height:34px;border:1px solid rgba(255,255,255,.13);border-radius:9px;background:rgba(6,12,21,.30);padding:0 9px;color:#f5f8fc;font-size:12px}.limit-unit{color:rgba(222,230,241,.62);font-size:9.5px}.settings-inline-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.settings-inline-actions button{border:1px solid rgba(255,255,255,.14);border-radius:9px;background:rgba(255,255,255,.045);padding:7px 10px;color:#f4f7fb;font-size:10px;font-weight:750;cursor:pointer}.settings-inline-actions .primary{border-color:rgba(var(--current-rgb),.30);background:rgba(var(--current-rgb),.12)}.settings-form-status{min-height:16px;margin:7px 1px 0;color:rgba(218,227,239,.68);font-size:9.5px}.settings-form-status.is-error{color:#ffb1b1}.settings-form-status.is-good{color:#a8e3bd}
+.tech-grid{display:grid;grid-template-columns:110px minmax(0,1fr);gap:7px 10px;padding:10px 12px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(8,15,26,.20);font-size:10px}.tech-grid dt{color:rgba(219,228,240,.56)}.tech-grid dd{margin:0;color:#eef4fb;overflow-wrap:anywhere}.tech-status{display:inline-flex;align-items:center;gap:5px}.tech-dot{width:6px;height:6px;border-radius:50%;background:#75c69d}
+.support-form{display:grid;gap:8px}.support-form label{display:grid;gap:4px;color:rgba(229,237,247,.70);font-size:9.5px;font-weight:750}.support-form input,.support-form select,.support-form textarea{width:100%;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:rgba(6,12,21,.28);padding:8px 9px;color:#f5f8fc;font-size:11px}.support-form textarea{min-height:88px;resize:vertical}.prototype-boundary{margin-top:10px;padding:9px 10px;border-left:2px solid rgba(255,190,88,.55);background:rgba(111,77,23,.10);color:rgba(239,230,206,.74);font-size:9.5px;line-height:1.45}
+@media (max-width:570px){.operational-truth{align-items:flex-start}.branch-readout{gap:10px}.tech-grid{grid-template-columns:92px minmax(0,1fr)}.segmented button{min-height:36px}}
+
+
+body[data-companion-theme="light"] .timer-panel,body[data-companion-theme="light"] .settings-menu{--glass-ink:#10202e;color:#10202e;background:rgba(234,241,247,.38)!important}body[data-companion-theme="light"] .timer-summary{background:rgba(240,246,251,.26)!important}body[data-companion-theme="light"] .summary-title,body[data-companion-theme="light"] .summary-time,body[data-companion-theme="light"] .job-description,body[data-companion-theme="light"] .settings-title,body[data-companion-theme="light"] .settings-card-title{color:#132432!important}body[data-companion-theme="light"] .settings-card-detail,body[data-companion-theme="light"] .settings-intro,body[data-companion-theme="light"] .settings-section-label{color:rgba(19,36,50,.68)!important}body[data-companion-surface="solid"] .timer-panel,body[data-companion-surface="solid"] .settings-menu,body[data-companion-surface="solid"] .job-card{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(12,20,31,.94)!important}body[data-companion-theme="light"][data-companion-surface="solid"] .timer-panel,body[data-companion-theme="light"][data-companion-surface="solid"] .settings-menu{background:rgba(241,246,250,.96)!important}
+</style>
+  
+</head>
+<body>
+  <main class="demo-stage">
+    <section class="timer-widget" id="jobTimer" data-state="compact" aria-label="Job timer mockup">
+      <button class="tab-scroll-button" type="button" aria-label="Previous timer tabs" data-scroll-tabs="prev">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 7-5 5 5 5"/></svg>
+      </button>
+      <button class="tab-scroll-button" type="button" aria-label="Next timer tabs" data-scroll-tabs="next">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 7 5 5-5 5"/></svg>
+      </button>
+      <nav class="timer-tabs" aria-label="Open timers" role="tablist">
+        <div class="timer-tab" role="tab" tabindex="0" aria-selected="false" data-timer-id="general" style="--tab-accent:#79a9ff; --tab-rgb:121,169,255; --tab-width:168px;">
+          <span class="timer-dot" aria-hidden="true"></span>
+          <span class="tab-label">General</span>
+          <time class="tab-time" data-tab-time="general">00:30:57</time>
+          <button class="tab-close" type="button" aria-label="Close General timer" data-close-timer="general">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/></svg>
+          </button>
+        </div>
+
+        <div class="timer-tab" role="tab" tabindex="0" aria-selected="false" data-timer-id="260325" style="--tab-accent:#d3bc58; --tab-rgb:211,188,88; --tab-width:168px;">
+          <span class="timer-dot" aria-hidden="true"></span>
+          <span class="tab-label">260325</span>
+          <time class="tab-time" data-tab-time="260325">01:22:41</time>
+          <button class="tab-close" type="button" aria-label="Close 260325 timer" data-close-timer="260325">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/></svg>
+          </button>
+        </div>
+
+        <div class="timer-tab has-no-close is-active" role="tab" tabindex="0" aria-selected="true" data-timer-id="260512" style="--tab-accent:#df8a4f; --tab-rgb:223,138,79; --tab-width:168px;">
+          <span class="timer-dot" aria-hidden="true"></span>
+          <span class="tab-label">260512</span>
+          <time class="tab-time" data-tab-time="260512">02:53:04</time>
+        </div>
+
+        <div class="timer-tab" role="tab" tabindex="-1" aria-selected="false" data-timer-id="260638" style="--tab-accent:#73d6b1; --tab-rgb:115,214,177; --tab-width:168px;">
+          <span class="timer-dot" aria-hidden="true"></span>
+          <span class="tab-label">260638</span>
+          <time class="tab-time" data-tab-time="260638">00:48:19</time>
+          <button class="tab-close" type="button" aria-label="Close 260638 timer" data-close-timer="260638">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/></svg>
+          </button>
+        </div>
+
+        <div class="timer-tab" role="tab" tabindex="-1" aria-selected="false" data-timer-id="260700" style="--tab-accent:#c98fff; --tab-rgb:201,143,255; --tab-width:168px;">
+          <span class="timer-dot" aria-hidden="true"></span>
+          <span class="tab-label">260700</span>
+          <time class="tab-time" data-tab-time="260700">01:07:33</time>
+          <button class="tab-close" type="button" aria-label="Close 260700 timer" data-close-timer="260700">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/></svg>
+          </button>
+        </div>
+
+        <div class="timer-tab" role="tab" tabindex="-1" aria-selected="false" data-timer-id="260715" style="--tab-accent:#f1788f; --tab-rgb:241,120,143; --tab-width:168px;">
+          <span class="timer-dot" aria-hidden="true"></span>
+          <span class="tab-label">260715</span>
+          <time class="tab-time" data-tab-time="260715">00:21:46</time>
+          <button class="tab-close" type="button" aria-label="Close 260715 timer" data-close-timer="260715">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/></svg>
+          </button>
+        </div>
+
+        <div class="timer-tab" role="tab" tabindex="-1" aria-selected="false" data-timer-id="260767" style="--tab-accent:#5fc8e8; --tab-rgb:95,200,232; --tab-width:168px;">
+          <span class="timer-dot" aria-hidden="true"></span>
+          <span class="tab-label">260767</span>
+          <time class="tab-time" data-tab-time="260767">00:56:08</time>
+          <button class="tab-close" type="button" aria-label="Close 260767 timer" data-close-timer="260767">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/></svg>
+          </button>
+        </div>
+      </nav>
+
+      <div class="timer-panel">
+        <div class="panel-top-seam" aria-hidden="true"></div>
+        <div class="timer-summary">
+          <button class="summary-main" type="button" aria-expanded="false" aria-controls="timerDetails" data-toggle-widget>
+            <svg class="timer-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 2h6M12 2v3M7.4 6.8 5.9 5.3M12 7a7 7 0 1 1-7 7 7 7 0 0 1 7-7Z"/>
+              <path d="M12 10v4"/>
+            </svg>
+            <span class="summary-title">Job Timer</span>
+            <span class="summary-job" data-summary-job>260512</span>
+          </button>
+
+          <div class="summary-controls">
+            <time class="summary-time" data-summary-time>02:53:04</time>
+
+            <button class="icon-button home-button" type="button" aria-label="Open Companion home" aria-haspopup="dialog" aria-controls="settingsMenu" data-open-home>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 3l8.5 7.5"/><path d="M5.5 9.5V21h13V9.5M9.5 21v-6h5v6"/></svg>
+            </button>
+
+            <div class="settings-wrap">
+              <button class="icon-button settings-button" type="button" aria-label="Open timer settings" aria-haspopup="dialog" aria-controls="settingsMenu" aria-expanded="false" data-toggle-settings>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.3h3.4l.6 2a7.7 7.7 0 0 1 1.6.7l1.9-1 2.4 2.4-1 1.9c.3.5.5 1 .7 1.6l2 .6v3.4l-2 .6a7.7 7.7 0 0 1-.7 1.6l1 1.9-2.4 2.4-1.9-1a7.7 7.7 0 0 1-1.6.7l-.6 2h-3.4l-.6-2a7.7 7.7 0 0 1-1.6-.7l-1.9 1-2.4-2.4 1-1.9a7.7 7.7 0 0 1-.7-1.6l-2-.6v-3.4l2-.6a7.7 7.7 0 0 1 .7-1.6l-1-1.9L6.8 5l1.9 1a7.7 7.7 0 0 1 1.6-.7l.6-2Z"/><path d="M12 9.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6Z"/></svg>
+              </button>
+
+              
+            </div>
+
+            <button class="icon-button expand-button" type="button" aria-label="Expand job timer" aria-expanded="false" aria-controls="timerDetails" data-toggle-widget>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="timer-details" id="timerDetails" aria-hidden="true" inert>
+          <div class="operational-truth" data-operational-truth>
+            <span class="operational-copy"><span class="operational-eyebrow">Actually running / observed</span><span class="operational-label" data-operational-label>260512</span><span class="operational-meta" data-operational-meta>Today 02:53:04 · Running</span></span>
+            <button class="operational-view" type="button" data-view-operational>View current</button>
+          </div>
+          <article class="job-card">
+            <div class="job-copy">
+              <a class="job-link" href="#job/260512" data-job-link aria-label="Open current job 260512">
+                <h1 class="job-number" data-job-number>260512</h1>
+                <div class="job-description-viewport" data-job-description-viewport>
+                  <div class="job-description-track" data-job-description-track>
+                    <p class="job-description" data-job-description>AN - 195 Broadway - Weddings Reno - Special Project - 260512...</p>
+                  </div>
+                </div>
+              </a>
+              <div class="hero-timer-row">
+                <div class="branch-readout">
+                  <div><span class="branch-metric-label">Today</span><time class="hero-time" data-hero-time>02:53:04</time><span class="branch-session">Current session <strong data-current-session>00:48:17</strong></span></div>
+                  <span class="branch-metric"><span class="branch-metric-label">Job / context total</span><strong class="branch-metric-value" data-job-total>06:31:18</strong></span>
+                </div>
+                <div class="hero-actions" aria-label="Timer controls" data-canonical-actions>
+                  <button class="timer-action-button" type="button" data-action="pause" aria-label="Pause locally" title="Pause locally">
+                    <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12"/></svg>
+                    <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6Z"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <span class="status-badge is-running" data-status-badge>RUNNING</span>
+          </article>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- Docked Companion surface: Home, primary destinations, and Settings. -->
+  <div class="settings-menu" id="settingsMenu" popover="manual" role="dialog" aria-modal="false" aria-labelledby="settingsMenuTitle" tabindex="-1" aria-hidden="true" hidden inert>
+    <div class="settings-shell">
+      <div class="settings-toolbar">
+        <button class="settings-nav-button" type="button" aria-label="Back" data-settings-back hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 7-5 5 5 5"/></svg>        </button>
+        <div class="settings-heading">
+          <h2 class="settings-title" id="settingsMenuTitle" data-settings-title>Home</h2>
+          <p class="settings-subtitle" data-settings-subtitle>SquareCoil Companion</p>
+        </div>
+        <button class="settings-nav-button" type="button" aria-label="Close Companion panel" data-settings-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>
+        </button>
+      </div>
+
+      <div class="settings-scroll">
+        <section class="settings-view is-active" data-settings-view="home">
+          <p class="settings-intro">Your current context, time and Companion destinations in one place.</p>
+
+          <div class="settings-section-label">Current timer</div>
+          <div class="settings-card home-current-card">
+            <span class="settings-card-copy">
+              <span class="settings-card-title" data-home-job>260512</span>
+              <span class="settings-card-detail" data-home-description>AN - 195 Broadway - Weddings Reno - Special Project</span>
+            </span>
+            <span class="home-current-controls">
+              <span class="home-current-time" data-home-time>02:53:04</span>
+              <button class="surface-mini-button" type="button" data-home-pause>Pause</button>
+            </span>
+          </div>
+
+          <div class="settings-section-label">Companion</div>
+          <button class="settings-card is-accent" type="button" data-view-target="time">
+            <span class="settings-card-copy"><span class="settings-card-title">Time Overview</span><span class="settings-card-detail">Today, week, day and job/context totals</span></span>
+            <span class="settings-card-chevron">›</span>
+          </button>
+          <button class="settings-card" type="button" data-view-target="recent">
+            <span class="settings-card-copy"><span class="settings-card-title">Recent Jobs</span><span class="settings-card-detail">Active contexts, tab visibility and archive</span></span>
+            <span class="settings-card-chevron">›</span>
+          </button>
+          <button class="settings-card" type="button" data-view-target="history">
+            <span class="settings-card-copy"><span class="settings-card-title">History</span><span class="settings-card-detail">Completed Companion sessions</span></span>
+            <span class="settings-card-chevron">›</span>
+          </button>
+          <button class="settings-card" type="button" data-view-target="settings">
+            <span class="settings-card-copy"><span class="settings-card-title">Settings</span><span class="settings-card-detail">Appearance, tracking, jobs, data and support</span></span>
+            <span class="settings-card-chevron">›</span>
+          </button>
+
+          <div class="settings-section-label">Find a job / context</div>
+          <form class="settings-search" data-context-search>
+            <input type="search" inputmode="search" placeholder="Job # or General" aria-label="Find a job or context" data-context-query>
+            <button type="submit">Find</button>
+          </form>
+          <p class="settings-search-status" data-search-status></p>
+        </section>
+
+        <section class="settings-view" data-settings-view="time">
+          <p class="settings-intro">Time at a glance, then drill into the shape that matters.</p>
+          <div class="settings-metrics">
+            <div class="metric-card"><span class="metric-label">Today total</span><strong class="metric-value" data-overview-today>00:00:00</strong><span class="metric-detail">Open contexts</span></div>
+            <div class="metric-card"><span class="metric-label">This week</span><strong class="metric-value" data-overview-week>18:42:13</strong><span class="metric-detail">Canonical read-model week total</span></div>
+            <div class="metric-card"><span class="metric-label">By Day</span><strong class="metric-value">5</strong><span class="metric-detail">Days with tracked time</span></div>
+            <div class="metric-card"><span class="metric-label">By Job / Context</span><strong class="metric-value" data-overview-contexts>7</strong><span class="metric-detail">Known contexts</span></div>
+          </div>
+        </section>
+
+        <section class="settings-view" data-settings-view="recent">
+          <p class="settings-intro">Keep recent contexts available without keeping every tab visible. Pick up a tracked-job tab and drop it into the red retirement field to stop tracking it.</p>
+          <div class="settings-section-label">Active / recent contexts</div>
+          <div data-recent-jobs-list></div>
+          <p class="settings-note">Retired jobs move to History and leave the active tab rail. Re-clocking the same job automatically tracks it again.</p>
+        </section>
+
+        <section class="settings-view" data-settings-view="history">
+          <p class="settings-intro">Completed Companion sessions remain separate from currently active contexts.</p>
+          <div class="history-retired-list" data-retired-history-list></div>
+          <div class="settings-section-label">Completed Companion sessions</div>
+          <div class="history-item"><div class="history-title">260325 · Production session</div><div class="history-detail">1:22:41 · Completed today</div></div>
+          <div class="history-item"><div class="history-title">General · Companion session</div><div class="history-detail">0:30:57 · Completed yesterday</div></div>
+          <div class="history-item"><div class="history-title">260700 · Signage package</div><div class="history-detail">1:07:33 · Completed Sep 5</div></div>
+        </section>
+
+        <section class="settings-view" data-settings-view="settings">
+          <p class="settings-intro">Configuration stays grouped by what it changes instead of duplicating the main Companion destinations.</p>
+          <button class="settings-card is-accent" type="button" data-view-target="appearance">
+            <span class="settings-card-copy"><span class="settings-card-title">Appearance</span><span class="settings-card-detail">Companion appearance and SquareCoil theme</span></span><span class="settings-card-chevron">›</span>
+          </button>
+          <button class="settings-card" type="button" data-view-target="tracking-settings">
+            <span class="settings-card-copy"><span class="settings-card-title">Time Tracking</span><span class="settings-card-detail">Time Overview, History and time color limits</span></span><span class="settings-card-chevron">›</span>
+          </button>
+          <button class="settings-card" type="button" data-view-target="jobs-settings">
+            <span class="settings-card-copy"><span class="settings-card-title">Jobs and Watching</span><span class="settings-card-detail">Recent Jobs and future watched-job changes</span></span><span class="settings-card-chevron">›</span>
+          </button>
+          <button class="settings-card" type="button" data-view-target="notification-settings">
+            <span class="settings-card-copy"><span class="settings-card-title">Notifications</span><span class="settings-card-detail">SquareCoil alerts</span></span><span class="settings-card-chevron">›</span>
+          </button>
+          <button class="settings-card" type="button" data-view-target="data-settings">
+            <span class="settings-card-copy"><span class="settings-card-title">Privacy and Data</span><span class="settings-card-detail">Local data, backups, restore and cleanup</span></span><span class="settings-card-chevron">›</span>
+          </button>
+          <button class="settings-card" type="button" data-view-target="help-settings">
+            <span class="settings-card-copy"><span class="settings-card-title">Help and Diagnostics</span><span class="settings-card-detail">Tickets, feedback, technical details and support</span></span><span class="settings-card-chevron">›</span>
+          </button>
+        </section>
+
+        <section class="settings-view" data-settings-view="appearance">
+          <p class="settings-intro">These controls map to the extension's existing presentation axes. Appearance never changes Timer or Ledger truth.</p>
+          <div class="settings-section-label">Companion appearance</div>
+          <div class="choice-group"><span class="choice-label">Companion theme</span><span class="choice-detail">Light, Dark, or Auto following the system color scheme.</span><div class="segmented" style="--segments:3"><button type="button" data-pref-theme="light">Light</button><button type="button" data-pref-theme="dark">Dark</button><button type="button" data-pref-theme="auto">Auto</button></div></div>
+          <div class="choice-group"><span class="choice-label">Panel finish</span><span class="choice-detail">Solid and Glass are independent of the theme.</span><div class="segmented"><button type="button" data-pref-surface="solid">Solid</button><button type="button" data-pref-surface="glass">Glass</button></div></div>
+          <div class="settings-section-label">SquareCoil website theme</div>
+          <div class="choice-group"><span class="choice-label">Website presentation</span><span class="choice-detail">Original restores native SquareCoil. Sleek Dark uses the approved dark-logo path when available.</span><div class="segmented" style="--segments:3"><button type="button" data-pref-site="original">Original</button><button type="button" data-pref-site="light">Refined Light</button><button type="button" data-pref-site="dark">Sleek Dark</button></div></div>
+        </section>
+
+        <section class="settings-view" data-settings-view="tracking-settings">
+          <div class="settings-section-label">Time Tracking</div>
+          <button class="settings-card" type="button" data-view-target="time"><span class="settings-card-copy"><span class="settings-card-title">Time Overview</span><span class="settings-card-detail">Open the canonical time overview</span></span><span class="settings-card-chevron">›</span></button>
+          <button class="settings-card" type="button" data-view-target="history"><span class="settings-card-copy"><span class="settings-card-title">History</span><span class="settings-card-detail">Completed Ledger-backed Companion sessions</span></span><span class="settings-card-chevron">›</span></button>
+          <button class="settings-card" type="button" data-view-target="activity"><span class="settings-card-copy"><span class="settings-card-title">Activity Log</span><span class="settings-card-detail">Separate from Timer History</span></span><span class="settings-card-chevron">›</span></button>
+          <button class="settings-card" type="button" data-view-target="timer-limits"><span class="settings-card-copy"><span class="settings-card-title">Time color limits</span><span class="settings-card-detail">Yellow 60 · Orange 120 · Red 240 minutes</span></span><span class="settings-card-chevron">›</span></button>
+        </section>
+
+        <section class="settings-view" data-settings-view="jobs-settings">
+          <div class="settings-section-label">Jobs and Watching</div>
+          <button class="settings-card" type="button" data-view-target="recent"><span class="settings-card-copy"><span class="settings-card-title">Recent Jobs</span><span class="settings-card-detail">Manage active and archived contexts</span></span><span class="settings-card-chevron">›</span></button>
+          <button class="settings-card is-unavailable" type="button" disabled><span class="settings-card-copy"><span class="settings-card-title">Watched-job changes</span><span class="settings-card-detail">Unavailable</span></span><span class="settings-card-chevron">—</span></button>
+        </section>
+
+        <section class="settings-view" data-settings-view="notification-settings">
+          <div class="settings-section-label">Notifications</div>
+          <button class="settings-card is-unavailable" type="button" disabled><span class="settings-card-copy"><span class="settings-card-title">SquareCoil alerts</span><span class="settings-card-detail">Unavailable</span></span><span class="settings-card-chevron">—</span></button>
+        </section>
+
+        <section class="settings-view" data-settings-view="data-settings">
+          <div class="settings-section-label">Privacy and Data</div>
+          <button class="settings-card is-accent" type="button" data-view-target="local-data"><span class="settings-card-copy"><span class="settings-card-title">Local data and backups</span><span class="settings-card-detail">Export, restore and cleanup</span></span><span class="settings-card-chevron">›</span></button>
+        </section>
+
+        <section class="settings-view" data-settings-view="local-data">
+          <div class="settings-section-label">Archives & Backup</div>
+          <button class="settings-card is-unavailable" type="button" disabled><span class="settings-card-copy"><span class="settings-card-title">Export backup</span><span class="settings-card-detail">UI mapped · mutation/data-safety service not connected in this prototype</span></span><span class="settings-card-chevron">—</span></button>
+          <button class="settings-card is-unavailable" type="button" disabled><span class="settings-card-copy"><span class="settings-card-title">Restore backup</span><span class="settings-card-detail">Requires B4 review + commit safety flow</span></span><span class="settings-card-chevron">—</span></button>
+          <button class="settings-card is-unavailable" type="button" disabled><span class="settings-card-copy"><span class="settings-card-title">Cleanup</span><span class="settings-card-detail">Destructive controls intentionally locked</span></span><span class="settings-card-chevron">—</span></button>
+          <div class="prototype-boundary">The current branch exposes the canonical read model and trusted Timer actions, but this standalone front-end mockup does not pretend to own destructive persistence operations.</div>
+        </section>
+
+        <section class="settings-view" data-settings-view="help-settings">
+          <div class="settings-section-label">Help and Diagnostics</div>
+          <button class="settings-card" type="button" data-view-target="ticket"><span class="settings-card-copy"><span class="settings-card-title">Submit a ticket</span><span class="settings-card-detail">Validated draft → default mail client</span></span><span class="settings-card-chevron">›</span></button>
+          <button class="settings-card" type="button" data-view-target="feedback"><span class="settings-card-copy"><span class="settings-card-title">Send feedback</span><span class="settings-card-detail">Private local draft until you choose to send</span></span><span class="settings-card-chevron">›</span></button>
+          <button class="settings-card" type="button" data-view-target="technical"><span class="settings-card-copy"><span class="settings-card-title">Technical details</span><span class="settings-card-detail">Authority, read model and Bridge information</span></span><span class="settings-card-chevron">›</span></button>
+          <button class="settings-card" type="button" data-view-target="developer-support"><span class="settings-card-copy"><span class="settings-card-title">Support the developer</span><span class="settings-card-detail">Optional, free and non-blocking</span></span><span class="settings-card-chevron">›</span></button>
+        </section>
+
+        <section class="settings-view" data-settings-view="timer-limits">
+          <p class="settings-intro">Thresholds change tab presentation only. They never change recorded time.</p>
+          <div class="settings-section-label">Time color limits</div>
+          <div class="choice-group"><span class="choice-label">Committed thresholds</span><span class="choice-detail">Integer minutes with 1 ≤ Yellow ≤ Orange ≤ Red.</span><div class="limit-grid">
+            <label class="limit-row"><span class="limit-name" style="color:#e1c85d">Yellow</span><input type="number" min="1" step="1" value="60" data-limit="yellow"><span class="limit-unit">min</span></label>
+            <label class="limit-row"><span class="limit-name" style="color:#ef9346">Orange</span><input type="number" min="1" step="1" value="120" data-limit="orange"><span class="limit-unit">min</span></label>
+            <label class="limit-row"><span class="limit-name" style="color:#e65d5d">Red</span><input type="number" min="1" step="1" value="240" data-limit="red"><span class="limit-unit">min</span></label>
+          </div><div class="settings-inline-actions"><button class="primary" type="button" data-save-limits>Save limits</button><button type="button" data-reset-limits>Reset defaults</button></div><p class="settings-form-status" data-limit-status></p></div>
+        </section>
+
+        <section class="settings-view" data-settings-view="activity">
+          <p class="settings-intro">Activity Log is intentionally separate from Timer History. This prototype does not fabricate activity records from Ledger sessions.</p>
+          <div class="settings-section-label">Activity Log</div>
+          <div class="settings-card is-unavailable"><span class="settings-card-copy"><span class="settings-card-title">No Activity service connected</span><span class="settings-card-detail">Route mapped for B3/B5 wiring without inventing data.</span></span><span class="settings-card-chevron">—</span></div>
+        </section>
+
+        <section class="settings-view" data-settings-view="technical">
+          <p class="settings-intro">Read-only runtime information from the branch contract adapter.</p>
+          <div class="settings-section-label">Technical details</div>
+          <dl class="tech-grid">
+            <dt>Branch</dt><dd>codex/implement-squarecoil-native-completion-observation</dd>
+            <dt>Head</dt><dd>4e4e867c246af69745a29600fef5446a9bc010be</dd>
+            <dt>UI framework</dt><dd>Vanilla JS · CommonJS source · MV3</dd>
+            <dt>Authority</dt><dd><span class="tech-status"><span class="tech-dot"></span><span data-tech-authority>OWNER · healthy</span></span></dd>
+            <dt>Core revision</dt><dd data-tech-revision>128</dd>
+            <dt>Workday zone</dt><dd data-tech-zone>America/New_York</dd>
+            <dt>Operational</dt><dd data-tech-operational>260512 · RUNNING</dd>
+            <dt>Selected</dt><dd data-tech-selected>260512</dd>
+            <dt>Bridge</dt><dd data-tech-bridge>FULL · verified</dd>
+          </dl>
+          <div class="settings-inline-actions"><button class="primary" type="button" data-verify-bridge>Verify SquareCoil state</button></div><p class="settings-form-status" data-verify-status></p>
+          <div class="prototype-boundary">The real branch keeps UI in the isolated/extension surface and routes trusted commands through the authority core. This mockup mirrors those contracts locally; it is not itself the production extension runtime.</div>
+        </section>
+
+        <section class="settings-view" data-settings-view="ticket">
+          <p class="settings-intro">Nothing is sent automatically. Submit prepares a mailto draft to cristian@ussignandmill.com.</p>
+          <form class="support-form" data-support-form="ticket"><label>Category<select name="category"><option>Bug</option><option>Data / time question</option><option>SquareCoil theme</option><option>Other</option></select></label><label>Subject<input name="subject" required placeholder="Short summary"></label><label>Details<textarea name="details" required placeholder="What happened?"></textarea></label><label><span><input type="checkbox" name="diagnostics"> Include privacy-safe diagnostics preview</span></label><div class="settings-inline-actions"><button class="primary" type="submit">Prepare email</button></div><p class="settings-form-status" data-support-status></p></form>
+        </section>
+
+        <section class="settings-view" data-settings-view="feedback">
+          <p class="settings-intro">Feedback is a transient draft and does not become Timer, Ledger, Backup or Activity data.</p>
+          <form class="support-form" data-support-form="feedback"><label>Feedback<textarea name="details" required placeholder="What should Companion do better?"></textarea></label><div class="settings-inline-actions"><button class="primary" type="submit">Prepare email</button></div><p class="settings-form-status" data-support-status></p></form>
+        </section>
+
+        <section class="settings-view" data-settings-view="developer-support">
+          <p class="settings-intro">Developer support is optional and never affects Companion features or entitlement.</p>
+          <div class="settings-section-label">Support the developer</div><div class="settings-card"><span class="settings-card-copy"><span class="settings-card-title">Optional support link</span><span class="settings-card-detail">No payment credentials are collected or tracked by Companion.</span></span><span class="settings-card-chevron">↗</span></div>
+        </section>
+      </div>
+
+      <div class="settings-footer">
+        <span>SquareCoil Companion</span>
+        <button type="button" data-view-target="home">Home</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="retire-overlay" data-retire-overlay aria-hidden="true">
+    <div class="retire-zone" data-retire-zone>
+      <div class="retire-zone-copy">
+        <span class="retire-zone-kicker">Tracked-job retirement</span>
+        <strong class="retire-zone-title">Retire this job</strong>
+        <span class="retire-zone-detail">Drop here to stop tracking this job and move the session into History. Re-clocking the same SquareCoil job will automatically track it again.</span>
+      </div>
+    </div>
+  </div>
+  <div class="drag-status-live" aria-live="polite" data-drag-status></div>
+<script>
+(() => {
+  const widget = document.querySelector('#jobTimer');
+  const details = document.querySelector('#timerDetails');
+  const toggleButtons = [...document.querySelectorAll('[data-toggle-widget]')];
+  const tabsRail = document.querySelector('.timer-tabs');
+  const tabScrollButtons = [...document.querySelectorAll('[data-scroll-tabs]')];
+  const settingsButton = document.querySelector('[data-toggle-settings]');
+  const settingsMenu = document.querySelector('#settingsMenu');
+  const settingsTitle = document.querySelector('[data-settings-title]');
+  const settingsSubtitle = document.querySelector('[data-settings-subtitle]');
+  const settingsBack = document.querySelector('[data-settings-back]');
+  const homeButton = document.querySelector('[data-open-home]');
+  const homePauseButton = document.querySelector('[data-home-pause]');
+  const contextSearch = document.querySelector('[data-context-search]');
+  const contextQuery = document.querySelector('[data-context-query]');
+  const searchStatus = document.querySelector('[data-search-status]');
+  const recentJobsList = document.querySelector('[data-recent-jobs-list]');
+  const retiredHistoryList = document.querySelector('[data-retired-history-list]');
+  const retireOverlay = document.querySelector('[data-retire-overlay]');
+  const retireZone = document.querySelector('[data-retire-zone]');
+  const dragStatus = document.querySelector('[data-drag-status]');
+
+  const timers = {
+    general: { label: 'General', elapsed: 30 * 60 + 57, totalBase: 18 * 60 * 60, description: 'General context', running: false, kind: 'general', projectId: null, lastSeenAtMs: Date.now() - 95 * 60 * 1000, lastRecordedActivityAtMs: Date.now() - 24 * 60 * 60 * 1000 },
+    '260325': { label: '260325', elapsed: 1 * 60 * 60 + 22 * 60 + 41, totalBase: 9 * 60 * 60 + 18 * 60, description: 'Current production job', running: false, kind: 'job', projectId: '260325', lastSeenAtMs: Date.now() - 30 * 60 * 1000, lastRecordedActivityAtMs: Date.now() - 30 * 60 * 1000 },
+    '260512': { label: '260512', elapsed: 2 * 60 * 60 + 53 * 60 + 4, totalBase: 3 * 60 * 60 + 38 * 60 + 14, description: 'AN - 195 Broadway - Weddings Reno - Special Project - 260512...', running: true, kind: 'job', projectId: '260512', lastSeenAtMs: Date.now() - 20 * 1000, lastRecordedActivityAtMs: Date.now() - 20 * 1000 },
+    '260638': { label: '260638', elapsed: 48 * 60 + 19, totalBase: 4 * 60 * 60 + 4 * 60, description: 'AN - Shops at Thompson - Production Layout', running: false, kind: 'job', projectId: '260638', lastSeenAtMs: Date.now() - 75 * 60 * 1000, lastRecordedActivityAtMs: Date.now() - 4 * 60 * 60 * 1000 },
+    '260700': { label: '260700', elapsed: 1 * 60 * 60 + 7 * 60 + 33, totalBase: 7 * 60 * 60 + 13 * 60, description: 'AN - The Radd - Signage Package', running: false, kind: 'job', projectId: '260700', lastSeenAtMs: Date.now() - 5 * 60 * 60 * 1000, lastRecordedActivityAtMs: Date.now() - 5 * 60 * 60 * 1000 },
+    '260715': { label: '260715', elapsed: 21 * 60 + 46, totalBase: 2 * 60 * 60 + 45 * 60, description: 'AN - #563 NYC - Design Review', running: false, kind: 'job', projectId: '260715', lastSeenAtMs: Date.now() - 9 * 60 * 60 * 1000, lastRecordedActivityAtMs: Date.now() - 8 * 60 * 60 * 1000 },
+    '260767': { label: '260767', elapsed: 56 * 60 + 8, totalBase: 5 * 60 * 60 + 32 * 60, description: 'FP MVMT - Oakbrook Center - Revision Set', running: false, kind: 'job', projectId: '260767', lastSeenAtMs: Date.now() - 22 * 60 * 60 * 1000, lastRecordedActivityAtMs: Date.now() - 22 * 60 * 60 * 1000 }
+  };
+
+  const TIMER_COMMANDS = Object.freeze({
+    RESUME: 'TIMER_RESUME', START_FRESH: 'TIMER_START_FRESH',
+    LOCAL_PAUSE: 'TIMER_LOCAL_PAUSE', LOCAL_RESUME: 'TIMER_LOCAL_RESUME'
+  });
+  const STATUS_LABELS = Object.freeze({
+    RUNNING: 'Running', RUNNING_PROVISIONAL: 'Running · verifying', VERIFICATION_HOLD: 'Verification hold',
+    AWAITING_CHOICE: 'Resume?', LOCALLY_PAUSED: 'Locally paused', NOT_RUNNING: 'Not running'
+  });
+  let activeId = '260512'; // selected / inspected context, not timing authority
+  let operationalId = '260512';
+  let operationalStatus = 'RUNNING';
+  let currentSessionSeconds = 48 * 60 + 17;
+  let coreRevision = 128;
+  let bridgeCapability = 'FULL';
+  let bridgeReason = 'verified';
+  let authorityDisposition = 'OWNER';
+  const workdayZone = 'America/New_York';
+  let companionTheme = 'dark';
+  let companionSurface = 'glass';
+  let squareCoilTheme = 'original';
+  let timerLimits = { yellow: 60, orange: 120, red: 240 };
+
+  let autoExpandTimer = null;
+
+  const formatTime = (totalSeconds) => {
+    const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
+    return [hours, minutes, seconds]
+      .map((value) => String(value).padStart(2, '0'))
+      .join(':');
+  };
+
+  const activeTimer = () => timers[activeId];
+
+  const operationalTimer = () => timers[operationalId] || null;
+  const statusFor = (id) => id === operationalId ? operationalStatus : 'NOT_RUNNING';
+  const effectiveCompanionTheme = () => companionTheme === 'auto'
+    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : companionTheme;
+  const emitPresentationPreference = (kind, value) => {
+    const root = document.documentElement;
+    const mapping = {
+      theme: ['usxRequestedTimerTheme','USX_SET_TIMER_THEME'],
+      surface: ['usxRequestedTimerSurface','USX_SET_TIMER_SURFACE'],
+      site: ['usxRequestedSquarecoilTheme','USX_SET_SQUARECOIL_THEME']
+    }[kind];
+    if (!mapping || !root) return;
+    root.dataset[mapping[0]] = value;
+    try { window.dispatchEvent(new Event(mapping[1])); } catch (_) {}
+  };
+  const totalFor = (id) => {
+    const timer = timers[id];
+    return timer ? Math.max(0, timer.totalBase + timer.elapsed) : 0;
+  };
+  const thresholdFor = (seconds) => {
+    const minutes = Math.floor(Math.max(0, seconds) / 60);
+    if (minutes >= timerLimits.red) return 'red';
+    if (minutes >= timerLimits.orange) return 'orange';
+    if (minutes >= timerLimits.yellow) return 'yellow';
+    return 'none';
+  };
+  const availableActions = () => ({
+    localPause: ['RUNNING','RUNNING_PROVISIONAL','VERIFICATION_HOLD'].includes(operationalStatus),
+    resume: operationalStatus === 'AWAITING_CHOICE',
+    startFresh: operationalStatus === 'AWAITING_CHOICE',
+    localResume: operationalStatus === 'LOCALLY_PAUSED'
+  });
+  const canonicalReadSnapshot = () => ({
+    revision: coreRevision,
+    workdayZone,
+    currentContextId: operationalId,
+    selectedContextId: activeId,
+    operationalStatus,
+    todayTotalSeconds: Object.values(timers).reduce((sum, item) => sum + item.elapsed, 0),
+    weekTotalSeconds: Object.values(timers).reduce((sum, item) => sum + item.elapsed, 0) + 27 * 60 * 60 + 18 * 60,
+    contextRows: Object.entries(timers).map(([id,item]) => ({
+      contextId:id, kind:item.kind, projectId:item.projectId, label:item.label, shortLabel:item.label,
+      todaySeconds:item.elapsed, totalSeconds:totalFor(id), status:statusFor(id),
+      isOperational:id===operationalId, isSelected:id===activeId,
+      lastSeenAtMs:item.lastSeenAtMs, lastRecordedActivityAtMs:item.lastRecordedActivityAtMs,
+      workspaceMembership: archivedTabs?.has?.(id) ? 'ARCHIVED' : 'RECENT'
+    })),
+    running: ['RUNNING','RUNNING_PROVISIONAL','VERIFICATION_HOLD'].includes(operationalStatus) ? {
+      elapsedSeconds: currentSessionSeconds,
+      provisional: operationalStatus === 'RUNNING_PROVISIONAL',
+      held: operationalStatus === 'VERIFICATION_HOLD'
+    } : null,
+    availableActions: availableActions()
+  });
+
+  const invokeCanonicalCommand = (command) => {
+    const actions = availableActions();
+    if (command === TIMER_COMMANDS.LOCAL_PAUSE && actions.localPause) {
+      operationalStatus = 'LOCALLY_PAUSED';
+      if (operationalTimer()) operationalTimer().running = false;
+    } else if (command === TIMER_COMMANDS.LOCAL_RESUME && actions.localResume) {
+      operationalStatus = 'RUNNING';
+      if (operationalTimer()) operationalTimer().running = true;
+    } else if (command === TIMER_COMMANDS.RESUME && actions.resume) {
+      operationalStatus = 'RUNNING';
+      if (operationalTimer()) operationalTimer().running = true;
+    } else if (command === TIMER_COMMANDS.START_FRESH && actions.startFresh) {
+      operationalStatus = 'RUNNING';
+      currentSessionSeconds = 0;
+      if (operationalTimer()) operationalTimer().running = true;
+    } else {
+      return false;
+    }
+    coreRevision += 1;
+    render();
+    return true;
+  };
+
+  const surfaceMeta = {
+    home: { title: 'Home', subtitle: 'SquareCoil Companion', parent: null },
+    time: { title: 'Time Overview', subtitle: 'Today, week, day and context', parent: 'home' },
+    recent: { title: 'Recent Jobs', subtitle: 'Tabs, visibility, archive and restore', parent: 'home' },
+    history: { title: 'History', subtitle: 'Completed Companion sessions', parent: 'home' },
+    settings: { title: 'Settings', subtitle: 'Companion configuration', parent: 'home' },
+    appearance: { title: 'Appearance', subtitle: 'Companion appearance and SquareCoil theme', parent: 'settings' },
+    'tracking-settings': { title: 'Time Tracking', subtitle: 'Overview, history and color limits', parent: 'settings' },
+    'jobs-settings': { title: 'Jobs and Watching', subtitle: 'Recent Jobs and future watch tools', parent: 'settings' },
+    'notification-settings': { title: 'Notifications', subtitle: 'SquareCoil alerts', parent: 'settings' },
+    'data-settings': { title: 'Privacy and Data', subtitle: 'Local data and backups', parent: 'settings' },
+    'local-data': { title: 'Local data and backups', subtitle: 'Export, restore and cleanup', parent: 'data-settings' },
+    'help-settings': { title: 'Help and Diagnostics', subtitle: 'Support, feedback and technical details', parent: 'settings' },
+    'timer-limits': { title: 'Time color limits', subtitle: 'Threshold presentation only', parent: 'tracking-settings' },
+    activity: { title: 'Activity Log', subtitle: 'Separate from Timer History', parent: 'tracking-settings' },
+    technical: { title: 'Technical details', subtitle: 'Authority, read model and Bridge', parent: 'help-settings' },
+    ticket: { title: 'Submit a ticket', subtitle: 'Private draft · default mail client', parent: 'help-settings' },
+    feedback: { title: 'Send feedback', subtitle: 'Transient local draft', parent: 'help-settings' },
+    'developer-support': { title: 'Support the developer', subtitle: 'Optional and non-blocking', parent: 'help-settings' }
+  };
+
+  const hiddenTabs = new Set();
+  const archivedTabs = new Set();
+  const retiredSessions = [];
+
+  const updateMappedSurface = () => {
+    const selected = activeTimer();
+    const operational = operationalTimer();
+    const snapshot = canonicalReadSnapshot();
+    const homeJob = document.querySelector('[data-home-job]');
+    const homeDescription = document.querySelector('[data-home-description]');
+    const homeTime = document.querySelector('[data-home-time]');
+    const today = document.querySelector('[data-overview-today]');
+    const contexts = document.querySelector('[data-overview-contexts]');
+    if (operational) {
+      if (homeJob) homeJob.textContent = operational.label;
+      if (homeDescription) homeDescription.textContent = `${operational.description.replace(/\.\.\.$/,'')} · ${STATUS_LABELS[operationalStatus] || operationalStatus}`;
+      if (homeTime) homeTime.textContent = formatTime(operational.elapsed);
+      if (homePauseButton) {
+        const actions = snapshot.availableActions;
+        let label = actions.localPause ? 'Pause locally' : actions.localResume ? 'Resume locally' : actions.resume ? 'Resume' : 'Unavailable';
+        homePauseButton.textContent = label;
+        homePauseButton.disabled = label === 'Unavailable';
+        homePauseButton.setAttribute('aria-label', `${label} ${operational.label}`);
+      }
+    }
+    if (today) today.textContent = formatTime(snapshot.todayTotalSeconds);
+    if (contexts) contexts.textContent = String(snapshot.contextRows.filter(row => row.workspaceMembership !== 'ARCHIVED').length);
+
+    const week = document.querySelector('[data-overview-week]');
+    if (week) week.textContent = formatTime(snapshot.weekTotalSeconds);
+
+    if (recentJobsList) {
+      const rows = snapshot.contextRows
+        .filter(row => row.kind === 'job')
+        .sort((a,b) => (b.lastSeenAtMs||0)-(a.lastSeenAtMs||0));
+      recentJobsList.innerHTML = rows.map((row) => {
+        const item = timers[row.contextId];
+        const tab = document.querySelector(`[data-timer-id="${row.contextId}"]`);
+        const accent = tab ? getComputedStyle(tab).getPropertyValue('--tab-accent').trim() : '#f5f7fb';
+        const archived = archivedTabs.has(row.contextId);
+        const hidden = hiddenTabs.has(row.contextId) || archived;
+        const lastSeen = row.lastSeenAtMs ? Math.max(1, Math.round((Date.now()-row.lastSeenAtMs)/60000)) : null;
+        const recorded = row.lastRecordedActivityAtMs ? Math.max(1, Math.round((Date.now()-row.lastRecordedActivityAtMs)/60000)) : null;
+        return `<div class="recent-row${archived ? ' is-archived' : ''}" data-recent-row="${row.contextId}" style="--row-accent:${accent}">
+          <div><div class="recent-row-title">${item.label}${row.isOperational ? ' · CURRENT' : ''}</div><div class="recent-row-detail">Today ${formatTime(row.todaySeconds)} · Total ${formatTime(row.totalSeconds)} · ${STATUS_LABELS[row.status] || row.status}</div><div class="recent-row-detail">Seen ${lastSeen ?? '—'}m ago · recorded ${recorded ?? '—'}m ago · ${archived ? 'archived' : hidden ? 'hidden tab' : 'visible tab'}</div></div>
+          <div class="recent-row-actions">
+            <button class="recent-action" type="button" data-select-context="${row.contextId}">View</button>
+            <button class="recent-action" type="button" data-toggle-tab="${row.contextId}"${archived ? ' disabled' : ''}>${hidden ? 'Show tab' : 'Hide tab'}</button>
+            <button class="recent-action" type="button" data-open-squarecoil="${row.contextId}">Open</button>
+            <button class="recent-action" type="button" data-archive-context="${row.contextId}"${row.isOperational ? ' disabled title=\"Current context is protected\"' : ''}>${archived ? 'Re-track' : row.isOperational ? 'Current' : 'Retire'}</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    if (retiredHistoryList) {
+      retiredHistoryList.innerHTML = retiredSessions.map((session) => {
+        const item = timers[session.id];
+        if (!item) return '';
+        return `<div class="history-item is-retired" data-retired-session="${session.id}"><div class="history-item-row"><div><div class="history-title">${item.label} · Retired tracking prototype</div><div class="history-detail">${formatTime(session.elapsed)} · ${session.when}</div></div><button class="history-reclock" type="button" data-reclock-context="${session.id}">Re-clock demo</button></div></div>`;
+      }).join('');
+    }
+
+    document.querySelectorAll('[data-pref-theme]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.prefTheme === companionTheme)));
+    document.querySelectorAll('[data-pref-surface]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.prefSurface === companionSurface)));
+    document.querySelectorAll('[data-pref-site]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.prefSite === squareCoilTheme)));
+    widget.dataset.prototypeTheme = companionTheme;
+    widget.dataset.prototypeSurface = companionSurface;
+    document.body.dataset.companionTheme = effectiveCompanionTheme();
+    document.body.dataset.companionSurface = companionSurface;
+
+    const tech = {
+      '[data-tech-authority]': `${authorityDisposition} · healthy`,
+      '[data-tech-revision]': String(coreRevision),
+      '[data-tech-zone]': workdayZone,
+      '[data-tech-operational]': `${operational?.label || '—'} · ${operationalStatus}`,
+      '[data-tech-selected]': selected?.label || '—',
+      '[data-tech-bridge]': `${bridgeCapability} · ${bridgeReason}`
+    };
+    Object.entries(tech).forEach(([selector,value]) => { const node=document.querySelector(selector); if(node) node.textContent=value; });
+  };
+
+  const setSettingsView = (view) => {
+    const meta = surfaceMeta[view] || surfaceMeta.home;
+    document.querySelectorAll('[data-settings-view]').forEach((panel) => {
+      panel.classList.toggle('is-active', panel.dataset.settingsView === view);
+    });
+    if (settingsTitle) settingsTitle.textContent = meta.title;
+    if (settingsSubtitle) settingsSubtitle.textContent = meta.subtitle;
+    if (settingsBack) {
+      settingsBack.hidden = !meta.parent;
+      settingsBack.dataset.backTo = meta.parent || '';
+      settingsBack.setAttribute('aria-label', meta.parent ? `Back to ${surfaceMeta[meta.parent]?.title || 'previous view'}` : 'Back');
+    }
+    settingsView = view;
+    updateMappedSurface();
+    const scrollArea = settingsMenu?.querySelector('.settings-scroll');
+    if (scrollArea) scrollArea.scrollTop = 0;
+  };
+
+  // Bottom-right anchored view morph. The menu remains a body-level popover;
+  // hiding (not overlaying) the timer avoids doubled translucent glass layers.
+  const timerPanel = widget.querySelector('.timer-panel');
+  const settingsShell = settingsMenu.querySelector('.settings-shell');
+  const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  // Sample the existing timer material, rather than selecting another menu color.
+  const glassScene = new Image();
+  const glassSceneSource = getComputedStyle(timerPanel, '::before').backgroundImage;
+  const glassSceneURL = glassSceneSource.match(/^url\(["']?([\s\S]*?)["']?\)$/);
+  if (glassSceneURL) glassScene.src = glassSceneURL[1];
+
+  const matchSettingsMaterialCrop = () => {
+    const paint = getComputedStyle(timerPanel, '::before');
+    const width = parseFloat(paint.width);
+    const height = parseFloat(paint.height);
+    if (!(width > 0 && height > 0)) return;
+    // 16:9 is the embedded beach image's aspect ratio while it is decoding.
+    const aspect = glassScene.naturalWidth && glassScene.naturalHeight
+      ? glassScene.naturalWidth / glassScene.naturalHeight : 16 / 9;
+    const imageWidth = Math.max(width, height * aspect);
+    const imageHeight = imageWidth / aspect;
+    settingsMenu.style.setProperty('--dock-scene-crop',
+      `${imageWidth / width * 100}% ${imageHeight / height * 100}%`);
+    settingsMenu.style.setProperty('--dock-scene-inset-x',
+      `${parseFloat(paint.left) / Math.max(1, timerPanel.clientWidth) * 100}%`);
+    settingsMenu.style.setProperty('--dock-scene-inset-y',
+      `${parseFloat(paint.top) / Math.max(1, timerPanel.clientHeight) * 100}%`);
+  };
+
+  const morphLayer = document.createElement('div');
+  morphLayer.className = 'settings-morph-layer';
+  morphLayer.setAttribute('aria-hidden', 'true');
+  settingsMenu.append(morphLayer);
+
+  let nativeSettingsPopover = typeof settingsMenu.showPopover === 'function';
+  let settingsFocusBeforeOpen = null;
+  let settingsPhase = 'closed';
+  let settingsView = 'home';
+  let operationId = 0;
+  let morphAnimations = [];
+  let revealTimer = 0;
+  let returnTimer = 0;
+
+  if (!nativeSettingsPopover) settingsMenu.removeAttribute('popover');
+  settingsMenu.dataset.phase = 'closed';
+
+  const viewportBox = () => {
+    const view = window.visualViewport;
+    return {
+      width: view?.width ?? innerWidth, height: view?.height ?? innerHeight,
+      left: view?.offsetLeft ?? 0, top: view?.offsetTop ?? 0,
+      gutter: (view?.width ?? innerWidth) <= 570 ? 12 : 24
+    };
+  };
+  const boxFromRect = (rect) => ({
+    left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+    right: rect.right, bottom: rect.bottom
+  });
+  const timerBox = () => boxFromRect(timerPanel.getBoundingClientRect());
+  const menuBox = () => boxFromRect(settingsMenu.getBoundingClientRect());
+  const settingsTargetBox = () => {
+    const view = viewportBox();
+    const anchor = timerBox();
+    const right = Math.min(anchor.right, view.left + view.width - view.gutter);
+    const bottom = Math.min(anchor.bottom, view.top + view.height - view.gutter);
+    const width = Math.max(1, Math.min(370, anchor.width, right - view.left - view.gutter));
+    const height = Math.max(1, Math.min(560, bottom - view.top - view.gutter));
+    return { left: right - width, top: bottom - height, width, height, right, bottom };
+  };
+  const applyBox = (box) => {
+    // Width and height grow away from this corner. Never scale the live text.
+    Object.assign(settingsMenu.style, {
+      left: 'auto', top: 'auto',
+      right: `${innerWidth - box.right}px`, bottom: `${innerHeight - box.bottom}px`,
+      width: `${box.width}px`, height: `${box.height}px`
+    });
+  };
+  const changePhase = (phase) => {
+    settingsPhase = phase;
+    settingsMenu.dataset.phase = phase;
+    const busy = ['opening', 'closing', 'switching'].includes(phase);
+    settingsMenu.setAttribute('aria-busy', String(busy));
+    settingsShell.inert = busy;
+  };
+  const cancelMorph = () => {
+    clearTimeout(revealTimer);
+    settingsMenu.classList.remove('is-revealing');
+    morphAnimations.forEach((animation) => animation.cancel());
+    morphAnimations = [];
+    morphLayer.replaceChildren();
+  };
+  const animateNode = (node, frames, options) => {
+    const animation = node.animate(frames, options);
+    morphAnimations.push(animation);
+    return animation;
+  };
+
+  const timerTextSelector = '.summary-title, .summary-job, .summary-time, .job-number, .job-description, .hero-time, [data-status-badge]';
+  const settingsTextSelector = '.settings-title, .settings-subtitle, .settings-intro, .settings-section-label, .settings-card-title, .settings-card-detail, .settings-footer > span, .settings-footer button';
+
+  function textGeometry(root, bounds, selector) {
+    const lines = [];
+    root.querySelectorAll(selector).forEach((element) => {
+      const style = getComputedStyle(element);
+      if (style.display === 'none' || Number(style.opacity) === 0 ||
+          element.closest('[aria-hidden="true"].timer-details')) return;
+      const elementBox = element.getBoundingClientRect();
+      if (elementBox.width < 1 || elementBox.height < 1) return;
+      let clipLeft = Math.max(bounds.left, elementBox.left);
+      let clipRight = Math.min(bounds.right, elementBox.right);
+      let clipTop = Math.max(bounds.top, elementBox.top);
+      let clipBottom = Math.min(bounds.bottom, elementBox.bottom);
+      // Respect the job-title marquee and the settings' inner scrolling viewport.
+      for (let parent = element.parentElement; parent && parent !== root; parent = parent.parentElement) {
+        const css = getComputedStyle(parent);
+        const parentBox = parent.getBoundingClientRect();
+        if (/(hidden|auto|scroll|clip)/.test(css.overflowX)) {
+          clipLeft = Math.max(clipLeft, parentBox.left);
+          clipRight = Math.min(clipRight, parentBox.right);
+        }
+        if (/(hidden|auto|scroll|clip)/.test(css.overflowY)) {
+          clipTop = Math.max(clipTop, parentBox.top);
+          clipBottom = Math.min(clipBottom, parentBox.bottom);
+        }
+      }
+      if (clipRight <= clipLeft || clipBottom <= clipTop) return;
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      [...range.getClientRects()].slice(0, 3).forEach((rect, index) => {
+        const left = Math.max(rect.left, clipLeft), top = Math.max(rect.top, clipTop);
+        const width = Math.min(rect.right, clipRight) - left;
+        const height = Math.min(rect.bottom, clipBottom) - top;
+        if (width < 2 || height < 3) return;
+        lines.push({
+          x: left - bounds.left, y: top - bounds.top, width, height,
+          text: index === 0 ? element.textContent.trim() : '',
+          font: style.font, color: style.color, letterSpacing: style.letterSpacing
+        });
+      });
+    });
+    return lines;
+  }
+  const timerLines = (box) => textGeometry(timerPanel, box, timerTextSelector);
+  const settingsLines = (box) => textGeometry(settingsShell, box, settingsTextSelector);
+
+  async function runMorph(from, to, fromLines, toLines, id, { switching = false } = {}) {
+    const reduced = motionPreference.matches || typeof settingsMenu.animate !== 'function';
+    applyBox(from);
+    if (reduced) { applyBox(to); return id === operationId; }
+    const delay = 100;
+    const duration = switching ? 250 : 440;
+    const easing = 'cubic-bezier(.22, 1, .36, 1)';
+    const geometry = animateNode(settingsMenu, [
+      { width: `${from.width}px`, height: `${from.height}px`,
+        right: `${innerWidth - from.right}px`, bottom: `${innerHeight - from.bottom}px` },
+      { width: `${to.width}px`, height: `${to.height}px`,
+        right: `${innerWidth - to.right}px`, bottom: `${innerHeight - to.bottom}px` }
+    ], { duration, delay, easing, fill: 'both' });
+
+    const count = Math.max(fromLines.length, toLines.length);
+    for (let index = 0; index < count; index++) {
+      const start = fromLines[index];
+      const end = toLines[index];
+      const a = start ?? {
+        x: Math.max(16, from.width - 152), y: Math.max(14, from.height - 42), width: 96, height: 12
+      };
+      const b = end ?? {
+        x: Math.max(16, to.width - 130), y: Math.max(14, to.height - 32), width: 72, height: 10
+      };
+      const line = document.createElement('span');
+      line.className = 'morph-line';
+      const block = document.createElement('span');
+      block.className = 'morph-block';
+      // Slight phase offsets read as a travelling wave rather than blinking rows.
+      block.style.setProperty('--wave-delay', `${index * -27}ms`);
+      line.append(block);
+      morphLayer.append(line);
+      if (start?.text) {
+        const label = document.createElement('span');
+        label.className = 'morph-label';
+        label.textContent = start.text;
+        Object.assign(label.style, {
+          font: start.font, color: start.color, lineHeight: `${start.height}px`,
+          letterSpacing: start.letterSpacing
+        });
+        line.append(label);
+        animateNode(label, [{ opacity: 1, filter: 'blur(0px)' }, { opacity: 0, filter: 'blur(3px)' }],
+          { duration: 120, fill: 'both', easing: 'ease-out' });
+      }
+      animateNode(block, [{ opacity: 0 }, { opacity: .95 }],
+        { duration: 145, delay: start ? 0 : 80, fill: 'both' });
+      animateNode(line, [
+        { left: `${a.x}px`, top: `${a.y}px`, width: `${a.width}px`, height: `${a.height}px`, opacity: start ? 1 : 0 },
+        { left: `${b.x}px`, top: `${b.y}px`, width: `${b.width}px`, height: `${b.height}px`, opacity: end ? 1 : 0 }
+      ], { duration, delay, easing, fill: 'both' });
+    }
+    try { await geometry.finished; } catch (_) { return false; }
+    if (id !== operationId) return false;
+    applyBox(to);
+    geometry.cancel();
+    return true;
+  }
+
+  function revealSettings(id, focusTarget) {
+    changePhase('open');
+    settingsMenu.classList.add('is-revealing');
+    const reveal = morphLayer.animate([{ opacity: 1 }, { opacity: 0 }],
+      { duration: motionPreference.matches ? 0 : 150, fill: 'both' });
+    morphAnimations.push(reveal);
+    settingsShell.inert = false;
+    focusTarget?.focus({ preventScroll: true });
+    revealTimer = setTimeout(() => {
+      if (id !== operationId) return;
+      cancelMorph();
+      morphLayer.style.opacity = '';
+    }, motionPreference.matches ? 0 : 270);
+  }
+
+  async function openSettingsMenu(initialView = 'settings') {
+    if (settingsPhase !== 'closed') return;
+    const id = ++operationId;
+    cancelMorph();
+    clearTimeout(autoExpandTimer);
+    stopHoverScroll();
+    resetJobMarquee();
+    clearTimeout(returnTimer);
+    widget.classList.remove('is-returning');
+    settingsFocusBeforeOpen = document.activeElement;
+    const from = timerBox();
+    matchSettingsMaterialCrop();
+    const fromLines = timerLines(from);
+    setSettingsView(initialView);
+    const tokens = getComputedStyle(widget);
+    ['--current-accent', '--current-rgb'].forEach((property) => {
+      settingsMenu.style.setProperty(property, tokens.getPropertyValue(property));
+    });
+    settingsMenu.hidden = false;
+    settingsMenu.inert = false;
+    settingsMenu.setAttribute('aria-hidden', 'false');
+    settingsButton.setAttribute('aria-expanded', 'true');
+    changePhase('opening');
+    if (nativeSettingsPopover) {
+      try { settingsMenu.showPopover(); }
+      catch (_) { nativeSettingsPopover = false; settingsMenu.removeAttribute('popover'); }
+    }
+    // Layout both endpoints before painting, so incoming text never flashes or scales.
+    const to = settingsTargetBox();
+    applyBox(to);
+    const toLines = settingsLines(to);
+    applyBox(from);
+    settingsMenu.classList.add('is-open');
+    settingsMenu.focus({ preventScroll: true });
+    widget.classList.add('is-settings-covered');
+    timerPanel.inert = true;
+    timerPanel.setAttribute('aria-hidden', 'true');
+    const finished = await runMorph(from, to, fromLines, toLines, id);
+    if (finished) revealSettings(id, settingsMenu.querySelector('[data-settings-close]'));
+  }
+
+  function finishClose(restoreFocus) {
+    cancelMorph();
+    if (nativeSettingsPopover && settingsMenu.matches(':popover-open')) settingsMenu.hidePopover();
+    settingsMenu.classList.remove('is-open');
+    settingsMenu.hidden = true;
+    settingsMenu.inert = true;
+    settingsMenu.setAttribute('aria-hidden', 'true');
+    settingsButton.setAttribute('aria-expanded', 'false');
+    widget.classList.remove('is-settings-covered');
+    timerPanel.inert = false;
+    timerPanel.removeAttribute('aria-hidden');
+    changePhase('closed');
+    if (!motionPreference.matches) {
+      widget.classList.add('is-returning');
+      returnTimer = setTimeout(() => widget.classList.remove('is-returning'), 190);
+    }
+    if (restoreFocus) {
+      const target = settingsFocusBeforeOpen?.isConnected ? settingsFocusBeforeOpen : settingsButton;
+      target?.focus({ preventScroll: true });
+    }
+  }
+
+  async function closeSettingsMenu({ restoreFocus = true } = {}) {
+    if (settingsPhase === 'closed' || settingsPhase === 'closing') return;
+    const from = menuBox();
+    const fromLines = settingsLines(from);
+    const id = ++operationId;
+    cancelMorph();
+    changePhase('closing');
+    const to = timerBox();
+    const toLines = timerLines(to);
+    const finished = await runMorph(from, to, fromLines, toLines, id);
+    if (!finished) return;
+    // Return to the original timer DOM. Its active job, elapsed time and scroll
+    // position have never been reset or copied into a second running instance.
+    finishClose(restoreFocus);
+  }
+
+  const toggleSettingsMenu = () => {
+    if (settingsPhase === 'closed') openSettingsMenu('settings');
+    else if (settingsView !== 'settings') transitionSettingsView('settings');
+    else closeSettingsMenu();
+  };
+
+  async function transitionSettingsView(view) {
+    if (settingsPhase !== 'open' || settingsView === view) return;
+    const id = ++operationId;
+    cancelMorph();
+    const box = menuBox();
+    const fromLines = settingsLines(box);
+    changePhase('switching');
+    setSettingsView(view);
+    settingsView = view;
+    const toLines = settingsLines(box);
+    const finished = await runMorph(box, box, fromLines, toLines, id, { switching: true });
+    if (finished) {
+      const meta = surfaceMeta[view] || surfaceMeta.home;
+      const target = meta.parent ? settingsBack : settingsMenu.querySelector('[data-view-target]');
+      revealSettings(id, target || settingsMenu.querySelector('[data-settings-close]'));
+    }
+  }
+
+  const positionSettingsMenu = () => {
+    if (settingsPhase === 'closed') return;
+    // Resizing / zooming interrupts the current morph at a safe endpoint.
+    // A captured scroll from inside the menu must not cancel the animation.
+    const closing = settingsPhase === 'closing';
+    ++operationId;
+    cancelMorph();
+    if (closing) { finishClose(true); return; }
+    matchSettingsMaterialCrop();
+    applyBox(settingsTargetBox());
+    changePhase('open');
+  };
+  window.addEventListener('resize', positionSettingsMenu, { passive: true });
+  window.visualViewport?.addEventListener('resize', positionSettingsMenu, { passive: true });
+  window.visualViewport?.addEventListener('scroll', positionSettingsMenu, { passive: true });
+  motionPreference.addEventListener('change', positionSettingsMenu);
+
+  settingsMenu.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const focusable = [...settingsMenu.querySelectorAll('button:not([disabled])')]
+      .filter((node) => !node.hidden && node.getClientRects().length && !node.closest('[inert]'));
+    if (!focusable.length) { event.preventDefault(); return; }
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === settingsMenu)) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === settingsMenu)) {
+      event.preventDefault(); first.focus();
+    }
+  });
+
+
+  const setExpanded = (expanded) => {
+    widget.dataset.state = expanded ? 'expanded' : 'compact';
+    details.setAttribute('aria-hidden', String(!expanded));
+    details.inert = !expanded;
+
+    toggleButtons.forEach((button) => {
+      button.setAttribute('aria-expanded', String(expanded));
+    });
+
+    const expandButton = document.querySelector('.expand-button');
+    expandButton.setAttribute(
+      'aria-label',
+      expanded ? 'Minimize job timer' : 'Expand job timer'
+    );
+
+    if (!expanded) {
+    }
+  };
+
+  const toggleExpanded = () => {
+    clearTimeout(autoExpandTimer);
+    closeSettingsMenu();
+    setExpanded(widget.dataset.state !== 'expanded');
+  };
+
+  const render = () => {
+    const snapshot = canonicalReadSnapshot();
+    Object.entries(timers).forEach(([id, timer]) => {
+      const tabTime = document.querySelector(`[data-tab-time="${id}"]`);
+      if (tabTime) tabTime.textContent = formatTime(timer.elapsed);
+      const tab = document.querySelector(`.timer-tab[data-timer-id="${id}"]:not(.drag-tab-proxy)`);
+      if (tab) {
+        const status = statusFor(id);
+        const threshold = thresholdFor(timer.elapsed);
+        tab.dataset.status = status;
+        tab.dataset.threshold = threshold;
+        const thresholdText = threshold === 'none' ? 'below threshold' : `${threshold} threshold`;
+        tab.setAttribute('aria-label', `${timer.label}, Today ${formatTime(timer.elapsed)}, ${STATUS_LABELS[status] || status}, ${thresholdText}`);
+        const dot = tab.querySelector('.timer-dot');
+        if (dot) dot.title = `${STATUS_LABELS[status] || status} · ${thresholdText}`;
+      }
+    });
+
+    const timer = activeTimer();
+    const operational = operationalTimer();
+    if (!timer) return;
+
+    const activeTab = document.querySelector(`[data-timer-id="${activeId}"]`);
+    if (activeTab) {
+      const computed = getComputedStyle(activeTab);
+      const accent = computed.getPropertyValue('--tab-accent').trim() || '#df8a4f';
+      const rgb = computed.getPropertyValue('--tab-rgb').trim() || '223,138,79';
+      widget.style.setProperty('--current-accent', accent);
+      widget.style.setProperty('--current-rgb', rgb);
+      const widgetRect = widget.getBoundingClientRect();
+      const tabRect = activeTab.getBoundingClientRect();
+      widget.style.setProperty('--active-tab-left', `${Math.max(0, tabRect.left - widgetRect.left)}px`);
+      widget.style.setProperty('--active-tab-width', `${tabRect.width}px`);
+    }
+
+    document.querySelector('[data-summary-job]').textContent = timer.label;
+    document.querySelector('[data-summary-time]').textContent = formatTime(timer.elapsed);
+    document.querySelector('[data-hero-time]').textContent = formatTime(timer.elapsed);
+    document.querySelector('[data-job-number]').textContent = timer.label;
+    const jobTotal = document.querySelector('[data-job-total]');
+    if (jobTotal) jobTotal.textContent = formatTime(totalFor(activeId));
+    const session = document.querySelector('[data-current-session]');
+    if (session) session.textContent = activeId === operationalId && snapshot.running ? formatTime(snapshot.running.elapsedSeconds) : '—';
+
+    const description = document.querySelector('[data-job-description]');
+    if (description && description.textContent !== timer.description) {
+      description.textContent = timer.description;
+      resetJobMarquee();
+    }
+    const jobLink = document.querySelector('[data-job-link]');
+    if (jobLink) {
+      jobLink.href = timer.projectId ? `https://ussignandmill.squarecoil.net/project.php?id=${encodeURIComponent(timer.projectId)}` : '#general';
+      jobLink.setAttribute('aria-label', timer.projectId ? `Open SquareCoil job ${timer.label}` : 'View General context');
+    }
+
+    const selectedStatus = statusFor(activeId);
+    const badge = document.querySelector('[data-status-badge]');
+    if (badge) {
+      badge.dataset.status = selectedStatus;
+      badge.textContent = (STATUS_LABELS[selectedStatus] || selectedStatus).toUpperCase();
+      badge.classList.toggle('is-running', selectedStatus === 'RUNNING');
+      badge.classList.toggle('is-paused', ['LOCALLY_PAUSED','NOT_RUNNING'].includes(selectedStatus));
+    }
+
+    const truth = document.querySelector('[data-operational-truth]');
+    if (truth) {
+      const differs = Boolean(operational && operationalId !== activeId);
+      truth.classList.toggle('is-visible', differs);
+      truth.hidden = !differs;
+      const label = truth.querySelector('[data-operational-label]');
+      const meta = truth.querySelector('[data-operational-meta]');
+      if (label) label.textContent = operational?.label || 'No current context';
+      if (meta) meta.textContent = operational ? `Today ${formatTime(operational.elapsed)} · ${STATUS_LABELS[operationalStatus] || operationalStatus}` : 'Not running';
+    }
+
+    document.querySelectorAll('.timer-tab:not(.drag-tab-proxy)').forEach((tab) => {
+      const selected = tab.dataset.timerId === activeId;
+      tab.classList.toggle('is-active', selected);
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    });
+
+    const actionsWrap = document.querySelector('[data-canonical-actions]');
+    if (actionsWrap) {
+      const actions = snapshot.availableActions;
+      const selectedOperational = activeId === operationalId;
+      let markup = '';
+      if (selectedOperational && actions.localPause) markup = `<button class="timer-action-button" type="button" data-canonical-command="${TIMER_COMMANDS.LOCAL_PAUSE}" aria-label="Pause locally" title="Pause locally"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12"/></svg></button>`;
+      else if (selectedOperational && actions.localResume) markup = `<button class="timer-action-button" type="button" data-canonical-command="${TIMER_COMMANDS.LOCAL_RESUME}" aria-label="Resume locally" title="Resume locally"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6Z"/></svg></button>`;
+      else if (selectedOperational && actions.resume) markup = `<button class="timer-action-button" type="button" data-canonical-command="${TIMER_COMMANDS.RESUME}" aria-label="Resume" title="Resume"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6Z"/></svg></button><button class="timer-action-button" type="button" data-canonical-command="${TIMER_COMMANDS.START_FRESH}" aria-label="Start fresh" title="Start fresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>`;
+      actionsWrap.innerHTML = markup;
+    }
+
+    updateMappedSurface();
+  };
+
+  const jobLink = document.querySelector('[data-job-link]');
+  const jobViewport = document.querySelector('[data-job-description-viewport]');
+  const jobTrack = document.querySelector('[data-job-description-track]');
+  let jobMarqueeFrame = null;
+  let jobMarqueeLast = 0;
+  let jobMarqueeOffset = 0;
+  const jobMarqueeSpeed = 34;
+
+  const resetJobMarquee = () => {
+    cancelAnimationFrame(jobMarqueeFrame);
+    jobMarqueeFrame = null;
+    jobMarqueeLast = 0;
+    jobMarqueeOffset = 0;
+    if (jobTrack) jobTrack.style.transform = 'translateX(0px)';
+  };
+
+  const jobMarqueeTick = (time) => {
+    if (!jobViewport || !jobTrack) return;
+    const overflow = Math.max(0, jobTrack.scrollWidth - jobViewport.clientWidth);
+    if (overflow <= 1) { resetJobMarquee(); return; }
+    if (!jobMarqueeLast) jobMarqueeLast = time;
+    const dt = Math.min(34, time - jobMarqueeLast) / 1000;
+    jobMarqueeLast = time;
+    jobMarqueeOffset = Math.min(overflow, jobMarqueeOffset + jobMarqueeSpeed * dt);
+    jobTrack.style.transform = `translateX(${-jobMarqueeOffset}px)`;
+    if (jobMarqueeOffset < overflow) jobMarqueeFrame = requestAnimationFrame(jobMarqueeTick);
+  };
+
+  const startJobMarquee = () => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    resetJobMarquee();
+    jobMarqueeFrame = requestAnimationFrame(jobMarqueeTick);
+  };
+
+  jobLink?.addEventListener('pointerenter', startJobMarquee);
+  jobLink?.addEventListener('focus', startJobMarquee);
+  jobLink?.addEventListener('pointerleave', resetJobMarquee);
+  jobLink?.addEventListener('blur', resetJobMarquee);
+  jobLink?.addEventListener('click', (event) => {
+    const timer = activeTimer();
+    if (!timer?.projectId) { event.preventDefault(); return; }
+    // The real UI validates positive project IDs and opens SquareCoil without starting time.    if (!/^[1-9]\d*$/.test(timer.projectId)) event.preventDefault();
+  });
+
+  let hoverScrollFrame = null;
+  let hoverScrollDirection = 0;
+  let hoverLastTime = 0;
+  const hoverScrollSpeed = 64; // px per second
+
+  const getTabs = () => [...tabsRail.querySelectorAll('.timer-tab:not(.is-closing):not([hidden])')];
+
+  const updateTabScrollButtons = () => {
+    if (!tabsRail) return;
+    const maxScroll = Math.max(0, tabsRail.scrollWidth - tabsRail.clientWidth);
+    const prev = document.querySelector('[data-scroll-tabs="prev"]');
+    const next = document.querySelector('[data-scroll-tabs="next"]');
+    if (prev) prev.disabled = maxScroll <= 1;
+    if (next) next.disabled = maxScroll <= 1;
+
+    const hasLeftOverflow = tabsRail.scrollLeft > 2;
+    const hasRightOverflow = tabsRail.scrollLeft < maxScroll - 2;
+
+    prev?.classList.toggle('at-edge', !hasLeftOverflow);
+    next?.classList.toggle('at-edge', !hasRightOverflow);
+    tabsRail.classList.toggle('has-left-overflow', hasLeftOverflow);
+    tabsRail.classList.toggle('has-right-overflow', hasRightOverflow);
+  };
+
+  const closestTabIndex = () => {
+    const tabs = getTabs();
+    if (!tabs.length) return -1;
+    const railLeft = tabsRail.getBoundingClientRect().left;
+    let bestIndex = 0;
+    let bestDistance = Infinity;
+    tabs.forEach((tab, index) => {
+      const distance = Math.abs(tab.getBoundingClientRect().left - railLeft);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+    return bestIndex;
+  };
+
+  const snapToAdjacentTab = (direction) => {
+    if (!tabsRail) return;
+    const tabs = getTabs();
+    if (!tabs.length) return;
+    const current = closestTabIndex();
+    const targetIndex = Math.max(0, Math.min(tabs.length - 1, current + direction));
+    const target = tabs[targetIndex];
+    const left = target.offsetLeft;
+    tabsRail.scrollTo({ left, behavior: 'smooth' });
+    window.setTimeout(updateTabScrollButtons, 360);
+  };
+
+  const hoverScrollTick = (time) => {
+    if (!hoverScrollDirection || !tabsRail) return;
+    if (!hoverLastTime) hoverLastTime = time;
+    const dt = Math.min(34, time - hoverLastTime) / 1000;
+    hoverLastTime = time;
+    tabsRail.scrollLeft += hoverScrollDirection * hoverScrollSpeed * dt;
+    updateTabScrollButtons();
+    hoverScrollFrame = requestAnimationFrame(hoverScrollTick);
+  };
+
+  const startHoverScroll = (direction, button) => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    hoverScrollDirection = direction;
+    hoverLastTime = 0;
+    tabsRail.classList.add('is-hover-scrolling');
+    button.classList.add('is-hover-scrolling');
+    cancelAnimationFrame(hoverScrollFrame);
+    hoverScrollFrame = requestAnimationFrame(hoverScrollTick);
+  };
+
+  const stopHoverScroll = () => {
+    hoverScrollDirection = 0;
+    hoverLastTime = 0;
+    cancelAnimationFrame(hoverScrollFrame);
+    hoverScrollFrame = null;
+    tabsRail?.classList.remove('is-hover-scrolling');
+    tabScrollButtons.forEach((button) => button.classList.remove('is-hover-scrolling'));
+    updateTabScrollButtons();
+  };
+
+  const recordRetiredSession = (id) => {
+    const timer = timers[id];
+    if (!timer) return;
+    const existing = retiredSessions.find((item) => item.id === id);
+    const record = {
+      id,
+      elapsed: timer.elapsed,
+      when: 'Retired just now'
+    };
+    if (existing) Object.assign(existing, record);
+    else retiredSessions.unshift(record);
+  };
+
+  const retrackContext = (id, { clockIn = false } = {}) => {
+    const timer = timers[id];
+    if (!timer) return;
+    archivedTabs.delete(id);
+    hiddenTabs.delete(id);
+    const tab = document.querySelector(`[data-timer-id="${id}"]`);
+    if (tab) tab.hidden = false;
+    if (clockIn) {
+      // Front-end simulation of a new native SquareCoil Context observation.
+      Object.values(timers).forEach((item) => { item.running = false; });
+      operationalId = id;
+      operationalStatus = 'RUNNING';
+      currentSessionSeconds = 0;
+      timer.running = true;
+      timer.lastSeenAtMs = Date.now();
+      timer.lastRecordedActivityAtMs = Date.now();
+      coreRevision += 1;
+    }
+    updateMappedSurface();
+    updateTabScrollButtons();
+  };
+
+  const retireContext = (id, { popAt = null, announce = true } = {}) => {
+    if (!id || id === 'general' || !timers[id] || archivedTabs.has(id)) return false;
+    if (id === operationalId) {
+      if (announce && dragStatus) dragStatus.textContent = `${timers[id].label} is the current SquareCoil context and remains protected. Change or clock out of that context before retiring its workspace tracking.`;
+      return false;
+    }
+    const timer = timers[id];
+    recordRetiredSession(id);
+    archivedTabs.add(id);
+    hiddenTabs.add(id);
+    const tab = document.querySelector(`[data-timer-id="${id}"]`);
+    if (tab) tab.hidden = true;
+    if (activeId === id) activeId = operationalId && timers[operationalId] ? operationalId : 'general';
+
+    if (popAt) {
+      const pop = document.createElement('span');
+      pop.className = 'retire-pop';
+      pop.style.left = `${popAt.x}px`;
+      pop.style.top = `${popAt.y}px`;
+      document.body.appendChild(pop);
+      window.setTimeout(() => pop.remove(), 560);
+    }
+    render();
+    updateTabScrollButtons();
+    if (announce && dragStatus) dragStatus.textContent = `${timer.label} retired from the prototype workspace and recorded in History. This is a front-end interaction contract, not a production persistence command.`;
+    return true;
+  };
+
+  const clockIntoContext = (id) => {
+    if (!timers[id]) return;
+    retrackContext(id, { clockIn: true });
+    activeId = id;
+    render();
+    document.querySelector(`[data-timer-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    if (dragStatus) dragStatus.textContent = `${timers[id].label} was re-observed as the native current context and is tracked again.`;
+  };
+
+  const selectTimer = (id, { expand = false } = {}) => {
+    if (!timers[id]) return;
+    if (archivedTabs.has(id)) retrackContext(id);
+    activeId = id; // inspection only; never changes operational timing
+    render();
+    if (expand) setExpanded(true);
+    document.querySelector(`[data-timer-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  };
+
+  const closeTimer = (id) => {
+    const tab = document.querySelector(`[data-timer-id="${id}"]`);
+    if (!tab || !timers[id]) return;
+    hiddenTabs.add(id);
+    if (id === operationalId) {
+      // Protected truth stays visible even if the user asks to hide it.
+      if (dragStatus) dragStatus.textContent = `${timers[id].label} is current and stays visible while operational.`;
+      render();
+      return;
+    }
+    if (activeId === id) activeId = operationalId && timers[operationalId] ? operationalId : 'general';
+    tab.classList.add('is-closing');
+    window.setTimeout(() => {
+      tab.hidden = true;
+      tab.classList.remove('is-closing');
+      render();
+      updateTabScrollButtons();
+    }, 220);
+  };
+
+
+  let tabDrag = null;
+  let suppressTabClickId = null;
+  const dragThreshold = 7;
+
+  const pointInRect = (x, y, rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+
+  const setRetireFieldVisible = (visible) => {
+    retireOverlay?.classList.toggle('is-visible', visible);
+    retireOverlay?.setAttribute('aria-hidden', String(!visible));
+    if (!visible) retireZone?.classList.remove('is-hot');
+  };
+
+  const positionDragProxy = (x, y) => {
+    if (!tabDrag?.proxy) return;
+    tabDrag.proxy.style.left = `${x}px`;
+    tabDrag.proxy.style.top = `${y}px`;
+  };
+
+  const setUnderlyingTabsHidden = (hidden) => {
+    const nodes = [
+      tabsRail,
+      ...tabScrollButtons,
+      ...document.querySelectorAll('.timer-tab:not(.drag-tab-proxy)')
+    ].filter(Boolean);
+
+    nodes.forEach((node) => {
+      if (hidden) {
+        node.style.setProperty('visibility', 'hidden', 'important');
+        node.style.setProperty('opacity', '0', 'important');
+        node.style.setProperty('pointer-events', 'none', 'important');
+      } else {
+        node.style.removeProperty('visibility');
+        node.style.removeProperty('opacity');
+        node.style.removeProperty('pointer-events');
+      }
+    });
+  };
+
+  const beginTabDrag = (event, tab) => {
+    if (tabDrag || tab.dataset.timerId === 'general') return;
+    if (tab.dataset.timerId === operationalId) {
+      if (dragStatus) dragStatus.textContent = `${timers[operationalId]?.label || operationalId} is the current SquareCoil context and is protected from retirement while operational.`;
+      return;
+    }
+    const rect = tab.getBoundingClientRect();
+    tabDrag = {
+      id: tab.dataset.timerId,
+      tab,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      startRect: rect,
+      dragging: false,
+      proxy: null,
+      overRetire: false
+    };
+    try { tab.setPointerCapture(event.pointerId); } catch (_) {}
+  };
+
+  const liftDraggedTab = () => {
+    if (!tabDrag || tabDrag.dragging) return;
+    tabDrag.dragging = true;
+    suppressTabClickId = tabDrag.id;
+    closeSettingsMenu({ restoreFocus: false });
+    document.body.classList.add('is-tab-dragging');
+    tabDrag.tab.classList.add('is-drag-source');
+
+    const proxy = tabDrag.tab.cloneNode(true);
+    proxy.classList.remove('is-active', 'is-drag-source');
+    proxy.classList.add('drag-tab-proxy');
+    proxy.removeAttribute('role');
+    proxy.removeAttribute('tabindex');
+    proxy.removeAttribute('aria-selected');
+    proxy.querySelector('.tab-close')?.remove();
+    const computed = getComputedStyle(tabDrag.tab);
+    proxy.style.setProperty('--drag-accent', computed.getPropertyValue('--tab-accent').trim() || '#df8a4f');
+    proxy.style.setProperty('--drag-rgb', computed.getPropertyValue('--tab-rgb').trim() || '223,138,79');
+    proxy.style.setProperty('--drag-start-width', `${tabDrag.startRect.width}px`);
+    proxy.style.setProperty('--drag-start-height', `${tabDrag.startRect.height}px`);
+    proxy.style.left = `${tabDrag.startRect.left + tabDrag.startRect.width / 2}px`;
+    proxy.style.top = `${tabDrag.startRect.top + tabDrag.startRect.height / 2}px`;
+    document.body.appendChild(proxy);
+    tabDrag.proxy = proxy;
+    setUnderlyingTabsHidden(true);
+    setRetireFieldVisible(true);
+    if (dragStatus) dragStatus.textContent = `${timers[tabDrag.id]?.label || tabDrag.id} lifted. Move to the red retirement field and release to retire it.`;
+
+    requestAnimationFrame(() => {
+      proxy.classList.add('is-lifted');
+      positionDragProxy(tabDrag.lastX, tabDrag.lastY);
+    });
+  };
+
+  const updateTabDrag = (event) => {
+    if (!tabDrag || event.pointerId !== tabDrag.pointerId) return;
+    tabDrag.lastX = event.clientX;
+    tabDrag.lastY = event.clientY;
+    const distance = Math.hypot(event.clientX - tabDrag.startX, event.clientY - tabDrag.startY);
+    if (!tabDrag.dragging && distance >= dragThreshold) liftDraggedTab();
+    if (!tabDrag.dragging) return;
+    event.preventDefault();
+    positionDragProxy(event.clientX, event.clientY);
+    const zoneRect = retireZone?.getBoundingClientRect();
+    const over = !!zoneRect && pointInRect(event.clientX, event.clientY, zoneRect);
+    if (over !== tabDrag.overRetire) {
+      tabDrag.overRetire = over;
+      retireZone?.classList.toggle('is-hot', over);
+      tabDrag.proxy?.classList.toggle('is-over-retire', over);
+      if (dragStatus) dragStatus.textContent = over
+        ? `Release ${timers[tabDrag.id]?.label || tabDrag.id} to retire it.`
+        : `Move ${timers[tabDrag.id]?.label || tabDrag.id} into the retirement field.`;
+    }
+  };
+
+  const returnDraggedProxy = () => {
+    if (!tabDrag?.proxy) return;
+    const proxy = tabDrag.proxy;
+    const rect = tabDrag.tab.getBoundingClientRect();
+    proxy.classList.remove('is-lifted', 'is-over-retire');
+    proxy.style.left = `${rect.left + rect.width / 2}px`;
+    proxy.style.top = `${rect.top + rect.height / 2}px`;
+    proxy.style.width = `${rect.width}px`;
+    proxy.style.height = `${rect.height}px`;
+    proxy.style.borderRadius = '14px 14px 0 0';
+    proxy.style.opacity = '0';
+    window.setTimeout(() => proxy.remove(), 220);
+  };
+
+  const finishTabDrag = (event, cancelled = false) => {
+    if (!tabDrag || event.pointerId !== tabDrag.pointerId) return;
+    const drag = tabDrag;
+    if (drag.dragging) {
+      event.preventDefault();
+      if (!cancelled && drag.overRetire) {
+        drag.proxy?.classList.add('is-over-retire');
+        if (drag.proxy) {
+          drag.proxy.style.transform = 'translate(-50%, -50%) scale(1.22)';
+          drag.proxy.style.opacity = '0';
+        }
+        retireContext(drag.id, { popAt: { x: event.clientX, y: event.clientY } });
+        window.setTimeout(() => drag.proxy?.remove(), 180);
+      } else {
+        returnDraggedProxy();
+        if (dragStatus) dragStatus.textContent = `${timers[drag.id]?.label || drag.id} returned to the tab rail.`;
+      }
+      drag.tab.classList.remove('is-drag-source');
+      document.body.classList.remove('is-tab-dragging');
+      setUnderlyingTabsHidden(false);
+      setRetireFieldVisible(false);
+      window.setTimeout(() => { if (suppressTabClickId === drag.id) suppressTabClickId = null; }, 0);
+    }
+    try { drag.tab.releasePointerCapture(drag.pointerId); } catch (_) {}
+    tabDrag = null;
+  };
+
+  document.querySelectorAll('.timer-tab').forEach((tab) => {
+    tab.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || event.target.closest('[data-close-timer]')) return;
+      beginTabDrag(event, tab);
+    });
+    tab.addEventListener('pointermove', updateTabDrag);
+    tab.addEventListener('pointerup', (event) => finishTabDrag(event, false));
+    tab.addEventListener('pointercancel', (event) => finishTabDrag(event, true));
+  });
+
+  toggleButtons.forEach((button) => {
+    button.addEventListener('click', toggleExpanded);
+  });
+
+  document.querySelectorAll('.timer-tab').forEach((tab) => {
+    tab.addEventListener('click', (event) => {
+      if (event.target.closest('[data-close-timer]')) return;
+      if (suppressTabClickId === tab.dataset.timerId) {
+        event.preventDefault();
+        suppressTabClickId = null;
+        return;
+      }
+      selectTimer(tab.dataset.timerId);
+    });
+
+    tab.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectTimer(tab.dataset.timerId);
+      }
+    });
+
+    tab.addEventListener('dblclick', (event) => {
+      if (event.target.closest('[data-close-timer]')) return;
+      selectTimer(tab.dataset.timerId, { expand: true });
+    });
+  });
+
+  document.querySelectorAll('[data-close-timer]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      closeTimer(button.dataset.closeTimer);
+    });
+  });
+
+  tabScrollButtons.forEach((button) => {
+    const direction = button.dataset.scrollTabs === 'next' ? 1 : -1;
+
+    button.addEventListener('pointerenter', () => {
+      startHoverScroll(direction, button);
+    });
+
+    button.addEventListener('pointerleave', stopHoverScroll);
+    button.addEventListener('pointercancel', stopHoverScroll);
+
+    button.addEventListener('click', () => {
+      stopHoverScroll();
+      snapToAdjacentTab(direction);
+    });
+  });
+
+  settingsButton?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleSettingsMenu();
+  });
+
+  homeButton?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (settingsPhase === 'closed') openSettingsMenu('home');
+    else if (settingsView !== 'home') transitionSettingsView('home');
+    else closeSettingsMenu();
+  });
+
+  homePauseButton?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const actions = availableActions();
+    if (actions.localPause) invokeCanonicalCommand(TIMER_COMMANDS.LOCAL_PAUSE);
+    else if (actions.localResume) invokeCanonicalCommand(TIMER_COMMANDS.LOCAL_RESUME);
+    else if (actions.resume) invokeCanonicalCommand(TIMER_COMMANDS.RESUME);
+  });
+
+  contextSearch?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const query = contextQuery?.value.trim().toLowerCase();
+    if (!query) return;
+    const match = Object.keys(timers).find((id) => id.toLowerCase() === query || timers[id].label.toLowerCase() === query);
+    if (!match) {
+      if (searchStatus) searchStatus.textContent = 'No matching open context yet.';
+      return;
+    }
+    if (searchStatus) searchStatus.textContent = `Opening ${timers[match].label}…`;
+    selectTimer(match);
+    setTimeout(() => closeSettingsMenu({ restoreFocus: false }), 180);
+  });
+
+  settingsMenu?.addEventListener('click', (event) => {
+    if (event.target.closest('[data-settings-close]')) { closeSettingsMenu(); return; }
+    const target = event.target.closest('[data-view-target]');
+    if (target?.dataset.viewTarget) { transitionSettingsView(target.dataset.viewTarget); return; }
+    if (event.target.closest('[data-settings-back]')) { transitionSettingsView(settingsBack?.dataset.backTo || 'home'); return; }
+
+    const prefTheme = event.target.closest('[data-pref-theme]');
+    if (prefTheme) { companionTheme = prefTheme.dataset.prefTheme; emitPresentationPreference('theme', companionTheme); updateMappedSurface(); return; }
+    const prefSurface = event.target.closest('[data-pref-surface]');
+    if (prefSurface) { companionSurface = prefSurface.dataset.prefSurface; emitPresentationPreference('surface', companionSurface); updateMappedSurface(); return; }
+    const prefSite = event.target.closest('[data-pref-site]');
+    if (prefSite) { squareCoilTheme = prefSite.dataset.prefSite; emitPresentationPreference('site', squareCoilTheme); updateMappedSurface(); return; }
+
+    if (event.target.closest('[data-save-limits]')) {
+      const values = {};
+      document.querySelectorAll('[data-limit]').forEach(input => { values[input.dataset.limit] = Number(input.value); });
+      const status = document.querySelector('[data-limit-status]');
+      const valid = ['yellow','orange','red'].every(key => Number.isInteger(values[key]) && values[key] >= 1) && values.yellow <= values.orange && values.orange <= values.red;
+      if (!valid) {
+        if (status) { status.textContent = 'Use whole minutes with Yellow ≤ Orange ≤ Red.'; status.className='settings-form-status is-error'; }
+      } else {
+        timerLimits = values; coreRevision += 1;
+        if (status) { status.textContent = `Saved at revision ${coreRevision}.`; status.className='settings-form-status is-good'; }
+        render();
+      }
+      return;
+    }
+    if (event.target.closest('[data-reset-limits]')) {
+      timerLimits = { yellow:60, orange:120, red:240 };
+      document.querySelectorAll('[data-limit]').forEach(input => { input.value = timerLimits[input.dataset.limit]; });
+      const status=document.querySelector('[data-limit-status]'); if(status){status.textContent='Defaults restored.';status.className='settings-form-status is-good';}
+      render(); return;
+    }
+    if (event.target.closest('[data-verify-bridge]')) {
+      const status=document.querySelector('[data-verify-status]');
+      if(status){status.textContent='Verifying audited SquareCoil state…';status.className='settings-form-status';}
+      bridgeReason='verification-in-flight'; updateMappedSurface();
+      setTimeout(()=>{bridgeCapability='FULL';bridgeReason='verified';coreRevision+=1;if(status){status.textContent=`Verified. Read model revision ${coreRevision}.`;status.className='settings-form-status is-good';}updateMappedSurface();},650);
+      return;
+    }
+
+    const select = event.target.closest('[data-select-context]');
+    if (select) { selectTimer(select.dataset.selectContext); transitionSettingsView('home'); return; }
+    const open = event.target.closest('[data-open-squarecoil]');
+    if (open) {
+      const item=timers[open.dataset.openSquarecoil];
+      if(item?.projectId && /^[1-9]\d*$/.test(item.projectId)) window.open(`https://ussignandmill.squarecoil.net/project.php?id=${encodeURIComponent(item.projectId)}`,'_blank','noopener');
+      return;
+    }
+    const tabToggle = event.target.closest('[data-toggle-tab]');
+    if (tabToggle) {
+      const id=tabToggle.dataset.toggleTab;
+      if(!archivedTabs.has(id)) {
+        if(hiddenTabs.has(id)) hiddenTabs.delete(id); else hiddenTabs.add(id);
+        const tab=document.querySelector(`[data-timer-id="${id}"]`);
+        if(tab) tab.hidden = hiddenTabs.has(id) && id !== operationalId && id !== activeId;
+        updateMappedSurface(); updateTabScrollButtons();
+      }
+      return;
+    }
+    const archive=event.target.closest('[data-archive-context]');
+    if(archive){const id=archive.dataset.archiveContext;if(archivedTabs.has(id)){retrackContext(id);selectTimer(id);}else retireContext(id);return;}
+    const reclock=event.target.closest('[data-reclock-context]');
+    if(reclock){clockIntoContext(reclock.dataset.reclockContext);transitionSettingsView('home');return;}
+  });
+
+  document.addEventListener('click' , (event) => {
+    if (!settingsMenu?.hidden && !settingsMenu.contains(event.target) &&
+        !settingsButton?.contains(event.target) && !homeButton?.contains(event.target)) {
+      closeSettingsMenu({ restoreFocus: false });
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !settingsMenu?.hidden) {
+      event.preventDefault();
+      closeSettingsMenu();
+    }
+  });
+
+
+
+  widget?.addEventListener('click', (event) => {
+    const canonical = event.target.closest('[data-canonical-command]');
+    if (canonical) { event.stopPropagation(); invokeCanonicalCommand(canonical.dataset.canonicalCommand); return; }
+    if (event.target.closest('[data-view-operational]')) { selectTimer(operationalId, { expand: true }); return; }
+  });
+
+  settingsMenu?.addEventListener('submit', (event) => {
+    const form = event.target.closest('[data-support-form]');
+    if (!form) return;
+    event.preventDefault();
+    const details = new FormData(form);
+    const body = String(details.get('details') || '').trim();
+    const subject = String(details.get('subject') || (form.dataset.supportForm === 'feedback' ? 'SquareCoil Companion feedback' : 'SquareCoil Companion support')).trim();
+    const status = form.querySelector('[data-support-status]');
+    if (!body || (form.dataset.supportForm === 'ticket' && !subject)) {
+      if(status){status.textContent='Add the required details first.';status.className='settings-form-status is-error';}
+      return;
+    }
+    const diagnostics = details.get('diagnostics') ? `\n\nDiagnostics (privacy-safe preview):\nbranch=codex/implement-squarecoil-native-completion-observation\nrevision=${coreRevision}\nauthority=${authorityDisposition}\nbridge=${bridgeCapability}/${bridgeReason}\nworkdayZone=${workdayZone}` : '';
+    const category = details.get('category') ? `[${details.get('category')}] ` : '';
+    const href = `mailto:cristian@ussignandmill.com?subject=${encodeURIComponent(category + subject)}&body=${encodeURIComponent(body + diagnostics)}`;
+    if(status){status.textContent='Email draft prepared. Nothing was sent automatically.';status.className='settings-form-status is-good';}
+    form.dataset.preparedMailto = href;
+  });
+
+  tabsRail?.addEventListener('scroll', () => { updateTabScrollButtons(); render(); }, { passive: true });
+  window.addEventListener('resize', () => { updateTabScrollButtons(); render(); });
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (companionTheme === 'auto') updateMappedSurface(); });
+
+  window.setInterval(() => {
+    const timer = operationalTimer();
+    const accruing = ['RUNNING','RUNNING_PROVISIONAL'].includes(operationalStatus);
+    if (timer && accruing) {
+      timer.elapsed += 1;
+      timer.running = true;
+      currentSessionSeconds += 1;
+      timer.lastRecordedActivityAtMs = Date.now();
+    } else if (timer) timer.running = false;
+    render();
+  }, 1000);
+
+  render();
+  updateTabScrollButtons();
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    setExpanded(true);
+  } else {
+    autoExpandTimer = window.setTimeout(() => setExpanded(true), 620);
+  }
+})();
+
+</script>
+</body>
+</html>
