@@ -1,47 +1,45 @@
 # Repository organization audit
 
-This repository contains 163 tracked files across the active SquareCoil extension, CI, documentation, release artifacts, restore notes, build tooling, and legacy Tampermonkey history. The recommended repository name is **squarecoil-companion**. The current name, **test_repo**, does not describe the product or its Chrome/Edge extension role.
+The product is **SquareCoil Companion**, a Chrome/Edge Manifest V3 extension. The recommended GitHub repository name is `squarecoil-companion`; the GitHub repository is still named `test_repo`.
 
-## Canonical project
+Inventory on 2026-09-30: 166 tracked files: 18 extension files, 8 workflow files, 118 Tampermonkey files, 14 script files, 3 package files, 3 restore-point files, this audit, and the root README. These counts describe the current tree, not progress toward a finished extension.
 
-The maintained browser extension lives at:
+## Active source
 
-- `browser-extension/squarecoil-companion/`
-
-Treat this directory as the source of truth for the Manifest V3 Chrome and Edge extension. Its manifest, release metadata, background worker, content controller, page runtime, popup, styles, and tests belong to the active extension.
-
-Read these before changing behavior:
-
-1. `browser-extension/squarecoil-companion/HANDOFF.md`
-2. `browser-extension/squarecoil-companion/CURRENT.md`
-3. `browser-extension/squarecoil-companion/CHROME-INTERACTION-DIAGNOSIS.md`
-
-## Inventory
-
-| Path | Classification | Guidance |
+| Path | Status | Action |
 | --- | --- | --- |
-| `browser-extension/squarecoil-companion/` | Canonical | Keep as the maintained Chrome/Edge MV3 project. |
-| `.github/workflows/squarecoil-extension-validate.yml` | Canonical CI | Keep; it validates and packages the extension. |
-| `docs/` | Canonical documentation | Keep architecture, current-state, and audit notes here. |
-| `packages/` | Release artifacts | Keep only reproducible, named packages and checksums. Prefer GitHub Releases for future binaries. |
-| `restore-points/` | Recovery documentation | Keep short rollback notes; do not add active implementation here. |
-| `tampermonkey/` | Legacy/compatibility | Keep as migration material. Put versioned and duplicate copies under `tampermonkey/archive/`. |
-| `scripts/` | Mixed tooling | Keep build/validation/migration scripts; archive or remove unreferenced one-off patches and `.tmp` files after reference checks. |
+| `browser-extension/squarecoil-companion/` | Canonical MV3 extension | Develop and release from here. Its manifest, background worker, content controller, page runtime, popup, CSS, and release metadata are the active implementation. |
+| `.github/workflows/squarecoil-extension-validate.yml` | Active CI | Keep. It checks JavaScript and manifest references, then packages the extension for Chrome and Edge. |
+| `browser-extension/squarecoil-companion/HANDOFF.md`, `CURRENT.md`, `CHROME-INTERACTION-DIAGNOSIS.md` | Active maintainer context | Read before changing timer authority, injection, or theme behavior. `CURRENT.md` says v0.7.1; the extension README still opens with v0.7.0 and needs a documentation refresh. |
 
-## Recommended cleanup order
+The extension currently has no tracked test directory; CI performs syntax, manifest, and package checks. A file named `tampermonkey/SquareCoil-Job-Timer-v1.1.2.user.js` has the same blob as `browser-extension/squarecoil-companion/page/timer-runtime.js`. That historical copy does not make the userscript tree an active extension source.
 
-1. Rename the GitHub repository to `squarecoil-companion`.
-2. Keep `browser-extension/squarecoil-companion/` as the only active implementation root.
-3. Add a short README to `tampermonkey/` identifying it as legacy compatibility material.
-4. Archive or remove unreferenced patch inputs after checking workflow references.
-5. Store release ZIPs in GitHub Releases when possible; keep checksums or small manifests in the repository.
-6. Keep restore points and migration notes labeled with dates and release targets.
+## Prototype reference material
 
-## Scope decisions
+Everything under `tampermonkey/` is **legacy prototype work formatted for Tampermonkey**. It is a source of product ideas and behavior examples, not an installable compatibility product or code ready to ship in MV3. Do not run a prototype timer alongside the extension.
 
-- Do not merge Tampermonkey history into the extension source.
-- Do not treat package ZIPs as source.
-- Do not delete historical scripts or restore points until references are checked.
-- Do not change timer authority, permissions, or website behavior as part of repository organization.
+| Prototype family | Relevance to a future extension | Disposition |
+| --- | --- | --- |
+| `SquareCoil-Job-Timer-*.user.js` | Timer behavior reference; much of the timer concept already exists in the extension. | Compare requirements against current extension, then reimplement only missing behavior within its timer architecture. |
+| `US-Sign-Project-Scope-Workspace*`, `US-Sign-Scope-*`, `US-Sign-Description-File-Path-Tools*` | Candidate SquareCoil workflow features. | Inventory user-visible actions and permissions before choosing what to port. |
+| `US-Sign-Design-Job-Tools*`, `US-Sign-Optimized-Design-Tools*`, `tampermonkey/design-v4.1/`, `tampermonkey/modules/` | Candidate design workflow reference and intermediate prototype source. | Consolidate behavior requirements; do not treat assembled userscripts or fragments as production modules. |
+| `US-Sign-Full-UI-Theme*`, `US-Sign-UI-Runtime-Fixes*`, `US-Sign-Menu-Cleanup*`, `US-Sign-Sticky-Project-Rail*`, `US-Sign-Optimized-Theme*`, `tampermonkey/assets/` | Visual and navigation experiments. | Compare against the extension's existing themes, keep useful design assets, and rebuild scoped behavior as extension CSS/content code. |
+| `ChatGPT-US-Sign-*`, `Adobe-Acrobat-US-Sign-Colors.user.js` | Separate-site experiments, outside the current SquareCoil extension scope. | Park unless the product scope explicitly expands to those sites. |
+| `US-Sign-Install-Test-2.user.js`, old numbered copies, and `tampermonkey/archive/` | Historical or experimental snapshots. | Preserve for traceability; not a port target by default. |
 
-Last audited: 2026-09-30.
+There are exact duplicate blobs among versioned and unversioned userscripts, including Design Job Tools v4.1.11, Scope of Work File Tools v2.6.2, Project Scope Workspace v1.2.8, and UI Runtime Fixes v3.1.6. Resolve which snapshot best represents each feature before porting. Keep historical versions in Git; physical moves can follow a reference check.
+
+## Legacy automation and artifacts
+
+| Path | Status | Action |
+| --- | --- | --- |
+| Seven workflows in `.github/workflows/` other than `squarecoil-extension-validate.yml` | Prototype builders/patchers | Their push triggers have been removed; they are manual-only so ordinary extension/docs pushes cannot rebuild and commit userscripts. Retain for reproducibility until prototype extraction is complete. |
+| `scripts/` | Historical Tampermonkey packaging, optimization, and patch scripts | No current extension build depends on them. Keep with the prototype archive, then retire after checking remaining workflow references. The `.tmp` patch inputs are historical. |
+| `packages/US-Sign-Tampermonkey-Package-2026-08-14.*` | Historical userscript ZIP/checksum | Preserve for provenance; do not present as a Companion extension package. |
+| `restore-points/` | Historical rollback notes | Retain as documentation, not active source. |
+
+## Porting rule
+
+For each prototype feature, first record its user-visible behavior and whether the extension already covers it. Then design it for MV3: background/content/page responsibilities, host permissions, content security policy, storage, and tests. Preserve SquareCoil as the authority for the real company clock. Rebuild useful features in `browser-extension/squarecoil-companion/` rather than copying Tampermonkey wrappers or installing parallel userscripts.
+
+Next organizational steps: rename the GitHub repository; document feature-by-feature port decisions; refresh the extension README's release version; and only then archive or remove unreferenced prototype build files. No historical source has been deleted.
