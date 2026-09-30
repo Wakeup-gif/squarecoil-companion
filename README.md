@@ -15,10 +15,10 @@ Start with:
 
 - `browser-extension/squarecoil-companion/` — active Chrome/Edge extension
 - `.github/workflows/` — validation and packaging workflows
+- `docs/` — project and repository documentation
 - `packages/` — historical release artifacts and checksums
 - `restore-points/` — rollback notes
 - `tampermonkey/` — legacy userscripts and migration history
 - `scripts/` — build, validation, and migration tooling
-- `kindle-jailbreak-prep/` — unrelated material slated for separation
 
 The repository is currently named `test_repo`; `squarecoil-companion` is the recommended GitHub name.
