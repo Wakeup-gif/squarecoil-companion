@@ -1,10 +1,10 @@
 # US Sign SquareCoil Companion
 
-Current stable package: **v0.7.0 Dual Browser + Glass**.
+Current stable package: **v0.7.1 Chrome Interaction Recovery**. See [CURRENT.md](CURRENT.md) for the recovery details.
 
 The Companion is one Manifest V3 codebase packaged and validated for both Microsoft Edge and Google Chrome. It augments the internal US Sign & Mill SquareCoil site with the Job Timer workspace and optional website themes while keeping SquareCoil authoritative for the real company clock.
 
-## What v0.7.0 contains
+## What the current extension contains
 
 - Job Timer Light, Dark, and Auto appearance modes.
 - Job Timer **Solid** or **Glass / Blur** panel finish. Solid remains the default so an update does not silently change the user's existing visual density.
@@ -20,7 +20,7 @@ The Companion is one Manifest V3 codebase packaged and validated for both Micros
 
 ### Microsoft Edge
 
-1. Extract `SquareCoil-Companion-v0.7.0-EDGE.zip`.
+1. Extract `SquareCoil-Companion-v0.7.1-EDGE.zip`.
 2. Open `edge://extensions`.
 3. Enable Developer mode.
 4. Choose **Load unpacked**.
@@ -28,7 +28,7 @@ The Companion is one Manifest V3 codebase packaged and validated for both Micros
 
 ### Google Chrome
 
-1. Extract `SquareCoil-Companion-v0.7.0-CHROME.zip`.
+1. Extract `SquareCoil-Companion-v0.7.1-CHROME.zip`.
 2. Open `chrome://extensions`.
 3. Enable Developer mode.
 4. Choose **Load unpacked**.
@@ -59,8 +59,8 @@ SquareCoil remains authoritative for clock-in, project/department switching, and
 
 Developer-mode installs must be reloaded after replacing files. Future Edge Add-ons and Chrome Web Store publication can use the same MV3 source, but store URLs are intentionally `null` until actual listings exist. `release.json` is informational metadata and remote JavaScript is never executed.
 
-## Tampermonkey coexistence
+## Legacy prototype scripts
 
-During migration, ensure there is not a separately enabled historical `SquareCoil Job Timer Manager` userscript creating a second runtime. The extension detects an existing timer root/global and avoids injecting a second timer engine, but individually installed old userscripts can still create their own listeners or UI.
+The files in `tampermonkey/` are historical prototypes, not a supported parallel runtime. Disable old timer userscripts when testing the extension so their listeners and UI cannot conflict. Rebuild selected prototype features as Manifest V3 extension code after recording their behavior; see [the repository audit](../../docs/REPOSITORY-AUDIT.md).
 
 For full project continuity, read **HANDOFF.md before changing behavior**.
