@@ -22,17 +22,17 @@ const { createDefaultAuthorityKernel } = require('./authority-kernel');
 const { createNativeCompletionObserver } = require('./native-completion-observer');
 const { createAuthorityUpdateTransport } = require('./authority-update-transport');
 const { createWallpaperProvider } = require('./wallpaper-provider');
+const BING_PERMISSION_ORIGIN = 'https://www.bing.com/*';
 
 const BOOT_MESSAGE = 'SC_COMPANION_BOOT';
 const HEALTH_MESSAGE = 'SC_COMPANION_GET_HEALTH';
 const ENABLE_MESSAGE = 'SC_COMPANION_SET_ENABLED';
 const REVALIDATE_MESSAGE = 'SC_COMPANION_REVALIDATE';
 const RETRY_TEARDOWN_MESSAGE = 'SC_COMPANION_RETRY_TEARDOWN';
-const B5B_REMOVE_PERMISSION_MESSAGE = 'SC_COMPANION_B5B_REMOVE_PERMISSION';
+const B5B_CLEAR_WALLPAPER_MESSAGE = 'SC_COMPANION_B5B_CLEAR_WALLPAPER';
 const B5B_PERMISSION_CHANGED_MESSAGE = 'SC_COMPANION_B5B_PERMISSION_CHANGED';
 const B5B_WALLPAPER_MESSAGE = 'SC_COMPANION_B5B_GET_WALLPAPER';
 const B5B_ACK_MESSAGE = 'SC_COMPANION_B5B_ACK';
-const BING_PERMISSION_ORIGIN = 'https://www.bing.com/*';
 const PERSISTENCE_PROBE_KEY = '__scCompanionB1PersistenceProbe';
 const EXPECTED_B1_DEGRADED_REASON = 'coordination-not-implemented-b1';
 const B2_SETTLEMENT_CONTROL_TIMEOUT_MS = 20_000;
@@ -56,7 +56,16 @@ async function notifySupportedTabsOfBingPermissionChange() {
 
 if (typeof chrome.permissions?.onAdded?.addListener === 'function') {
   chrome.permissions.onAdded.addListener(change => {
-    if (includesBingPermission(change)) void notifySupportedTabsOfBingPermissionChange();
+    if (includesBingPermission(change)) {
+      void notifySupportedTabsOfBingPermissionChange();
+    }
+  });
+}
+if (typeof chrome.permissions?.onRemoved?.addListener === 'function') {
+  chrome.permissions.onRemoved.addListener(change => {
+    if (includesBingPermission(change)) {
+      void notifySupportedTabsOfBingPermissionChange();
+    }
   });
 }
 
@@ -1537,8 +1546,15 @@ async function handleB5BPresentation(request, message) {
     return b5bAcknowledgment(message, { ok: false, reason: 'request-id-invalid' });
   }
   if (!wallpaperProvider) return b5bAcknowledgment(message, { ok: false, reason: 'wallpaper-provider-unavailable' });
-  if (message.type === B5B_REMOVE_PERMISSION_MESSAGE) return b5bAcknowledgment(message, await wallpaperProvider.removePermission());
-  if (message.type === B5B_WALLPAPER_MESSAGE) return b5bAcknowledgment(message, await wallpaperProvider.getWallpaper());
+  if (message.type === B5B_CLEAR_WALLPAPER_MESSAGE) {
+    return b5bAcknowledgment(message, await wallpaperProvider.clearWallpaper());
+  }
+  if (message.type === B5B_WALLPAPER_MESSAGE) {
+    if (!['SLEEK_DARK', 'LIGHT_GLASS'].includes(message.websiteTheme)) {
+      return b5bAcknowledgment(message, { ok: false, reason: 'glass-theme-required' });
+    }
+    return b5bAcknowledgment(message, await wallpaperProvider.getWallpaper());
+  }
   return b5bAcknowledgment(message, { ok: false, reason: 'message-type-unsupported' });
 }
 
@@ -1567,7 +1583,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === ENABLE_MESSAGE) task = setPageEnabled(request, message.enabled !== false);
   if (message?.type === REVALIDATE_MESSAGE) task = revalidatePage(request);
   if (message?.type === RETRY_TEARDOWN_MESSAGE) task = retryTeardown(request);
-  if ([B5B_REMOVE_PERMISSION_MESSAGE, B5B_WALLPAPER_MESSAGE].includes(message?.type)) {
+  if ([B5B_CLEAR_WALLPAPER_MESSAGE, B5B_WALLPAPER_MESSAGE].includes(message?.type)) {
     task = handleB5BPresentation(request, message);
   }
   if (isAuthorityMessageType(message?.type)) task = handleAuthorityMessage(request, message);
@@ -1583,7 +1599,7 @@ module.exports = {
   ENABLE_MESSAGE,
   REVALIDATE_MESSAGE,
   RETRY_TEARDOWN_MESSAGE,
-  B5B_REMOVE_PERMISSION_MESSAGE,
+  B5B_CLEAR_WALLPAPER_MESSAGE,
   B5B_PERMISSION_CHANGED_MESSAGE,
   B5B_WALLPAPER_MESSAGE,
   B5B_ACK_MESSAGE,

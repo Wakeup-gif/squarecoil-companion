@@ -6,6 +6,7 @@ const { execFileSync } = require('child_process');
 const { BUILD_ID, BUILD_STAGE } = require('../src/core/build-identity');
 const { computeCandidateFingerprint } = require('./candidate-identity');
 const { PACKAGE_FILES, CANDIDATE_EMBEDDED_BUNDLES } = require('./package-inventory');
+const { validateManifestPolicy } = require('./manifest-policy');
 
 const root = path.resolve(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
@@ -18,13 +19,14 @@ function assert(condition, message) {
 }
 
 assert(manifest.manifest_version === 3, 'manifest_version must be 3');
+validateManifestPolicy(manifest);
 assert(manifest.version === release.latestVersion, `manifest version ${manifest.version} must match release metadata ${release.latestVersion}`);
 assert(manifest.version === packageMetadata.version, `manifest version ${manifest.version} must match package metadata ${packageMetadata.version}`);
 assert(BUILD_ID === 'rebuild-b6-release-candidate', 'B6 build ID must identify the exact release-candidate gate');
 assert(BUILD_STAGE === 'B6', 'B6 release-candidate stage must remain explicit');
 assert(JSON.stringify(manifest.permissions || []) === JSON.stringify(['storage', 'scripting', 'webRequest']), 'B6 core permissions must preserve storage + scripting + passive webRequest observation only');
-assert(JSON.stringify(manifest.host_permissions || []) === JSON.stringify(['https://ussignandmill.squarecoil.net/*']), 'Rebuild host permission must remain limited to the exact SquareCoil tenant');
-assert(JSON.stringify(manifest.optional_host_permissions || []) === JSON.stringify(['https://www.bing.com/*']), 'B5-B may request only the exact optional Bing image origin');
+assert(JSON.stringify(manifest.host_permissions || []) === JSON.stringify(['https://ussignandmill.squarecoil.net/*', 'https://www.bing.com/*']), 'Host permissions must include only the exact SquareCoil tenant and Bing image origin');
+assert(!Object.hasOwn(manifest, 'optional_host_permissions'), 'Bing access must be declared at installation, with no optional host permissions');
 assert(JSON.stringify(manifest.web_accessible_resources || []) === JSON.stringify([{
   resources: ['dist/themes/dark-glass.css', 'dist/themes/light-glass.css'],
   matches: ['https://ussignandmill.squarecoil.net/*']
@@ -516,7 +518,7 @@ assert(contentBundle.includes('LIGHT_GLASS') && contentBundle.includes('REFINED_
 assert(contentBundle.includes('No recent jobs yet'), 'The isolated bundle must package the useful zero-history workspace');
 assert(!contentBundle.includes('<small>B6 release candidate</small>'), 'The primary workspace must not expose an internal stage label');
 assert(contentBundle.includes('src/presentation/cinematic-background.js'), 'B5-B isolated bundle must package the fenced cinematic service');
-assert(contentBundle.includes('src/presentation/dashboard-profile.js'), 'B5-B isolated bundle must package the exact-route dashboard profile');
+assert(contentBundle.includes('src/presentation/dashboard-profile.js'), 'B5-B isolated bundle must package the exact-route Design Dashboard profile');
 assert(background.includes('src/extension/wallpaper-provider.js'), 'B5-B worker must package the privacy-bounded wallpaper provider');
 assert(!contentBundle.includes('src/preferences/preferences-command.js'), 'The isolated content bundle must not package the authoritative preference writer');
 assert(background.includes('src/preferences/preferences-command.js'), 'The worker bundle must package the authoritative preference writer');
@@ -528,7 +530,7 @@ assert(companionBundle.includes('coordination-not-implemented-b1'), 'Final B2 mu
 const serializedManifest = JSON.stringify(manifest);
 assert(!serializedManifest.includes('raw.githubusercontent.com'), 'B1 manifest should not request raw GitHub host permission');
 assert(!serializedManifest.includes('i.imgur.com'), 'B1 manifest should not request image host permission');
-assert(!JSON.stringify(manifest.host_permissions || []).includes('bing.com'), 'B5-B Bing access must never be a mandatory host permission');
+assert(generatedBundles.every(bundle => !/\bpermissions\s*(?:\.|\?\.)\s*(?:request|remove)\s*(?:\?\.)?\s*\(/.test(bundle)), 'Built-in Bing backgrounds must not request or remove host access at runtime');
 
 console.log(`B6 release-candidate validation passed for SquareCoil Companion v${manifest.version}`);
 console.log(`Canonical build identity: ${BUILD_ID} (${BUILD_STAGE}).`);

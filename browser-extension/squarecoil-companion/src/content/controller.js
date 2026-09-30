@@ -18,12 +18,13 @@ const { createTrustedTransitionCore } = require('./trusted-transition-core');
 const { createThemeService } = require('../presentation/theme-service');
 const { createCinematicBackground } = require('../presentation/cinematic-background');
 const { createDashboardProfile } = require('../presentation/dashboard-profile');
+const { createAnalyticsDashboard } = require('../presentation/analytics-dashboard');
 
 const DEFAULTS = Object.freeze({ timerEnabled: true });
 const BOOT_MESSAGE = 'SC_COMPANION_BOOT';
 const ENABLE_MESSAGE = 'SC_COMPANION_SET_ENABLED';
 const REVALIDATE_MESSAGE = 'SC_COMPANION_REVALIDATE';
-const B5B_REMOVE_PERMISSION_MESSAGE = 'SC_COMPANION_B5B_REMOVE_PERMISSION';
+const B5B_CLEAR_WALLPAPER_MESSAGE = 'SC_COMPANION_B5B_CLEAR_WALLPAPER';
 const B5B_PERMISSION_CHANGED_MESSAGE = 'SC_COMPANION_B5B_PERMISSION_CHANGED';
 const B5B_WALLPAPER_MESSAGE = 'SC_COMPANION_B5B_GET_WALLPAPER';
 const B5B_ACK_MESSAGE = 'SC_COMPANION_B5B_ACK';
@@ -45,7 +46,8 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
   let trustedCore = null;
   let themeService = null;
   let cinematicService = null;
-  let dashboardProfile = null;
+  let designDashboardProfile = null;
+  let analyticsService = null;
   let authorityCoreSync = Promise.resolve();
   let b2SettlementRefresh = null;
   let settingChangeQueue = Promise.resolve();
@@ -132,28 +134,54 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
       fetchWallpaper: request => sendB5B(B5B_WALLPAPER_MESSAGE, { websiteTheme: request?.websiteTheme }),
       onChange: value => setDataset('squarecoilCompanionCinematic', value.state)
     });
-    if (!dashboardProfile) dashboardProfile = createDashboardProfile({ document, window });
+    if (!designDashboardProfile) designDashboardProfile = createDashboardProfile({ document, window });
+    if (!analyticsService) analyticsService = createAnalyticsDashboard({
+      document,
+      window,
+      getSnapshot: view => {
+        if (!trustedCore) throw new Error('analytics-source-unavailable');
+        return trustedCore.analyticsSnapshot(view);
+      },
+      onDisable: () => {
+        if (!trustedCore) throw new Error('analytics-source-unavailable');
+        const preferences = trustedCore.snapshot().preferences;
+        return trustedCore.preferenceCommand({ dashboardEnabled: false }, preferences.preferenceRevision);
+      },
+      onDataAction: async (action, contextId) => {
+        const core = trustedCore;
+        if (!core) throw new Error('analytics-source-unavailable');
+        const type = action === 'archive' ? 'DATA_ARCHIVE_CONTEXT' : action === 'restore' ? 'DATA_RESTORE_ARCHIVED' : null;
+        if (!type) throw new Error('analytics-action-unsupported');
+        const plan = await core.stageDataAction(type, { contextId, ...(action === 'archive' ? { atMs: Date.now() } : {}) });
+        // Any future destructive or otherwise confirmed command stays with the
+        // existing Companion data-review flow. The dashboard never invents a token.
+        if (trustedCore !== core || plan.blocked || plan.requiredConfirmations?.length) throw new Error('analytics-action-review-required');
+        return core.commitDataAction(plan.planId, { confirmationTokens: [] });
+      }
+    });
     return Object.freeze({
-      apply(preferences, basePresentation, summary) {
-        return Object.freeze({
-          cinematic: cinematicService.apply(preferences, basePresentation),
-          dashboard: dashboardProfile.apply(preferences, basePresentation, summary)
-        });
+      apply(preferences, basePresentation, timerHint) {
+        let analytics;
+        let dashboard;
+        try { dashboard = designDashboardProfile.apply(preferences, basePresentation, designDashboardSummary(timerHint)); }
+        catch (_) { dashboard = { state: 'PARTIAL_SAFE', reason: 'presentation-unavailable', ownedLayerCount: 0 }; }
+        try { analytics = analyticsService.apply(preferences, basePresentation, timerHint); }
+        catch (_) { analytics = { state: 'UNAVAILABLE', reason: 'presentation-unavailable', ownedRootCount: 0 }; }
+        return Object.freeze({ cinematic: cinematicService.apply(preferences, basePresentation), dashboard, analytics });
       }
     });
   }
 
-  function dashboardSummary(current) {
-    const timer = current?.timer || null;
+  function designDashboardSummary(timer) {
     if (!timer) return Object.freeze({ currentLabel: null, todayMs: 0, weekMs: 0, sessionMs: 0, recent: [] });
     const rows = Array.isArray(timer.contextRows) ? timer.contextRows : [];
-    const active = rows.find(row => row.contextId === timer.currentContextId) || null;
+    const current = rows.find(row => row.contextId === timer.currentContextId) || null;
     return Object.freeze({
-      currentLabel: active?.label ? String(active.label).slice(0, 160) : null,
+      currentLabel: current?.label ? String(current.label).slice(0, 160) : null,
       todayMs: Number(timer.todayTotalMs) || 0,
       weekMs: Number(timer.weekTotalMs) || 0,
       sessionMs: Number(timer.running?.elapsedMs) || 0,
-      recent: Object.freeze(rows.slice().sort((left, right) => Number(right.lastSeenAtMs || 0) - Number(left.lastSeenAtMs || 0))
+      recent: Object.freeze(rows.slice().sort((a, b) => Number(b.lastSeenAtMs || 0) - Number(a.lastSeenAtMs || 0))
         .slice(0, 3).map(row => Object.freeze({ label: String(row.label || '').slice(0, 160) })))
     });
   }
@@ -163,7 +191,7 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
     let presentation = null;
     try {
       const base = ensureThemeService().apply(current.preferences);
-      presentation = { ...base, optional: ensureOptionalPresentation().apply(current.preferences, base, dashboardSummary(current)) };
+      presentation = { ...base, optional: ensureOptionalPresentation().apply(current.preferences, base, current.timer) };
     }
     catch (_) { presentation = null; }
     return { ...current, presentation };
@@ -275,9 +303,9 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
         if (!trustedCore) throw new Error('trusted-transition-core-unavailable');
         return trustedCore.preferenceCommand(patch, expectedPreferenceRevision);
       },
-      removeCinematicAccess: async () => {
-        const response = await sendB5B(B5B_REMOVE_PERMISSION_MESSAGE);
-        if (cinematicService) void cinematicService.refresh('permission-removed');
+      clearCinematicBackground: async () => {
+        const response = await sendB5B(B5B_CLEAR_WALLPAPER_MESSAGE);
+        if (cinematicService) void cinematicService.refresh('background-cleared');
         return response;
       },
       initializePreferences: async legacyPreferences => {
@@ -617,8 +645,10 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
     themeService = null;
     if (cinematicService) cinematicService.teardown();
     cinematicService = null;
-    if (dashboardProfile) dashboardProfile.teardown();
-    dashboardProfile = null;
+    if (designDashboardProfile) designDashboardProfile.teardown();
+    designDashboardProfile = null;
+    if (analyticsService) analyticsService.teardown();
+    analyticsService = null;
     setDataset('squarecoilCompanionTimerAppearance', null);
     setDataset('squarecoilCompanionPanelFinish', null);
     setDataset('squarecoilCompanionWebsiteTheme', null);

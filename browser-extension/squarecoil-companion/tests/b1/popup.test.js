@@ -590,7 +590,7 @@ test('UT-B5-POPUP-002 raw READY without the exact healthy gate remains Limited',
   assert.equal(document.body.dataset.health, 'attention');
 });
 
-test('UT-B5-POPUP-003 popup requests exact Bing access from its trusted click and refreshes SquareCoil tabs', async () => {
+test('UT-B5-POPUP-003 popup reports existing Bing access without a second consent action', async () => {
   const listeners = new Map(); const nodes = new Map();
   for (const id of ['classification', 'lifecycle', 'reason', 'runtimeId', 'retryCleanup', 'startFresh', 'enabled', 'refresh',
     'version', 'stage', 'friendlyStatus', 'friendlyMessage', 'statusIcon', 'enableWallpaper', 'wallpaperPermission']) {
@@ -604,7 +604,7 @@ test('UT-B5-POPUP-003 popup requests exact Bing access from its trusted click an
     querySelector: selector => selector === '.permission-card' ? permissionCard : null,
     addEventListener: (type, listener) => listeners.set(type, listener)
   };
-  let granted = false; const requests = []; const tabMessages = [];
+  let granted = true; const requests = []; const tabMessages = [];
   const chrome = {
     permissions: {
       contains: async request => { requests.push({ type: 'contains', request }); return granted; },
@@ -625,15 +625,14 @@ test('UT-B5-POPUP-003 popup requests exact Bing access from its trusted click an
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/popup/popup.js'), 'utf8');
   vm.runInNewContext(source, { chrome, document, console }, { filename: 'src/popup/popup.js' });
   await listeners.get('DOMContentLoaded')();
-  assert.equal(permissionCard.dataset.granted, 'false');
-  await nodes.get('enableWallpaper').onclick();
-  assert.equal(JSON.stringify(requests.find(item => item.type === 'request').request), JSON.stringify({ origins: ['https://www.bing.com/*'] }));
+  assert.equal(nodes.get('enableWallpaper').onclick, undefined);
+  assert.equal(requests.some(item => item.type === 'request'), false);
   assert.equal(permissionCard.dataset.granted, 'true');
-  assert.match(nodes.get('wallpaperPermission').textContent, /Allowed for rotating Bing images/);
-  assert.equal(tabMessages.some(item => item.message.type === 'SC_COMPANION_B5B_PERMISSION_CHANGED'), true);
+  assert.match(nodes.get('wallpaperPermission').textContent, /Bing backgrounds are included/);
+  assert.equal(tabMessages.some(item => item.message.type === 'SC_COMPANION_B5B_PERMISSION_CHANGED'), false);
 });
 
-test('UT-B5-POPUP-004 denied Bing access remains permission-required and sends no grant notification', async () => {
+test('UT-B5-POPUP-004 browser-restricted Bing access reports fallback without a runtime setup action', async () => {
   const listeners = new Map(); const nodes = new Map();
   for (const id of ['classification', 'lifecycle', 'reason', 'runtimeId', 'retryCleanup', 'startFresh', 'enabled', 'refresh',
     'version', 'stage', 'friendlyStatus', 'friendlyMessage', 'statusIcon', 'enableWallpaper', 'wallpaperPermission']) {
@@ -661,9 +660,9 @@ test('UT-B5-POPUP-004 denied Bing access remains permission-required and sends n
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/popup/popup.js'), 'utf8');
   vm.runInNewContext(source, { chrome, document, console }, { filename: 'src/popup/popup.js' });
   await listeners.get('DOMContentLoaded')();
-  await nodes.get('enableWallpaper').onclick();
-  assert.equal(requestCalls, 1);
+  assert.equal(nodes.get('enableWallpaper').onclick, undefined);
+  assert.equal(requestCalls, 0);
   assert.equal(permissionCard.dataset.granted, 'false');
-  assert.match(nodes.get('wallpaperPermission').textContent, /Not allowed.*built-in gradient/i);
+  assert.match(nodes.get('wallpaperPermission').textContent, /restricted by the browser.*cached image.*built-in gradient/i);
   assert.equal(messages.some(message => message.type === 'SC_COMPANION_B5B_PERMISSION_CHANGED'), false);
 });

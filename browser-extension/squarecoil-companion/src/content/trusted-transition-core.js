@@ -6,6 +6,7 @@ const AUTHORITY_COMMANDS = Object.freeze({ MIGRATE_V07: 'MIGRATE_V07' });
 const { timerKind, deepClone, deepFreeze, isRecord } = require('../data/model');
 const { TIMER_COMMANDS } = require('../timer/commands');
 const { createTimerReadModel } = require('../timer/read-model');
+const { createAnalyticsSnapshot } = require('../presentation/analytics-data');
 const { createSquareCoilBridgeService } = require('../squarecoil/bridge-service');
 const {
   DATA_COMMAND_TYPES,
@@ -568,6 +569,11 @@ function createTrustedTransitionCore(options = {}) {
     throw new Error('trusted-transition-data-export-unsupported');
   }
 
+  function analyticsSnapshot(view = {}) {
+    if (!authorityDocument || disposed || blocked) throw new Error('analytics-source-unavailable');
+    return createAnalyticsSnapshot(viewDocument(), { ...view, atMs: now() });
+  }
+
   async function stageDataAction(type, values = {}) {
     if (!DATA_COMMAND_TYPES.has(type)) throw new Error('trusted-transition-data-command-unsupported');
     return serialize(async () => {
@@ -674,6 +680,7 @@ function createTrustedTransitionCore(options = {}) {
     snapshot,
     acceptBridgeEvents,
     dataExport,
+    analyticsSnapshot,
     stageDataAction,
     commitDataAction
   });

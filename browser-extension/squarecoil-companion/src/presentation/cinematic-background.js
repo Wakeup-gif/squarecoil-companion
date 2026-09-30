@@ -14,7 +14,7 @@ const CINEMATIC_STATUS = Object.freeze({
   ACTIVE: 'BING_IMAGE_ACTIVE',
   RECENT_CACHE: 'RECENT_CACHED_BING_IMAGE_ACTIVE',
   RETAINED_CACHE: 'OLDER_CACHED_BING_IMAGE_RETAINED',
-  PERMISSION_REQUIRED: 'BING_PERMISSION_REQUIRED',
+  ACCESS_RESTRICTED: 'BING_ACCESS_RESTRICTED',
   RESPONSE_REJECTED: 'BING_RESPONSE_REJECTED',
   NETWORK_UNAVAILABLE: 'NETWORK_UNAVAILABLE',
   GRADIENT_FALLBACK: 'BUILT_IN_GRADIENT_FALLBACK',
@@ -92,7 +92,7 @@ function createCinematicBackground(options = {}) {
   let nextRefreshAtMs = null;
 
   function reasonStatus(value) {
-    if (value === 'optional-origin-permission-required') return CINEMATIC_STATUS.PERMISSION_REQUIRED;
+    if (value === 'bing-origin-access-restricted') return CINEMATIC_STATUS.ACCESS_RESTRICTED;
     if (value === 'bing-response-rejected') return CINEMATIC_STATUS.RESPONSE_REJECTED;
     if (value === 'network-unavailable') return CINEMATIC_STATUS.NETWORK_UNAVAILABLE;
     return null;
@@ -135,10 +135,10 @@ function createCinematicBackground(options = {}) {
     return snapshot();
   }
 
-  function clearTimer() {
+  function clearTimer({ preserveDeadline = false } = {}) {
     if (refreshTimer !== null) window.clearTimeout?.(refreshTimer);
     refreshTimer = null;
-    nextRefreshAtMs = null;
+    if (!preserveDeadline) nextRefreshAtMs = null;
   }
 
   function removeOwned({ retainImage = false } = {}) {
@@ -259,15 +259,18 @@ function createCinematicBackground(options = {}) {
     return true;
   }
 
-  function scheduleRefresh() {
+  function scheduleRefresh({ preserveDeadline = false } = {}) {
+    const deadline = preserveDeadline && nextRefreshAtMs !== null ? nextRefreshAtMs : now() + refreshIntervalMs;
     clearTimer();
-    if (disposed || eligible() || document.hidden === true) return;
-    nextRefreshAtMs = now() + refreshIntervalMs;
+    if (disposed || eligible()) return;
+    nextRefreshAtMs = deadline;
+    // Hidden pages suspend work without forgetting when their image is due.
+    if (document.hidden === true) return;
     refreshTimer = window.setTimeout?.(() => {
       refreshTimer = null;
       nextRefreshAtMs = null;
       if (!disposed && !eligible() && document.hidden !== true) void refresh('scheduled');
-    }, refreshIntervalMs) ?? null;
+    }, Math.max(0, deadline - now())) ?? null;
   }
 
   async function refresh(trigger = 'manual') {
@@ -367,10 +370,10 @@ function createCinematicBackground(options = {}) {
   function onMediaChange() { if (!disposed) { signature = null; apply(preferences, basePresentation); } }
   function onVisibilityChange() {
     if (disposed) return;
-    if (document.hidden === true) clearTimer();
+    if (document.hidden === true) clearTimer({ preserveDeadline: true });
     else if (!eligible()) {
       if (!currentImage || (nextRefreshAtMs !== null && now() >= nextRefreshAtMs)) void refresh('visible');
-      else scheduleRefresh();
+      else scheduleRefresh({ preserveDeadline: true });
     }
   }
   for (const media of [forcedMedia, transparencyMedia, motionMedia]) mediaListener(media, onMediaChange, true);

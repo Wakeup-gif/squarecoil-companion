@@ -1,10 +1,12 @@
 # SquareCoil Companion Rebuild — Current Handoff
 
-Updated: 2026-08-30
-Repository: `Wakeup-gif/test_repo`
-Branch: `codex/squarecoil-b2c-migration`
+**Current work: confirmed prototype integration (September 14, 2026).** The isolated branch is `codex/squarecoil-prototype-integration`, based on `07d6b575a7ac908ecff42d425eb245d58341670e`. The user authorized the exact September 9 Companion UI plus the separate September 7 analytics dashboard, canonical service wiring, themes/Bing setup, and a tested loadable candidate. The current Bing policy is narrow required installation/update host access with no runtime consent request; this supersedes prior optional-host/revocation instructions below. Exact Companion HTML recovery and new candidate acceptance remain open. Prior UI/theme/lab/Figma stabilization evidence below is historical and does not certify this change. See [the integration checkpoint](../docs/PROTOTYPE-INTEGRATION-2026-09-14.md) for current scope and proof.
 
-## Current gate
+Updated: 2026-09-14
+Repository: `Wakeup-gif/test_repo`
+Branch: `codex/squarecoil-prototype-integration`
+
+## Historical accepted gates
 
 - B1 through B2-C: accepted and preserved.
 - B3 Canonical Time Views / Workspace: accepted at exact source commit `e3b369e691df317462bf6ef53cd981f682cca1d2`.

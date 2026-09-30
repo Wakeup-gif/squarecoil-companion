@@ -30,7 +30,7 @@ The static foundation differs from the recursive v2.2.6 dependency only by metad
 | CKEditor chrome and same-origin iframe document styling | theme service bounded iframe scan and owned editor-document style | No false marker on inaccessible frames; remove owned document styles on Native/teardown. |
 | Responsive, reduced-motion, forced-color, reduced-transparency and print rules | authoritative media rules plus effective presentation fallbacks | Accessibility wins without rewriting the durable preference. |
 | Userscript storage/menu commands | fenced Companion Preferences and Settings routes | Dark Glass and Light Glass are integrated choices; no separate background preference. |
-| Userscript enable/disable and native restoration | `ORIGINAL` reconciliation and presentation teardown | Remove markers, style/editor layers, wallpaper hosts, timers/listeners, permission/cache as contracted; never alter SquareCoil business state. |
+| Userscript enable/disable and native restoration | `ORIGINAL` reconciliation and presentation teardown | Remove markers, style/editor layers, wallpaper hosts, timers/listeners, and cache; retain required installation host access and never alter SquareCoil business state. |
 | Document-start execution | fail-open pre-paint bootstrap | Read persisted visual preference without waiting for authority/Bridge/Timer; bounded guard release; later authoritative reconciliation does not remove/re-add an unchanged theme. |
 
 ## Intentional compatibility deviations
@@ -40,7 +40,7 @@ The static foundation differs from the recursive v2.2.6 dependency only by metad
 - The current Bing image response may include the fixed public tuple `w=3840&h=2160&rs=1&c=4`. The provider accepts either no sizing tuple or that exact complete tuple, canonicalizes parameter order, and rejects partial, duplicate, unknown, non-public, or off-origin values.
 - The pinned userscripts do not own the Companion workspace or its cinematic host. The generated extension ports add one print-only rule that excludes those Companion-owned surfaces from native SquareCoil print output; screen rendering and native page content are unchanged.
 - The userscript route helper accepts suffix matches. The extension uses exact pathname classification so an unlisted nested lookalike cannot inherit a route-specific vendor or editor adapter.
-- Browser optional-origin access is requested only from the toolbar popup's direct trusted click. Selecting Glass in the page workspace commits the integrated bundled fallback immediately and does not attempt a worker-mediated permission prompt.
+- Bing access to exactly `https://www.bing.com/*` is a required installation/update capability. Selecting either Glass theme starts the provider with no runtime permission request or extra setup action. Browser restrictions retain safe cache/gradient fallback. Restore Native stops retrieval and clears cache without revoking required host access. See `PROTOTYPE-BING-SETUP-2026-09-14.md` for the superseding September 14 contract, Chrome installation/update implications, and validation limits.
 
 ## Explicit exclusions
 

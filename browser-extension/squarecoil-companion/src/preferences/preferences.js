@@ -10,6 +10,8 @@ const DEFAULT_PREFERENCES = Object.freeze({
   websiteTheme: 'ORIGINAL',
   cinematicBackground: 'NONE',
   dashboardProfile: 'OFF',
+  dashboardEnabled: false,
+  dashboardAppearance: 'SITE',
   yellowMinutes: 60,
   orangeMinutes: 120,
   redMinutes: 240
@@ -63,10 +65,13 @@ function preferenceCandidates(raw) {
   const cinematicBackground = enumValue(first(source, ['cinematicBackground']) ?? first(nested, ['cinematicBackground']), ['NONE', 'CINEMATIC'],
     { OFF: 'NONE', ON: 'CINEMATIC' });
   const dashboardProfile = enumValue(first(source, ['dashboardProfile']) ?? first(nested, ['dashboardProfile']), ['OFF', 'ON']);
+  const dashboardValue = first(source, ['dashboardEnabled']) ?? first(nested, ['dashboardEnabled']);
+  const dashboardEnabled = typeof dashboardValue === 'boolean' ? dashboardValue : null;
+  const dashboardAppearance = enumValue(first(source, ['dashboardAppearance']) ?? first(nested, ['dashboardAppearance']), ['SITE', 'LIGHT', 'DARK']);
   const yellowMinutes = integer(first(source, ['yellowMinutes', 'timerYellowMinutes', 'yellow']) ?? nested.yellow);
   const orangeMinutes = integer(first(source, ['orangeMinutes', 'timerOrangeMinutes', 'orange']) ?? nested.orange);
   const redMinutes = integer(first(source, ['redMinutes', 'timerRedMinutes', 'red']) ?? nested.red);
-  return { timerAppearance, panelFinish, websiteTheme, cinematicBackground, dashboardProfile,
+  return { timerAppearance, panelFinish, websiteTheme, cinematicBackground, dashboardProfile, dashboardEnabled, dashboardAppearance,
     yellowMinutes, orangeMinutes, redMinutes };
 }
 
@@ -91,6 +96,8 @@ function normalizePreferenceSnapshot(raw, options = {}) {
     // translucent surfaces from their background again.
     cinematicBackground: cinematicBackgroundForTheme(websiteTheme),
     dashboardProfile: candidates.dashboardProfile || fallback.dashboardProfile || DEFAULT_PREFERENCES.dashboardProfile,
+    dashboardEnabled: candidates.dashboardEnabled ?? fallback.dashboardEnabled ?? DEFAULT_PREFERENCES.dashboardEnabled,
+    dashboardAppearance: candidates.dashboardAppearance || fallback.dashboardAppearance || DEFAULT_PREFERENCES.dashboardAppearance,
     yellowMinutes: limits.yellowMinutes ?? DEFAULT_PREFERENCES.yellowMinutes,
     orangeMinutes: limits.orangeMinutes ?? DEFAULT_PREFERENCES.orangeMinutes,
     redMinutes: limits.redMinutes ?? DEFAULT_PREFERENCES.redMinutes
@@ -150,7 +157,9 @@ function preferenceStorage(snapshot, revision = snapshot.preferenceRevision) {
     panelFinish: snapshot.panelFinish,
     websiteTheme: snapshot.websiteTheme,
     cinematicBackground,
-    dashboardProfile: snapshot.dashboardProfile,
+    dashboardProfile: snapshot.dashboardProfile || DEFAULT_PREFERENCES.dashboardProfile,
+    dashboardEnabled: snapshot.dashboardEnabled === true,
+    dashboardAppearance: snapshot.dashboardAppearance || DEFAULT_PREFERENCES.dashboardAppearance,
     yellowMinutes: snapshot.yellowMinutes,
     orangeMinutes: snapshot.orangeMinutes,
     redMinutes: snapshot.redMinutes

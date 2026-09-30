@@ -79,27 +79,25 @@ test('UT-B5-CINE-032 wrong origins, ports, protocols, credentials, paths, fragme
   assert.equal(normalizeBingImageUrl('https://www.bing.com/th?id=OHR.CurrentWallpaper_UHD.jpg#fragment'), null);
 });
 
-test('UT-B5-CINE-015 only the toolbar popup can request optional Bing access; removal remains cache-clearing', async () => {
+test('UT-B5-CINE-015 Native clears wallpaper cache without requesting or removing required access', async () => {
   const calls = [];
   const permissions = {
-    async contains(details) { calls.push(['contains', details]); return false; },
+    async contains(details) { calls.push(['contains', details]); return true; },
     async remove(details) { calls.push(['remove', details]); return true; }
   };
   const storage = { async get() { return {}; }, async set() {}, async remove(key) { calls.push(['cache-remove', key]); } };
   const provider = createWallpaperProvider({ permissions, storage, fetch: async () => { throw new Error('unexpected-fetch'); } });
   assert.equal(provider.requestPermission, undefined);
-  assert.deepEqual(await provider.removePermission(), { ok: true, removed: true, cacheCleared: true, reason: null });
+  assert.equal(provider.removePermission, undefined);
+  assert.deepEqual(await provider.clearWallpaper(), { ok: true, cacheCleared: true, reason: null });
   assert.deepEqual(calls, [
-    ['remove', { origins: [BING_ORIGIN_PATTERN] }],
     ['cache-remove', CACHE_KEY]
   ]);
-  const controller = fs.readFileSync(path.join(root, 'src/content/controller.js'), 'utf8');
-  const background = fs.readFileSync(path.join(root, 'src/extension/background-entry.js'), 'utf8');
+  assert.equal(await provider.hasPermission(), true);
+  const providerSource = fs.readFileSync(path.join(root, 'src/extension/wallpaper-provider.js'), 'utf8');
   const popup = fs.readFileSync(path.join(root, 'src/popup/popup.js'), 'utf8');
-  assert.doesNotMatch(controller, /SC_COMPANION_B5B_REQUEST_PERMISSION|permissions\?\.request/);
-  assert.doesNotMatch(background, /SC_COMPANION_B5B_REQUEST_PERMISSION/);
-  assert.match(popup, /enableWallpaper[^]*addEventListener\('click', grantWallpaperPermission\)/);
-  assert.match(popup, /chrome\.permissions\?\.request\?\.\(\{ origins: \[BING_ORIGIN_PATTERN\] \}\)/);
+  assert.doesNotMatch(providerSource, /permissions\s*(?:\.|\?\.)\s*(?:request|remove)/);
+  assert.doesNotMatch(popup, /grantWallpaperPermission|permissions\?\.request/);
 });
 
 test('UT-B5-CINE-016 concurrent consumers share one provider retrieval', async () => {
@@ -152,11 +150,11 @@ test('UT-B5-CINE-018 invalid or future-dated cache is removed and fails closed',
     async remove(key) { removed.push(key); value = null; } };
   const provider = createWallpaperProvider({ permissions, storage, now: () => now, fetch: async () => { throw new Error('unexpected-fetch'); } });
   const result = await provider.getWallpaper();
-  assert.equal(result.ok, false); assert.equal(result.reason, 'optional-origin-permission-required');
+  assert.equal(result.ok, false); assert.equal(result.reason, 'bing-origin-access-restricted');
   assert.deepEqual(removed, [CACHE_KEY]);
 });
 
-test('UT-B5-CINE-026 permission removal invalidates an active fetch and cannot repopulate revoked cache', async () => {
+test('UT-B5-CINE-026 Native cleanup invalidates an active fetch and cannot repopulate cleared cache', async () => {
   let permitted = true;
   let releaseImage;
   let markImageStarted;
@@ -187,17 +185,76 @@ test('UT-B5-CINE-026 permission removal invalidates an active fetch and cannot r
   const provider = createWallpaperProvider({ permissions, storage, fetch, markets: ['en-US'] });
   const retrieval = provider.getWallpaper();
   await imageStarted;
-  const removal = await provider.removePermission();
+  const removal = await provider.clearWallpaper();
   releaseImage();
   const result = await retrieval;
   assert.equal(removal.cacheCleared, true);
   assert.equal(result.ok, false);
-  assert.match(result.reason, /provider-invalidated|optional-origin-permission-required/);
+  assert.match(result.reason, /provider-invalidated|bing-origin-access-restricted/);
   assert.equal(setCalls, 0);
   assert.equal(cached, null);
-  const after = await provider.getWallpaper();
-  assert.equal(after.ok, false);
-  assert.equal(after.reason, 'optional-origin-permission-required');
+  assert.equal(await provider.hasPermission(), true, 'required host access remains installed after Native cleanup');
+});
+
+test('UT-B5-BING-004 repeated Native cleanup shares one operation and browser restrictions still block network', async () => {
+  let releaseClear; let clears = 0; let requests = 0;
+  const provider = createWallpaperProvider({
+    permissions: { async contains() { return false; }, remove() { throw new Error('required-permission-must-not-be-removed'); } },
+    storage: { async get() { return {}; }, remove() { clears += 1; return new Promise(resolve => { releaseClear = resolve; }); } },
+    fetch: async () => { requests += 1; throw new Error('unexpected-network'); }
+  });
+  const first = provider.clearWallpaper();
+  const second = provider.clearWallpaper();
+  assert.equal(first, second);
+  assert.equal((await provider.getWallpaper()).ok, false);
+  releaseClear();
+  assert.equal((await first).cacheCleared, true);
+  assert.equal(clears, 1);
+  const restricted = await provider.getWallpaper();
+  assert.equal(restricted.reason, 'bing-origin-access-restricted');
+  assert.equal(restricted.statusCode, WALLPAPER_STATUS.ACCESS_RESTRICTED);
+  assert.equal(requests, 0);
+});
+
+test('UT-B5-BING-013 Restore Native during a pending permission check prevents metadata requests', async () => {
+  let releasePermission; let markChecking; let fetchCalls = 0;
+  const checking = new Promise(resolve => { markChecking = resolve; });
+  const permissions = {
+    contains() { markChecking(); return new Promise(resolve => { releasePermission = resolve; }); },
+    async remove() { return true; }
+  };
+  const storage = { async get() { return {}; }, async remove() {} };
+  const provider = createWallpaperProvider({ permissions, storage,
+    fetch: async () => { fetchCalls += 1; throw new Error('unexpected-fetch'); }, markets: ['en-US'] });
+  const pending = provider.getWallpaper();
+  await checking;
+  await provider.clearWallpaper();
+  releasePermission(true);
+  assert.equal((await pending).ok, false);
+  assert.equal(fetchCalls, 0);
+});
+
+test('UT-B5-BING-014 Restore Native during metadata aborts the request and prevents a later image request', async () => {
+  let releaseMetadata; let markStarted; let metadataSignal; let fetchCalls = 0;
+  const started = new Promise(resolve => { markStarted = resolve; });
+  const permissions = { async contains() { return true; }, async remove() { return true; } };
+  const storage = { async get() { return {}; }, async remove() {} };
+  const provider = createWallpaperProvider({ permissions, storage, markets: ['en-US'], fetch: async (url, init) => {
+    fetchCalls += 1;
+    metadataSignal = init.signal;
+    markStarted();
+    await new Promise(resolve => { releaseMetadata = resolve; });
+    // Model a response already delivered to the event loop despite abort.
+    return { ok: true, url: String(url), redirected: false,
+      async json() { return { images: [{ url: '/th?id=OHR.LateMetadata_UHD.jpg' }] }; } };
+  } });
+  const pending = provider.getWallpaper();
+  await started;
+  await provider.clearWallpaper();
+  assert.equal(metadataSignal.aborted, true);
+  releaseMetadata();
+  assert.equal((await pending).ok, false);
+  assert.equal(fetchCalls, 1, 'no image request may start after invalidation');
 });
 
 test('UT-B5-CINE-027 redirected metadata or image responses never cross the exact Bing boundary', async () => {
@@ -277,8 +334,8 @@ test('UT-B5-CINE-033 missing optional permission reports its own state and never
   const result = await createWallpaperProvider({ permissions, storage,
     fetch: async () => { fetchCalls += 1; } }).getWallpaper();
   assert.equal(result.ok, false);
-  assert.equal(result.reason, 'optional-origin-permission-required');
-  assert.equal(result.statusCode, WALLPAPER_STATUS.PERMISSION_REQUIRED);
+  assert.equal(result.reason, 'bing-origin-access-restricted');
+  assert.equal(result.statusCode, WALLPAPER_STATUS.ACCESS_RESTRICTED);
   assert.equal(fetchCalls, 0);
 });
 
@@ -344,7 +401,7 @@ test('UT-B5-CINE-037 expired cache is removed and cannot be presented as retaine
   const result = await createWallpaperProvider({ permissions, storage, now: () => now,
     fetch: async () => { throw new Error('unexpected-fetch'); } }).getWallpaper();
   assert.equal(result.ok, false);
-  assert.equal(result.statusCode, WALLPAPER_STATUS.PERMISSION_REQUIRED);
+  assert.equal(result.statusCode, WALLPAPER_STATUS.ACCESS_RESTRICTED);
   assert.equal(removed, true);
 });
 

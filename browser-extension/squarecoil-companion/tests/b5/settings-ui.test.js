@@ -17,6 +17,7 @@ async function harness({ confirms = [], clipboardAvailable = true, cinematicPerm
   const opens = [];
   const copied = [];
   const permissionCalls = [];
+  const commandOrder = [];
   function makeRoot() {
     return { dataset: {}, innerHTML: '', classList: { add() {} }, contains() { return true; }, querySelector() { return null; },
       addEventListener(type, listener) { listeners[type] = listener; }, removeEventListener(type, listener) { if (listeners[type] === listener) delete listeners[type]; } };
@@ -33,13 +34,14 @@ async function harness({ confirms = [], clipboardAvailable = true, cinematicPerm
   const core = { initialized: true, blocked: false, status: 'trusted-core-owner-active', timer: timer(),
     bridge: { initialized: true, active: true, capability: 'FULL' },
     preferences: { initialized: true, preferenceRevision: 1, timerAppearance: 'LIGHT', panelFinish: 'SOLID', websiteTheme: 'ORIGINAL',
-      cinematicBackground: 'NONE', dashboardProfile: 'OFF',
+      cinematicBackground: 'NONE',
       yellowMinutes: 60, orangeMinutes: 120, redMinutes: 240 },
     presentation: { timerAppearanceEffective: 'LIGHT', panelFinishEffective: 'SOLID', websiteThemeEffective: 'ORIGINAL', logoStatus: 'native-logo',
-      optional: { cinematic: { state: 'DISABLED' }, dashboard: { state: 'INACTIVE_PAGE' } } },
+      optional: { cinematic: { state: 'DISABLED' } } },
     data: { quiescent: true, recentRows: [], archivedRows: [] } };
   const handle = { coreSnapshot() { return core; }, async syncBridge() {},
     async preferenceAction(patch, expectedPreferenceRevision) {
+      commandOrder.push('preference');
       preferenceCommands.push({ patch: structuredClone(patch), expectedPreferenceRevision });
       Object.assign(core.preferences, patch);
       core.preferences.preferenceRevision += 1;
@@ -53,13 +55,12 @@ async function harness({ confirms = [], clipboardAvailable = true, cinematicPerm
           ? { state: 'DISABLED' }
           : cinematicPermission
             ? { state: 'SHOWING', source: 'REMOTE', statusCode: 'BING_IMAGE_ACTIVE' }
-            : { state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BING_PERMISSION_REQUIRED' };
+            : { state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BING_ACCESS_RESTRICTED' };
       }
       if (patch.cinematicBackground) core.presentation.optional.cinematic.state = patch.cinematicBackground === 'CINEMATIC' ? 'DEGRADED_FALLBACK' : 'DISABLED';
-      if (patch.dashboardProfile) core.presentation.optional.dashboard.state = patch.dashboardProfile === 'ON' ? 'INACTIVE_PAGE' : 'INACTIVE_THEME';
     },
-    async requestCinematicAccess() { permissionCalls.push('request'); return { ok: cinematicPermission, granted: cinematicPermission }; },
-    async removeCinematicAccess() { permissionCalls.push('remove'); return { ok: true, removed: true }; } };
+    requestCinematicAccess() { permissionCalls.push('request'); commandOrder.push('permission'); return Promise.resolve({ ok: cinematicPermission, granted: cinematicPermission, reason: cinematicPermission ? null : 'bing-permission-denied' }); },
+    async clearCinematicBackground() { permissionCalls.push('clear'); return { ok: true, cleared: true }; } };
   const storage = { async get(defaults) { return defaults; }, async set() {} };
   const ui = createWorkspaceUi({ document, window, storage, packageVersion: '0.7.1', userAgent: window.navigator.userAgent,
     getCoreHandle: () => handle });
@@ -85,19 +86,19 @@ async function harness({ confirms = [], clipboardAvailable = true, cinematicPerm
     listeners.submit({ target, isTrusted: true, preventDefault() {} });
   }
   async function drain() { await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)); }
-  return { ui, get root() { return activeRoot; }, core, preferenceCommands, permissionCalls, opens, copied, click, inputLimit, supportField, submit, drain,
+  return { ui, get root() { return activeRoot; }, core, preferenceCommands, permissionCalls, commandOrder, opens, copied, click, inputLimit, supportField, submit, drain,
     replaceRoot() { activeRoot = makeRoot(); ui.render(); } };
 }
 
 test('UT-B5-UI-001 one Settings router exposes the settled user-facing feature groups', async () => {
   const h = await harness();
   h.click({ action: 'view', view: 'settings' });
-  for (const label of ['Appearance', 'Time tracking', 'Jobs and watching', 'Notifications', 'Dashboard', 'Privacy and data',
+  for (const label of ['Appearance', 'Time tracking', 'Jobs and watching', 'Notifications', 'Privacy and data',
     'Help and diagnostics', 'Companion appearance', 'SquareCoil theme', 'Local data and backups', 'Submit a ticket']) {
     assert.match(h.root.innerHTML, new RegExp(label));
   }
-  assert.equal((h.root.innerHTML.match(/data-action="settings-toggle-group"/g) || []).length, 7);
-  assert.equal((h.root.innerHTML.match(/aria-expanded="false"/g) || []).length, 7);
+  assert.equal((h.root.innerHTML.match(/data-action="settings-toggle-group"/g) || []).length, 6);
+  assert.equal((h.root.innerHTML.match(/aria-expanded="false"/g) || []).length, 6);
   h.ui.teardown();
 });
 
@@ -219,12 +220,16 @@ test('UT-B5-UI-008 recovered Companion root returns to Settings Home without res
   h.ui.teardown();
 });
 
-test('UT-B5-UI-009 Glass selection commits the integrated fallback without attempting an untrusted permission prompt', async () => {
+test('UT-B5-UI-009 Glass uses installed capability without runtime permission requests and restricted access keeps fallback', async () => {
   const denied = await harness({ cinematicPermission: false });
   denied.click({ action: 'view', view: 'settings' }); denied.click({ action: 'settings-route', view: 'website-theme' });
   assert.doesNotMatch(denied.root.innerHTML, /preference-cinematic/);
+  denied.click({ action: 'preference-site', value: 'SLEEK_DARK' }, false);
+  assert.deepEqual(denied.permissionCalls, []);
+  assert.deepEqual(denied.preferenceCommands, []);
   denied.click({ action: 'preference-site', value: 'SLEEK_DARK' }); await denied.drain();
   assert.deepEqual(denied.permissionCalls, []);
+  assert.deepEqual(denied.commandOrder, ['preference']);
   assert.deepEqual(denied.preferenceCommands[0], { patch: { websiteTheme: 'SLEEK_DARK' }, expectedPreferenceRevision: 1 });
   assert.equal(denied.core.preferences.websiteTheme, 'SLEEK_DARK');
   assert.equal(denied.core.preferences.cinematicBackground, 'CINEMATIC');
@@ -238,17 +243,17 @@ test('UT-B5-UI-009 Glass selection commits the integrated fallback without attem
   assert.deepEqual(granted.preferenceCommands[0], { patch: { websiteTheme: 'SLEEK_DARK' }, expectedPreferenceRevision: 1 });
   assert.equal(granted.core.preferences.cinematicBackground, 'CINEMATIC');
   assert.match(granted.root.innerHTML, /rotating Bing photograph and translucent surfaces as one theme/i);
-  assert.match(granted.root.innerHTML, /accepts only a public OHR image ID.*discards every other Bing metadata parameter/i);
+  assert.match(granted.root.innerHTML, /Image requests contain no job, timer, page, or account data/i);
   granted.ui.teardown();
 });
 
-test('UT-B5-UI-010 Restore Native commits one fenced presentation batch and removes optional origin access', async () => {
+test('UT-B5-UI-010 Native clears background state without requesting or revoking installed Bing capability', async () => {
   const h = await harness();
-  Object.assign(h.core.preferences, { websiteTheme: 'SLEEK_DARK', cinematicBackground: 'CINEMATIC', dashboardProfile: 'ON' });
-  h.ui.render(); h.click({ action: 'view', view: 'settings' }); h.click({ action: 'settings-route', view: 'presentation-packs' });
-  h.click({ action: 'restore-native' }); await h.drain();
-  assert.deepEqual(h.preferenceCommands[0].patch, { websiteTheme: 'ORIGINAL', dashboardProfile: 'OFF' });
-  assert.deepEqual(h.permissionCalls, ['remove']); h.ui.teardown();
+  Object.assign(h.core.preferences, { websiteTheme: 'SLEEK_DARK', cinematicBackground: 'CINEMATIC' });
+  h.ui.render(); h.click({ action: 'view', view: 'settings' }); h.click({ action: 'settings-route', view: 'website-theme' });
+  h.click({ action: 'preference-site', value: 'ORIGINAL' }); await h.drain();
+  assert.deepEqual(h.preferenceCommands[0].patch, { websiteTheme: 'ORIGINAL' });
+  assert.deepEqual(h.permissionCalls, ['clear']); h.ui.teardown();
 });
 
 test('UT-B5-UI-011 zero-history Home keeps Library and Settings reachable before the first clock-in', async () => {
@@ -317,10 +322,10 @@ test('UT-B5-UI-014 blocked startup keeps safe Settings and diagnostics available
 
 test('UT-B5-UI-017 SquareCoil theme reports the real Bing source instead of calling every fallback a saved wallpaper', async () => {
   const h = await harness();
-  h.core.presentation.optional.cinematic = { state: 'DEGRADED_FALLBACK', source: 'FALLBACK', reason: 'optional-origin-permission-required' };
+  h.core.presentation.optional.cinematic = { state: 'DEGRADED_FALLBACK', source: 'FALLBACK', reason: 'bing-origin-access-restricted' };
   h.click({ action: 'view', view: 'settings' });
   h.click({ action: 'settings-route', view: 'website-theme' });
-  assert.match(h.root.innerHTML, /Bing permission required; built-in gradient fallback active/);
+  assert.match(h.root.innerHTML, /Bing access restricted by browser; built-in gradient fallback active/);
   assert.doesNotMatch(h.root.innerHTML, /Using saved wallpaper/);
   h.core.presentation.optional.cinematic = { state: 'SHOWING', source: 'REMOTE', reason: 'remote-loaded' };
   h.ui.render();
@@ -350,7 +355,7 @@ test('UT-B5-UI-019 Bing presentation statuses use exact source and failure wordi
     [{ state: 'SHOWING', source: 'REMOTE', statusCode: 'BING_IMAGE_ACTIVE' }, /Bing image active/],
     [{ state: 'SHOWING', source: 'CACHE_FRESH', statusCode: 'RECENT_CACHED_BING_IMAGE_ACTIVE' }, /Recent cached Bing image active/],
     [{ state: 'DEGRADED_CACHE', source: 'CACHE_RETAINED', statusCode: 'OLDER_CACHED_BING_IMAGE_RETAINED', failureCode: 'NETWORK_UNAVAILABLE' }, /Older cached Bing image retained after a failure; network unavailable/],
-    [{ state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BING_PERMISSION_REQUIRED' }, /Bing permission required; built-in gradient fallback active/],
+    [{ state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BING_ACCESS_RESTRICTED' }, /Bing access restricted by browser; built-in gradient fallback active/],
     [{ state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BING_RESPONSE_REJECTED' }, /Bing response rejected; built-in gradient fallback active/],
     [{ state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'NETWORK_UNAVAILABLE' }, /Network unavailable; built-in gradient fallback active/],
     [{ state: 'DEGRADED_FALLBACK', source: 'FALLBACK', statusCode: 'BUILT_IN_GRADIENT_FALLBACK' }, /Built-in gradient fallback active/],
@@ -362,5 +367,45 @@ test('UT-B5-UI-019 Bing presentation statuses use exact source and failure wordi
     assert.match(h.root.innerHTML, expected);
     assert.doesNotMatch(h.root.innerHTML, /Using saved wallpaper/);
   }
+  h.ui.teardown();
+});
+
+
+test('UT-B5-UI-022 dashboard controls commit independently through canonical Preferences and never touch Timer', async () => {
+  const h = await harness();
+  const timerBefore = structuredClone(h.core.timer);
+  h.click({ action: 'view', view: 'settings' });
+  assert.match(h.root.innerHTML, /Analytics dashboard/);
+  h.click({ action: 'settings-route', view: 'dashboard' });
+  assert.match(h.root.innerHTML, /Dashboard appearance/);
+  h.click({ action: 'preference-dashboard', value: 'true' }, false);
+  assert.equal(h.preferenceCommands.length, 0);
+  h.click({ action: 'preference-dashboard', value: 'true' }); await h.drain();
+  assert.deepEqual(h.preferenceCommands[0], { patch: { dashboardEnabled: true }, expectedPreferenceRevision: 1 });
+  h.click({ action: 'preference-dashboard-appearance', value: 'DARK' }); await h.drain();
+  assert.deepEqual(h.preferenceCommands[1], { patch: { dashboardAppearance: 'DARK' }, expectedPreferenceRevision: 2 });
+  assert.equal(h.core.preferences.timerAppearance, 'LIGHT');
+  assert.equal(h.core.preferences.websiteTheme, 'ORIGINAL');
+  h.click({ action: 'preference-dashboard', value: 'false' }); await h.drain();
+  assert.equal(h.core.preferences.dashboardEnabled, false);
+  assert.deepEqual({ ...h.core.timer, sourcePreferenceRevision: timerBefore.sourcePreferenceRevision }, timerBefore);
+  assert.deepEqual(h.permissionCalls, []);
+  h.ui.teardown();
+});
+
+test('UT-B5-UI-023 Design Dashboard restyle is a separate trusted off-by-default preference', async () => {
+  const h = await harness();
+  const timerBefore = structuredClone(h.core.timer);
+  h.click({ action: 'view', view: 'settings' });
+  assert.match(h.root.innerHTML, /Design Dashboard Enhancements/);
+  h.click({ action: 'settings-route', view: 'design-dashboard' });
+  assert.match(h.root.innerHTML, /dashboard\.php\?show=2/);
+  h.click({ action: 'preference-design-dashboard', value: 'ON' }, false);
+  assert.equal(h.preferenceCommands.length, 0);
+  h.click({ action: 'preference-design-dashboard', value: 'ON' }); await h.drain();
+  assert.deepEqual(h.preferenceCommands[0], { patch: { dashboardProfile: 'ON' }, expectedPreferenceRevision: 1 });
+  assert.equal(h.core.preferences.dashboardEnabled, undefined);
+  assert.equal(h.core.preferences.dashboardProfile, 'ON');
+  assert.deepEqual({ ...h.core.timer, sourcePreferenceRevision: timerBefore.sourcePreferenceRevision }, timerBefore);
   h.ui.teardown();
 });

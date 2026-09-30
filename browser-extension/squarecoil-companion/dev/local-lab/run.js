@@ -1,11 +1,14 @@
 'use strict';
 
 const fs = require('node:fs');
+const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { copyPackageFiles } = require('../../scripts/package-inventory');
+const { computeCandidateFingerprint } = require('../../scripts/candidate-identity');
+const { verifySelectedContext, verifyDashboardJourney, verifyDesignProfileJourney } = require('./prototype-journey');
 
 const ORIGIN = 'https://ussignandmill.squarecoil.net';
 const LAB_ROOT = '/__companion_lab__';
@@ -31,15 +34,23 @@ const EVIDENCE_FILES = Object.freeze({
   lightGlass: '04-light-glass-fallback.png',
   refinedLight: '05-refined-light.png',
   settings: '06-settings-nested.png',
+  selectedContext: '07-selected-vs-operational.png',
+  dashboard: '08-dashboard-canonical-history.png',
+  dashboardNarrow: '09-dashboard-narrow.png',
+  dashboardSidebar: '10-dashboard-sidebar-width.png',
+  dashboardSidebarRow: '11-dashboard-sidebar-row.png',
+  dashboardNarrowRow: '12-dashboard-narrow-row.png',
+  designProfile: '13-design-dashboard-profile.png',
   manifest: 'visual-evidence.json'
 });
 
 function parseArguments(argv) {
-  const options = { browser: 'chrome', smoke: false, evidenceDir: null };
+  const options = { browser: 'chrome', smoke: false, evidenceDir: null, useExistingBuild: false };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--browser') options.browser = String(argv[++index] || '').toLowerCase();
     else if (argv[index] === '--smoke') options.smoke = true;
     else if (argv[index] === '--evidence-dir') options.evidenceDir = String(argv[++index] || '').trim();
+    else if (argv[index] === '--use-existing-build') options.useExistingBuild = true;
     else if (argv[index] === '--help' || argv[index] === '-h') options.help = true;
     else throw new Error(`Unknown argument: ${argv[index]}`);
   }
@@ -117,6 +128,23 @@ function safeRemoveTemp(target, expectedPrefix) {
 
 function loadLabAsset(filename) {
   return fs.readFileSync(path.join(__dirname, filename), 'utf8');
+}
+
+function labPageHtml(url) {
+  const source = loadLabAsset('index.html');
+  if (url.pathname !== '/dashboard.php') return source;
+  // These native widgets are the audited dashboard mount anchors. The same
+  // source is served for near-miss queries so route gating cannot pass merely
+  // because a negative fixture omitted its native structure.
+  const widgets = `<section id="lab-native-dashboard" class="lab-section panel" aria-label="Native dashboard fixture">
+    <div class="lab-dashboard-shortcuts">
+      <section id="widget-tasks"><h2>17</h2><h5>Tasks</h5></section>
+      <section id="widget-designs"><h2>8</h2><h5>Designs</h5></section>
+      <section id="widget-estimates"><h2>3</h2><h5>Estimates</h5></section>
+    </div>
+    <div id="page-content"><p>Native dashboard content remains available.</p><a href="/project.php?id=910001">Open fictional project 910001</a><button disabled>Native disabled action</button></div>
+  </section>`;
+  return source.replace('<main id="content">', `<main id="content">${widgets}`);
 }
 
 function sha256File(filename) {
@@ -252,6 +280,14 @@ async function inspectThemeState(page, theme, bingPermissionGranted) {
       activeChoice: root?.querySelector(`.sc-theme-choice[data-value="${expectedTheme}"]`)?.dataset.active || null,
       companionTheme: root?.dataset.protoTheme || null,
       companionSurface: root?.dataset.protoSurface || null,
+      busy: root?.dataset.busy || null,
+      ariaBusy: root?.getAttribute('aria-busy') || null,
+      workspaceState: root?.dataset.workspaceState || null,
+      pageUrl: location.href,
+      nativeActionCount: document.querySelector('#metric-actions')?.textContent || null,
+      controller: document.documentElement.dataset.squarecoilCompanionController || null,
+      controllerReason: document.documentElement.dataset.squarecoilCompanionControllerReason || null,
+      documentToken: document.documentElement.dataset.squarecoilCompanionDocumentToken || null,
       backgroundStatus,
       hostCount: document.querySelectorAll('#squarecoil-companion-cinematic-host').length,
       hostTheme: host?.getAttribute('data-theme') || null,
@@ -284,9 +320,10 @@ async function selectAndCaptureTheme(page, theme, evidenceFile, evidence, bingPe
         host?.getAttribute('data-theme') === expectedTheme &&
         root?.querySelector(`.sc-theme-choice[data-value="${expectedTheme}"]`)?.dataset.active === 'true' &&
         root?.dataset.busy === 'false';
-    }, theme, { timeout: Math.min(timeout, 8_000) });
+    }, theme, { timeout });
   } catch (_) {
     const unsettled = await inspectThemeState(page, theme, bingPermissionGranted);
+    unsettled.isolatedDiagnostics = await inspectIsolatedDiagnostics(page);
     throw new Error(`Theme did not settle after trusted Settings selection: ${JSON.stringify(unsettled)}`);
   }
   try {
@@ -294,23 +331,24 @@ async function selectAndCaptureTheme(page, theme, evidenceFile, evidence, bingPe
       const root = document.querySelector('#ussign-job-timer');
       return Array.from(root?.querySelectorAll('.sc-note') || []).some(node =>
         node.textContent.replace(/\s+/g, ' ').trim() ===
-          'Background status: Bing permission required; built-in gradient fallback active.');
+          'Background status: Network unavailable; built-in gradient fallback active.');
     }, null, { timeout: Math.min(timeout, 8_000) });
   } catch (_) {
     const unsettled = await inspectThemeState(page, theme, bingPermissionGranted);
-    throw new Error(`No-permission fallback status did not settle truthfully: ${JSON.stringify(unsettled)}`);
+    throw new Error(`Offline fallback status did not settle truthfully: ${JSON.stringify(unsettled)}`);
   }
   const proof = await inspectThemeState(page, theme, bingPermissionGranted);
+  proof.selectionSource = 'trusted-workspace-skin-click; Bing host granted at install';
   const expectedCompanionTheme = theme === 'SLEEK_DARK' ? 'dark' : 'light';
-  assertVisualCondition(proof.bingPermissionGranted === false, 'Fresh lab profile unexpectedly has Bing permission', proof);
+  assertVisualCondition(proof.bingPermissionGranted === true, 'Fresh lab profile lacks its required Bing install host', proof);
   assertVisualCondition(proof.trustedSelection?.isTrusted === true, 'Website theme was not selected through a trusted Settings click', proof);
   assertVisualCondition(proof.rootTheme === theme && proof.cinematicState === 'DEGRADED_FALLBACK' && proof.activeChoice === 'true', 'Website theme markers did not settle', proof);
   assertVisualCondition(proof.companionTheme === expectedCompanionTheme && proof.companionSurface === 'glass', 'Companion appearance is not matched to the Glass website theme', proof);
   assertVisualCondition(proof.hostCount === 1 && proof.cinematicStyleCount === 1 && proof.hostTheme === theme &&
     proof.siteStyleAuthoritative === 'authoritative' && proof.hostBackgroundImage !== 'none', 'Theme/background host is not active and singular', proof);
   assertVisualCondition(proof.activeImageLayers === 0 && proof.inlineImageLayers === 0 &&
-    proof.backgroundStatus === 'Background status: Bing permission required; built-in gradient fallback active.',
-  'No-permission background fallback or status wording is not truthful', proof);
+    proof.backgroundStatus === 'Background status: Network unavailable; built-in gradient fallback active.',
+  'Offline background fallback or status wording is not truthful', proof);
   assertVisualCondition(proof.outerSurfaceCount >= 5 && proof.nestedSurfaceCount >= 5 && proof.oppositeSurfaceCount === 0,
     'Representative outer or nested lab surfaces contain an opposite-theme card', proof);
   assertVisualCondition(proof.surfaceRecipeMismatchCount === 0 && proof.textContrastMismatchCount === 0,
@@ -321,15 +359,39 @@ async function selectAndCaptureTheme(page, theme, evidenceFile, evidence, bingPe
   return proof;
 }
 
+async function inspectIsolatedDiagnostics(page) {
+  const session = await page.context().newCDPSession(page);
+  const contexts = [];
+  session.on('Runtime.executionContextCreated', ({ context }) => contexts.push(context));
+  try {
+    await session.send('Runtime.enable');
+    for (const context of contexts.filter(item => item.auxData?.isDefault === false)) {
+      const result = await session.send('Runtime.evaluate', {
+        contextId: context.id, returnByValue: true, awaitPromise: true,
+        expression: `(async () => {
+          const health = globalThis.__squareCoilCompanionAuthorityHealth;
+          if (!health) return null;
+          const core = await health.coreSnapshot();
+          return { authority: health.snapshot(), initialized: core?.initialized,
+            blocked: core?.blocked, readModelError: core?.readModelError,
+            preferences: core?.preferences, presentation: core?.presentation,
+            timerStatus: core?.timer?.status };
+        })()`
+      }).catch(error => ({ exception: String(error.message) }));
+      if (result.result?.value) return result.result.value;
+    }
+    return { unavailable: true };
+  } finally { await session.detach().catch(() => {}); }
+}
+
 async function closeSettings(page, timeout) {
   const startedAt = Date.now();
-  const mainSettings = page.locator('#ussign-job-timer [data-action="view"][data-view="settings"]');
   const closeButton = page.locator('#ussign-job-timer [data-action="settings-close"]');
   while ((Date.now() - startedAt) < timeout) {
-    if (await mainSettings.count()) return;
+    if (!await closeButton.count()) return;
     if (await closeButton.count()) await closeButton.click();
     try {
-      await mainSettings.waitFor({ state: 'attached', timeout: Math.min(300, Math.max(1, timeout - (Date.now() - startedAt))) });
+      await closeButton.waitFor({ state: 'detached', timeout: Math.min(300, Math.max(1, timeout - (Date.now() - startedAt))) });
       return;
     } catch (_) {
       await page.waitForTimeout(50);
@@ -424,7 +486,7 @@ async function setCompanionAppearance(page, timerTheme, panelFinish, timeout) {
 }
 
 async function openSettings(page, timeout) {
-  await page.locator('#ussign-job-timer [data-action="view"][data-view="settings"]').click();
+  await page.locator('#ussign-job-timer .sc-proto-topbar [data-action="view"][data-view="settings"]').click();
   await page.waitForSelector('#ussign-job-timer [data-action="settings-toggle-group"]', { state: 'visible', timeout });
 }
 
@@ -617,8 +679,8 @@ async function verifyThemeEvidence(page, evidence, bingPermissionGranted, timeou
     expandedCount: document.querySelectorAll('#ussign-job-timer [data-action="settings-toggle-group"][aria-expanded="true"]').length,
     visibleRoutes: Array.from(document.querySelectorAll('#ussign-job-timer [data-action="settings-route"]')).filter(node => node.getClientRects().length > 0).map(node => node.dataset.view)
   }));
-  assertVisualCondition(settings.groupCount === 7 && settings.expandedCount === 1 &&
-    JSON.stringify(settings.visibleRoutes) === JSON.stringify(['timer-appearance','website-theme']),
+  assertVisualCondition(settings.groupCount === 6 && settings.expandedCount === 1 &&
+    JSON.stringify(settings.visibleRoutes) === JSON.stringify(['timer-appearance','website-theme','dashboard','design-dashboard']),
   'Settings did not render as one compact disclosure navigator', settings);
   if (evidence) await page.screenshot({ path: evidence.files.settings, fullPage: false, animations: 'disabled', caret: 'hide' });
   await closeSettings(page, timeout);
@@ -956,9 +1018,13 @@ async function main() {
   const executablePath = BROWSER_PATHS[options.browser];
   if (!fs.existsSync(executablePath)) throw new Error(`Installed ${options.browser} was not found at ${executablePath}`);
 
-  process.stdout.write('Building the current Companion for an isolated, non-acceptance lab session…\n');
-  execFileSync(process.execPath, [path.join(extensionRoot, 'scripts', 'build.js')], { cwd: extensionRoot, stdio: 'inherit' });
+  if (!options.useExistingBuild) {
+    process.stdout.write('Building the current Companion for an isolated, non-acceptance lab session…\n');
+    execFileSync(process.execPath, [path.join(extensionRoot, 'scripts', 'build.js')], { cwd: extensionRoot, stdio: 'inherit' });
+  }
   const state = { companyClockedIn: false, current: null, events: [] };
+  const network = { syntheticRequests: 0, bingRequests: [], blockedUnexpected: [] };
+  const browserErrors = [];
   let packageDirectory = null;
   let profileDirectory = null;
   let playwright = null;
@@ -979,6 +1045,9 @@ async function main() {
     profileDirectory = fs.mkdtempSync(path.join(os.tmpdir(), `squarecoil-companion-lab-${options.browser}-`));
     copyPackageFiles(extensionRoot, packageDirectory);
     const packageIdentity = JSON.parse(fs.readFileSync(path.join(packageDirectory, 'dist', 'build-info.json'), 'utf8'));
+    if (packageIdentity.candidateFingerprint !== computeCandidateFingerprint(extensionRoot)) {
+      throw new Error('Existing build does not match current candidate source; rebuild before the sealed lab run.');
+    }
     if (!/^[0-9a-f]{64}$/.test(String(packageIdentity.candidateFingerprint || '')) ||
       !/^[0-9a-f]{40}$/.test(String(packageIdentity.sourceSha || '')) || typeof packageIdentity.sourceDirty !== 'boolean') {
       throw new Error('Sealed lab package identity is incomplete.');
@@ -1010,7 +1079,8 @@ async function main() {
       try { url = new URL(request.url()); } catch (_) { return route.abort('blockedbyclient'); }
       if (url.protocol === 'chrome-extension:' || url.protocol === 'data:') return route.continue();
       if (url.origin === ORIGIN && ROUTED_PAGES.has(url.pathname)) {
-        return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: loadLabAsset('index.html') });
+        network.syntheticRequests += 1;
+        return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: labPageHtml(url) });
       }
       if (url.origin === ORIGIN && url.pathname === `${LAB_ROOT}/lab.css`) {
         return route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: loadLabAsset('lab.css') });
@@ -1070,8 +1140,13 @@ async function main() {
         if (state.events.length > 250) state.events.splice(0, state.events.length - 250);
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, event, state: publicState(state) }) });
       }
-      if (exactBingRequest(url)) return route.continue();
+      if (exactBingRequest(url)) {
+        network.bingRequests.push({ method: request.method(), url: url.href });
+        // Smoke keeps the required-host request fully sealed with an offline response.
+        return options.smoke ? route.abort('internetdisconnected') : route.continue();
+      }
       if (url.protocol === 'http:' || url.protocol === 'https:') {
+        network.blockedUnexpected.push({ method: request.method(), url: url.href });
         process.stderr.write(`Blocked unexpected network request: ${url.href}\n`);
         return route.abort('blockedbyclient');
       }
@@ -1088,17 +1163,44 @@ async function main() {
     await setup.goto(`chrome-extension://${loaded.id}/popup/popup.html`, { waitUntil: 'domcontentloaded' });
     await setup.evaluate(() => chrome.storage.local.set({ timerEnabled: true }));
     const bingPermissionGranted = await setup.evaluate(() => chrome.permissions.contains({ origins: ['https://www.bing.com/*'] }));
-    if (bingPermissionGranted) throw new Error('Fresh sealed-lab profile unexpectedly has optional Bing permission.');
+    if (!bingPermissionGranted) throw new Error('Fresh sealed-lab profile lacks the required Bing install host.');
+    const permissionWorker = context.serviceWorkers().find(worker => worker.url().startsWith(`chrome-extension://${loaded.id}/`));
+    if (!permissionWorker) throw new Error('Loaded extension worker is unavailable');
+    await permissionWorker.evaluate(() => {
+      globalThis.__labRuntimePermissionRequests = 0;
+      const original = chrome.permissions.request.bind(chrome.permissions);
+      chrome.permissions.request = (...args) => { globalThis.__labRuntimePermissionRequests += 1; return original(...args); };
+    });
     await setup.close();
 
     const existing = context.pages();
     const page = existing[0] || await context.newPage();
+    page.on('pageerror', error => browserErrors.push({ type: 'pageerror', text: error.message }));
+    page.on('console', message => {
+      if (['error', 'warning'].includes(message.type())) browserErrors.push({ type: message.type(), text: message.text() });
+    });
     for (const extra of existing.slice(1)) await extra.close().catch(() => {});
     await page.goto(`${ORIGIN}${LAB_ROOT}/index.html`, { waitUntil: 'domcontentloaded' });
     await page.bringToFront();
 
     if (options.smoke) {
       const timeout = 30_000;
+      const readBoundary = async () => {
+        const worker = context.serviceWorkers().find(candidate => candidate.url().startsWith(`chrome-extension://${loaded.id}/`));
+        if (!worker) throw new Error('Sealed-lab authority storage reader has no extension worker');
+        return worker.evaluate(async () => {
+          const stored = await chrome.storage.local.get('squarecoilCompanionB2AuthorityV1');
+          const document = stored.squarecoilCompanionB2AuthorityV1?.document;
+          if (!document || !Array.isArray(document.ledger)) throw new Error('Canonical authority document is unavailable');
+          const active = document.timer.active;
+          // lastVerifiedAtMs advances on the independent read-only heartbeat.
+          // Session identity, start, context and finalized segments must not.
+          return { timer: { active: active ? { contextId: active.contextId, cycleId: active.cycleId,
+            sessionId: active.sessionId, startedAtMs: active.startedAtMs, certainty: active.certainty,
+            provisionalSinceMs: active.provisionalSinceMs, safetyHold: active.safetyHold } : null,
+          pending: document.timer.pending, localPause: document.timer.localPause }, ledger: document.ledger };
+        });
+      };
       await page.waitForSelector('#ussign-job-timer', { timeout });
       await page.waitForFunction(() => {
         const root = document.querySelector('#ussign-job-timer');
@@ -1110,8 +1212,31 @@ async function main() {
       await page.click('[data-project-id="910001"]');
       await page.waitForFunction(() => document.querySelector('#clockin-remaining-time')?.textContent.includes('910001'), null, { timeout });
       await page.waitForFunction(() => document.querySelector('#ussign-job-timer')?.textContent.includes('910001'), null, { timeout });
+      const stableShell = await page.evaluate(() => {
+        const root = document.querySelector('#ussign-job-timer');
+        const shell = root?.querySelector('.sc-proto-shell');
+        const tabs = root?.querySelector('.sc-tabs');
+        const focusTarget = root?.querySelector('.sc-proto-topbar [data-action="view"][data-view="home"]');
+        if (!shell || !tabs || !focusTarget) return false;
+        window.__squarecoilStableUi = { root, shell, tabs, focusTarget };
+        focusTarget.focus();
+        return document.activeElement === focusTarget;
+      });
+      assert(stableShell, 'Companion shell and keyboard focus should be available');
       await page.waitForTimeout(1_100);
-      await page.click('[data-project-id="910002"]');
+      const stableAfterTick = await page.evaluate(() => {
+        const stored = window.__squarecoilStableUi;
+        const root = document.querySelector('#ussign-job-timer');
+        return Boolean(stored && root === stored.root &&
+          root.querySelector('.sc-proto-shell') === stored.shell &&
+          root.querySelector('.sc-tabs') === stored.tabs &&
+          document.activeElement === stored.focusTarget);
+      });
+      assert(stableAfterTick, 'Timer tick must preserve the shell, tab rail, and keyboard focus');
+      // The wide dock can overlap a native job card on a short viewport. Use
+      // the real keyboard activation path so this remains a trusted site click.
+      await page.locator('[data-project-id="910002"]').focus();
+      await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('#clockin-remaining-time')?.textContent.includes('910002') &&
         document.body.dataset.labBusy !== 'true', null, { timeout });
       await page.waitForFunction(() => document.querySelector('#ussign-job-timer .sc-tab[data-context="job:910002"]')?.dataset.selected === 'true', null, { timeout });
@@ -1135,6 +1260,7 @@ async function main() {
           root.querySelector('.sc-timer-card .sc-status')?.textContent.trim().startsWith('Running') &&
           !root.querySelector('[data-action="timer"][data-timer-action="resume"]');
       }, null, { timeout });
+      const selectedContext = await verifySelectedContext({ page, timeout, readBoundary, screenshot: evidence?.files.selectedContext });
       const visualProof = await verifyVisualContract(page, evidence, timeout, { bingPermissionGranted });
       await page.waitForTimeout(1_100);
       await sendSealedLabClockAction(page, 4);
@@ -1162,7 +1288,8 @@ async function main() {
           !root.querySelector('.sc-current-strip') &&
           root.querySelector('.sc-timer-card .sc-status')?.textContent.trim() === 'Not running';
       }, null, { timeout });
-      await page.click('#ussign-job-timer [data-action="view"][data-view="history"]');
+      await page.click('#ussign-job-timer .sc-proto-topbar [data-action="view"][data-view="home"]');
+      await page.click('#ussign-job-timer .sc-home-view [data-action="view"][data-view="history"]');
       await page.waitForFunction(() => document.querySelectorAll('#ussign-job-timer [data-history-session]').length === 6, null, { timeout });
       const proof = await page.evaluate(() => ({
         labEvents: Number(document.querySelector('#metric-actions')?.textContent || 0),
@@ -1183,13 +1310,34 @@ async function main() {
           historyCounts('Production (General)') !== 2 || proof.rootCount !== 1) {
         throw new Error(`Lab smoke proof failed: ${JSON.stringify(proof)}`);
       }
+      const dashboard = await verifyDashboardJourney({ page, origin: ORIGIN, timeout, readBoundary,
+        screenshot: evidence?.files.dashboard, narrowScreenshot: evidence?.files.dashboardNarrow,
+        sidebarScreenshot: evidence?.files.dashboardSidebar,
+        sidebarRowScreenshot: evidence?.files.dashboardSidebarRow, narrowRowScreenshot: evidence?.files.dashboardNarrowRow,
+        expectedLabels: ['910001', '910002', '910003'] });
+      const designProfile = await verifyDesignProfileJourney({ page, origin: ORIGIN, timeout, readBoundary,
+        screenshot: evidence?.files.designProfile });
+      const identity = { url: page.url(), title: await page.title() };
+      const pageContent = await page.locator('body').innerText();
+      const nonblank = pageContent.includes('LOCAL SIMULATOR') && pageContent.includes('SquareCoil Companion');
+      const frameworkOverlay = await page.locator('vite-error-overlay, nextjs-portal [data-nextjs-dialog-overlay], #webpack-dev-server-client-overlay').count() > 0;
+      assertVisualCondition(identity.url === `${ORIGIN}${LAB_ROOT}/index.html` && identity.title === 'SquareCoil Companion Lab', 'Smoke ended on the wrong page', identity);
+      assertVisualCondition(nonblank && !frameworkOverlay, 'Rendered page was blank or showed a framework error overlay', { nonblank, frameworkOverlay });
+      assertVisualCondition(network.bingRequests.length > 0 && network.blockedUnexpected.length === 0, 'Sealed smoke omitted the background attempt or requested nonfixture traffic', network);
+      assertVisualCondition(browserErrors.length === 0, 'Sealed smoke reported browser errors', browserErrors);
+      const permissionProof = await permissionWorker.evaluate(async () => ({
+        requests: globalThis.__labRuntimePermissionRequests,
+        granted: await chrome.permissions.contains({ origins: ['https://www.bing.com/*'] })
+      }));
+      assertVisualCondition(permissionProof.requests === 0 && permissionProof.granted === true,
+        'Skin selection requested runtime permission or removed required install access', permissionProof);
       if (evidence) {
-        const screenshotDigests = Object.fromEntries([
-          EVIDENCE_FILES.tabs, EVIDENCE_FILES.archiveVeil, EVIDENCE_FILES.darkGlass, EVIDENCE_FILES.lightGlass, EVIDENCE_FILES.refinedLight, EVIDENCE_FILES.settings
-        ].map(filename => [filename, sha256File(path.join(evidence.directory, filename))]));
+        const screenshotDigests = Object.fromEntries(Object.values(EVIDENCE_FILES).filter(filename => filename.endsWith('.png'))
+          .map(filename => [filename, sha256File(path.join(evidence.directory, filename))]));
         fs.writeFileSync(evidence.files.manifest, `${JSON.stringify({
           kind: 'SquareCoil Companion sealed-lab visual evidence',
           acceptanceScope: 'NON_ACCEPTANCE_SEALED_LAB_VISUAL_EVIDENCE',
+          glassSelection: 'trusted-workspace-skin-click; required Bing install host; sealed offline network fixture',
           browser: options.browser,
           browserVersion: browser.version(),
           origin: ORIGIN,
@@ -1200,10 +1348,23 @@ async function main() {
             darkGlassFallback: EVIDENCE_FILES.darkGlass,
             lightGlassFallback: EVIDENCE_FILES.lightGlass,
             refinedLight: EVIDENCE_FILES.refinedLight,
-            nestedSettings: EVIDENCE_FILES.settings
+            nestedSettings: EVIDENCE_FILES.settings,
+            selectedContext: EVIDENCE_FILES.selectedContext,
+            dashboard: EVIDENCE_FILES.dashboard,
+            dashboardNarrow: EVIDENCE_FILES.dashboardNarrow,
+            dashboardSidebar: EVIDENCE_FILES.dashboardSidebar,
+            dashboardSidebarRow: EVIDENCE_FILES.dashboardSidebarRow,
+            dashboardNarrowRow: EVIDENCE_FILES.dashboardNarrowRow,
+            designProfile: EVIDENCE_FILES.designProfile
           },
           screenshotDigests,
           visualProof,
+          selectedContext,
+          dashboard,
+          designProfile,
+          browserChecks: { identity, nonblank, frameworkOverlay, browserErrors, network,
+            permissionProof,
+            browserPath: 'Browser plugin not available; repository Playwright harness' },
           smokeProof: proof
         }, null, 2)}\n`, 'utf8');
         process.stdout.write(`Visual evidence saved outside temporary storage and the Git repository: ${evidence.directory}\n`);

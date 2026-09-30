@@ -460,9 +460,17 @@ function validateDataSafety(dataSafety, contexts) {
         !['ORIGINAL', 'LIGHT_GLASS', 'REFINED_LIGHT', 'SLEEK_DARK'].includes(preferences.websiteTheme)) {
       throw new Error('preferences-appearance-invalid');
     }
+    if (preferences.dashboardEnabled !== undefined && typeof preferences.dashboardEnabled !== 'boolean') {
+      throw new Error('preferences-dashboard-invalid');
+    }
+    if (preferences.dashboardProfile !== undefined && !['OFF', 'ON'].includes(preferences.dashboardProfile)) {
+      throw new Error('preferences-dashboard-profile-invalid');
+    }
+    if (preferences.dashboardAppearance !== undefined && !['SITE', 'LIGHT', 'DARK'].includes(preferences.dashboardAppearance)) {
+      throw new Error('preferences-dashboard-appearance-invalid');
+    }
     if (preferences.preferencesSchemaVersion >= 2 &&
-        (!['NONE', 'CINEMATIC'].includes(preferences.cinematicBackground) ||
-         !['OFF', 'ON'].includes(preferences.dashboardProfile))) {
+        !['NONE', 'CINEMATIC'].includes(preferences.cinematicBackground)) {
       throw new Error('preferences-optional-presentation-invalid');
     }
     if (!isFiniteInteger(preferences.yellowMinutes) || !isFiniteInteger(preferences.orangeMinutes) ||

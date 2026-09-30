@@ -175,6 +175,8 @@ body[data-lab-busy="true"] button { cursor: progress; }
   .lab-columns { grid-template-columns: 1fr; }
   .lab-user { display: none; }
 }
+.lab-dashboard-shortcuts { display: flex; gap: 24px; padding: 12px; }
+.lab-dashboard-shortcuts > section { flex: 1; }
 @media (max-width: 760px) {
   #lab-safety-banner { justify-content: flex-start; overflow-x: auto; white-space: nowrap; }
   #navbar { padding-inline: 10px; }

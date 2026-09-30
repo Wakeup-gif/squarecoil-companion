@@ -3,6 +3,7 @@
 const { TIMER_COMMANDS } = require('../timer/commands');
 const { DATA_COMMANDS } = require('../data/data-safety');
 const { DEFAULT_PREFERENCES, validLimits } = require('../preferences/preferences');
+const { prototypeDockStyle } = require('./prototype-dock-style');
 const {
   SUPPORT_EMAIL,
   TICKET_TYPES,
@@ -33,13 +34,13 @@ const UI_STORAGE_DEFAULTS = Object.freeze({
 });
 const WORKSPACE_STORAGE_KEYS = new Set(['protoUiHiddenTabs', 'b3WorkspaceOrder', 'b3WorkspaceRevision']);
 const VIEW_IDS = new Set([
-  'main', 'recent', 'overview', 'by-day', 'by-context', 'history', 'context-detail',
-  'settings', 'timer-appearance', 'website-theme', 'timer-limits', 'submit-ticket',
-  'presentation-packs', 'send-feedback', 'developer-support', 'data-tools', 'advanced-diagnostics'
+  'main', 'home', 'recent', 'overview', 'by-day', 'by-context', 'history', 'context-detail',
+  'settings', 'timer-appearance', 'website-theme', 'dashboard', 'design-dashboard', 'timer-limits', 'submit-ticket',
+  'send-feedback', 'developer-support', 'data-tools', 'advanced-diagnostics'
 ]);
 const SETTINGS_VIEW_IDS = new Set([
-  'settings', 'timer-appearance', 'website-theme', 'timer-limits', 'submit-ticket',
-  'presentation-packs', 'send-feedback', 'developer-support', 'data-tools', 'advanced-diagnostics'
+  'settings', 'timer-appearance', 'website-theme', 'dashboard', 'design-dashboard', 'timer-limits', 'submit-ticket',
+  'send-feedback', 'developer-support', 'data-tools', 'advanced-diagnostics'
 ]);
 const TIMER_ACTIONS = Object.freeze({
   pause: TIMER_COMMANDS.LOCAL_PAUSE,
@@ -148,6 +149,62 @@ function archiveGestureEligibility(core, contextId, options = {}) {
     contextId: id, label: String(timerRow.label || dataRow.label || id) });
 }
 
+function sameWorkspaceNode(current, next) {
+  if (current.nodeType !== next.nodeType) return false;
+  if (current.nodeType !== 1) return true;
+  if (current.tagName !== next.tagName) return false;
+  for (const name of ['id', 'data-action', 'data-context', 'data-view', 'data-group', 'data-timer-action', 'data-data-type']) {
+    if (current.getAttribute(name) !== next.getAttribute(name)) return false;
+  }
+  return true;
+}
+
+function patchWorkspaceNode(current, next) {
+  if (current.nodeType !== 1) {
+    if (current.nodeValue !== next.nodeValue) current.nodeValue = next.nodeValue;
+    return;
+  }
+  for (const attribute of [...current.attributes]) {
+    if (!next.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
+  }
+  for (const attribute of [...next.attributes]) {
+    if (current.getAttribute(attribute.name) !== attribute.value) current.setAttribute(attribute.name, attribute.value);
+  }
+  patchWorkspaceChildren(current, next);
+}
+
+function patchWorkspaceChildren(current, next) {
+  let oldChild = current.firstChild;
+  for (const newChild of [...next.childNodes]) {
+    if (!oldChild) { current.appendChild(newChild.cloneNode(true)); continue; }
+    if (sameWorkspaceNode(oldChild, newChild)) {
+      patchWorkspaceNode(oldChild, newChild);
+      oldChild = oldChild.nextSibling;
+    } else {
+      const after = oldChild.nextSibling;
+      oldChild.replaceWith(newChild.cloneNode(true));
+      oldChild = after;
+    }
+  }
+  while (oldChild) {
+    const after = oldChild.nextSibling;
+    oldChild.remove();
+    oldChild = after;
+  }
+}
+
+function updateWorkspaceMarkup(target, markup) {
+  const document = target.ownerDocument;
+  if (!document?.createElement || !target.firstChild || !target.appendChild) {
+    target.innerHTML = markup;
+    return;
+  }
+  const template = document.createElement('template');
+  template.innerHTML = markup;
+  if (!template.content) { target.innerHTML = markup; return; }
+  patchWorkspaceChildren(target, template.content);
+}
+
 function createWorkspaceUi(options = {}) {
   const document = options.document;
   const window = options.window;
@@ -173,6 +230,8 @@ function createWorkspaceUi(options = {}) {
   let websiteTheme = 'ORIGINAL';
   let cinematicBackground = 'NONE';
   let dashboardProfile = 'OFF';
+  let dashboardEnabled = false;
+  let dashboardAppearance = 'SITE';
   let preferenceRevision = 0;
   let preferenceInitialized = false;
   let presentation = null;
@@ -339,6 +398,8 @@ function createWorkspaceUi(options = {}) {
     websiteTheme = next.websiteTheme || DEFAULT_PREFERENCES.websiteTheme;
     cinematicBackground = next.cinematicBackground || DEFAULT_PREFERENCES.cinematicBackground;
     dashboardProfile = next.dashboardProfile || DEFAULT_PREFERENCES.dashboardProfile;
+    dashboardEnabled = next.dashboardEnabled === true;
+    dashboardAppearance = next.dashboardAppearance || 'SITE';
     preferenceRevision = Number.isSafeInteger(next.preferenceRevision) ? next.preferenceRevision : 0;
     preferenceInitialized = next.initialized === true;
     presentation = core.presentation || presentation;
@@ -468,6 +529,7 @@ function createWorkspaceUi(options = {}) {
 @media(prefers-reduced-motion:reduce){#${ROOT_ID} button,#${ROOT_ID} .sc-archive-veil{transition:none}}@media(forced-colors:active){#${ROOT_ID}.sc-proto-root{forced-color-adjust:auto}#${ROOT_ID} .sc-proto-shell,#${ROOT_ID} button,#${ROOT_ID} input,#${ROOT_ID} select,#${ROOT_ID} textarea{border:1px solid ButtonText!important;box-shadow:none!important;background:Canvas!important;color:CanvasText!important}#${ROOT_ID}[data-proto-surface="glass"] .sc-proto-shell{-webkit-backdrop-filter:none;backdrop-filter:none}#${ROOT_ID} .sc-archive-veil{background:Canvas!important}#${ROOT_ID} .sc-archive-veil>div{color:CanvasText!important;background:Canvas!important;border:2px solid CanvasText!important}#${ROOT_ID} .sc-archive-veil small{color:CanvasText!important}}
 @media(max-width:760px){#${ROOT_ID} .sc-archive-veil{z-index:9;place-items:center;padding:20px}}
 #${ROOT_ID} .sc-settings-intro{margin:-3px 0 10px;color:var(--sc-muted);font-size:10.5px}#${ROOT_ID} .sc-settings-list{display:grid;gap:7px}#${ROOT_ID} .sc-settings-group{overflow:hidden;border:0;border-radius:11px;background:var(--sc-panel)}#${ROOT_ID} .sc-settings-group-toggle{display:flex;width:100%;min-height:54px;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px!important;border:0!important;border-radius:0!important;background:transparent!important;text-align:left!important}#${ROOT_ID} .sc-settings-group-toggle>span{min-width:0}#${ROOT_ID} .sc-settings-group-toggle strong{display:block;font-size:12px;font-weight:700}#${ROOT_ID} .sc-settings-group-toggle small{display:block;margin-top:2px;color:var(--sc-muted);font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#${ROOT_ID} .sc-settings-chevron{width:18px;height:18px;flex:0 0 18px;color:var(--sc-muted);transition:transform .16s ease}#${ROOT_ID} .sc-settings-group[data-expanded="true"]{box-shadow:inset 3px 0 var(--sc-accent)}#${ROOT_ID} .sc-settings-group[data-expanded="true"] .sc-settings-group-toggle{background:var(--sc-panel-2)!important}#${ROOT_ID} .sc-settings-group[data-expanded="true"] .sc-settings-chevron{transform:rotate(180deg);color:var(--sc-accent)}#${ROOT_ID} .sc-settings-group-panel[hidden]{display:none!important}#${ROOT_ID} .sc-settings-group-panel{padding:0 8px 8px;border-top:1px solid color-mix(in srgb,var(--sc-border) 42%,transparent)}#${ROOT_ID} .sc-settings-group-panel .sc-nav-grid{grid-template-columns:1fr;margin-top:8px}#${ROOT_ID} .sc-settings-group-panel .sc-nav-grid button,#${ROOT_ID} .sc-settings-group-panel .sc-unavailable{min-height:45px;padding:8px 10px;border-radius:8px}#${ROOT_ID} .sc-settings-group-panel .sc-unavailable{margin:0}
+${prototypeDockStyle(ROOT_ID)}
 </style>`;
   }
 
@@ -488,7 +550,8 @@ function createWorkspaceUi(options = {}) {
       const threshold = row.thresholdLevel || 'NONE';
       const thresholdText = THRESHOLD_LABELS[threshold] || THRESHOLD_LABELS.NONE;
       const label = `${row.label}, Today ${formatDuration(row.todayMs, { compact: true })}, ${thresholdText}, ${statusLabel(row.status)}${marker(row)}`;
-      return `<div class="sc-tab-slot" data-context="${escapeHtml(row.contextId)}" data-selected="${selected}"><button class="sc-tab" draggable="true" role="tab" aria-selected="${selected}" aria-controls="sc-workspace-panel" aria-describedby="sc-tab-help" tabindex="${selected ? '0' : '-1'}" data-action="select" data-context="${escapeHtml(row.contextId)}" data-selected="${selected}" data-operational="${row.isOperational === true}" data-threshold="${escapeHtml(threshold)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span class="sc-dot" data-tone="${statusTone(row.status)}"></span><span class="sc-tab-label">${escapeHtml(row.shortLabel || row.label)}</span><span></span><span class="sc-tab-time">${formatDuration(row.todayMs, { compact: true })}${row.isProvisional ? '*' : ''} · ${escapeHtml(threshold)}</span></button>${canHide ? `<button class="sc-tab-x" data-action="hide-tab" data-context="${escapeHtml(row.contextId)}" aria-label="Hide ${escapeHtml(row.label)} from the tab strip" title="Hide from tabs">×</button>` : ''}</div>`;
+      const projectId = safeProjectId(row.projectId);
+      return `<div class="sc-tab-slot" data-context="${escapeHtml(row.contextId)}" data-selected="${selected}"><button class="sc-tab" draggable="true" role="tab" aria-selected="${selected}" aria-controls="sc-workspace-panel" aria-describedby="sc-tab-help" tabindex="${selected ? '0' : '-1'}" data-action="select" data-context="${escapeHtml(row.contextId)}" data-selected="${selected}" data-operational="${row.isOperational === true}" data-threshold="${escapeHtml(threshold)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span class="sc-dot" data-tone="${statusTone(row.status)}"></span><span class="sc-tab-label">${escapeHtml(row.shortLabel || row.label)}</span><span></span><span class="sc-tab-time">${formatDuration(row.todayMs, { compact: true })}${row.isProvisional ? '*' : ''} · ${escapeHtml(threshold)}</span></button>${projectId ? `<button class="sc-tab-open" data-action="open-job" data-project="${escapeHtml(projectId)}" aria-label="Open job ${escapeHtml(projectId)} in SquareCoil" title="Open in SquareCoil">↗</button>` : ''}${canHide ? `<button class="sc-tab-x" data-action="hide-tab" data-context="${escapeHtml(row.contextId)}" aria-label="Hide ${escapeHtml(row.label)} from the tab strip" title="Hide from tabs">×</button>` : ''}</div>`;
     }).join('')}</div>`;
   }
 
@@ -507,7 +570,16 @@ function createWorkspaceUi(options = {}) {
   function currentStrip(timer, operational, selected) {
     if (!operational) return '';
     const different = operational.contextId !== selected?.contextId;
-    return `<div class="sc-current-strip"><div><div class="sc-eyebrow">Working now</div><div class="sc-row-title">${escapeHtml(operational.label)}</div><div class="sc-row-meta">Today ${formatDuration(operational.todayMs, { compact: true })}${marker(operational)} · ${escapeHtml(statusLabel(operational.status))}</div></div>${different ? `<button data-action="select" data-context="${escapeHtml(operational.contextId)}">View</button>` : ''}</div>`;
+    return `<div class="sc-current-strip"><div><div class="sc-eyebrow">Working now · actually running / observed</div><div class="sc-row-title">${escapeHtml(operational.label)}</div><div class="sc-row-meta">Today ${formatDuration(operational.todayMs, { compact: true })}${marker(operational)} · ${escapeHtml(statusLabel(operational.status))}</div></div>${different ? `<button data-action="select" data-context="${escapeHtml(operational.contextId)}">View current</button>` : ''}</div>`;
+  }
+
+  function homeView(timer) {
+    const operational = timer ? currentRow(timer) : null;
+    const currentLabel = operational?.label || 'No current job';
+    const currentDetail = operational
+      ? `${statusLabel(operational.status)} · Today ${formatDuration(operational.todayMs, { compact: true })}${marker(operational)}`
+      : 'Open a SquareCoil job to begin. Your Companion tools are ready.';
+    return `<div class="sc-view sc-home-view">${viewHeader('Home')}<p class="sc-home-intro">Your current context, time and Companion destinations in one place.</p><div class="sc-home-section">Current timer</div><div class="sc-home-current"><div class="sc-home-current-copy"><strong>${escapeHtml(currentLabel)}</strong><small>${escapeHtml(currentDetail)}</small></div>${operational ? `<span class="sc-home-current-time">${formatDuration(operational.todayMs)}</span>` : ''}<button data-action="view" data-view="main">View timer</button></div><div class="sc-home-section">Explore Companion</div>${mainNavigationMarkup()}<div class="sc-home-section">Find job / context</div>${searchMarkup()}</div>`;
   }
 
   function mainView(timer) {
@@ -527,7 +599,7 @@ function createWorkspaceUi(options = {}) {
     const hold = selected.isSafetyHeld ? '<div class="sc-note">Time is paused here while Companion verifies the page. Your SquareCoil clock was not changed.</div>' : '';
     const native = timer.nativeDisposition && timer.nativeDisposition !== 'TRACKABLE_CONTEXT'
       ? '<div class="sc-note">This page is visible, but it is not currently eligible for local time tracking.</div>' : '';
-    return `<div class="sc-view">${currentStrip(timer, operational, selected)}<section class="sc-timer-card"><div class="sc-eyebrow">${selected.kind === 'job' ? `Job ${escapeHtml(selected.projectId)}` : 'General context'}</div><div class="sc-title">${escapeHtml(selected.label)}</div><div class="sc-status" data-tone="${statusTone(status)}"><span class="sc-dot" data-tone="${statusTone(status)}"></span>${escapeHtml(statusLabel(status))}</div><div class="sc-metrics"><div class="sc-metric"><span class="sc-eyebrow">Today</span><strong>${formatDuration(selected.todayMs)}${selected.isProvisional ? '*' : ''}</strong></div><div class="sc-metric"><span class="sc-eyebrow">${selected.kind === 'job' ? 'Job total' : 'Context total'}</span><strong>${formatDuration(selected.totalMs)}${selected.isProvisional ? '*' : ''}</strong></div></div>${activeSession ? `<div class="sc-session"><span>Current session${timer.running.provisional ? ' · provisional' : ''}</span><strong>${formatDuration(timer.running.elapsedMs)}</strong></div>` : ''}${pending}${hold}${native}<div class="sc-actions">${busyAction ? '<button disabled>Working…</button>' : actions.join('')}</div></section>${mainNavigationMarkup()}${searchMarkup()}</div>`;
+    return `<div class="sc-view">${currentStrip(timer, operational, selected)}<section class="sc-timer-card"><div class="sc-eyebrow">${selected.kind === 'job' ? `Job ${escapeHtml(selected.projectId)}` : 'General context'}</div><div class="sc-title">${escapeHtml(selected.label)}</div><div class="sc-status" data-tone="${statusTone(status)}"><span class="sc-dot" data-tone="${statusTone(status)}"></span>${escapeHtml(statusLabel(status))}</div><div class="sc-metrics"><div class="sc-metric"><span class="sc-eyebrow">Today</span><strong>${formatDuration(selected.todayMs)}${selected.isProvisional ? '*' : ''}</strong></div><div class="sc-metric"><span class="sc-eyebrow">${selected.kind === 'job' ? 'Job total' : 'Context total'}</span><strong>${formatDuration(selected.totalMs)}${selected.isProvisional ? '*' : ''}</strong></div></div>${activeSession ? `<div class="sc-session"><span>Current session${timer.running.provisional ? ' · provisional' : ''}</span><strong>${formatDuration(timer.running.elapsedMs)}</strong></div>` : ''}${pending}${hold}${native}<div class="sc-actions">${busyAction ? '<button disabled>Working…</button>' : actions.join('')}</div></section><details class="sc-quick-links"><summary>More Companion tools</summary>${mainNavigationMarkup()}${searchMarkup()}</details></div>`;
   }
 
   function recentView(timer, core) {
@@ -611,11 +683,11 @@ function createWorkspaceUi(options = {}) {
     if (status === 'BING_IMAGE_ACTIVE' || (state === 'SHOWING' && source === 'REMOTE')) return 'Bing image active';
     if (status === 'RECENT_CACHED_BING_IMAGE_ACTIVE' || (state === 'SHOWING' && source === 'CACHE_FRESH')) return 'Recent cached Bing image active';
     if (status === 'OLDER_CACHED_BING_IMAGE_RETAINED' || state === 'DEGRADED_CACHE' || ['CACHE_RETAINED', 'CACHE'].includes(source)) {
-      if (failure === 'BING_PERMISSION_REQUIRED' || /permission|access/i.test(reason)) return 'Older cached Bing image retained after a failure; Bing permission required';
+      if (failure === 'BING_ACCESS_RESTRICTED' || /permission|access/i.test(reason)) return 'Older cached Bing image retained after a failure; Bing access restricted by browser';
       if (failure === 'BING_RESPONSE_REJECTED' || /rejected/i.test(reason)) return 'Older cached Bing image retained after a failure; Bing response rejected';
       return 'Older cached Bing image retained after a failure; network unavailable';
     }
-    if (status === 'BING_PERMISSION_REQUIRED' || /optional-origin-permission-required/.test(reason)) return 'Bing permission required; built-in gradient fallback active';
+    if (status === 'BING_ACCESS_RESTRICTED' || /bing-origin-access-restricted/.test(reason)) return 'Bing access restricted by browser; built-in gradient fallback active';
     if (status === 'BING_RESPONSE_REJECTED' || /bing-response-rejected/.test(reason)) return 'Bing response rejected; built-in gradient fallback active';
     if (status === 'NETWORK_UNAVAILABLE' || /network-unavailable/.test(reason)) return 'Network unavailable; built-in gradient fallback active';
     if (state === 'DEGRADED_FALLBACK' || source === 'FALLBACK') return 'Built-in gradient fallback active';
@@ -627,7 +699,7 @@ function createWorkspaceUi(options = {}) {
 
   function settingsView() {
     const appearanceSummary = `${theme === 'AUTO' ? 'System' : theme === 'DARK' ? 'Dark' : 'Light'} Companion · ${websiteThemeLabel(websiteTheme)}`;
-    return `<div class="sc-view">${viewHeader('Settings')}<p class="sc-settings-intro">Choose a category, then open only the option you need.</p><div class="sc-settings-list">${settingsGroup('appearance', 'Appearance', appearanceSummary, `${settingsNav('timer-appearance', 'Companion appearance', `${surface === 'GLASS' ? 'Glass' : 'Solid'} panel finish`)}${settingsNav('website-theme', 'SquareCoil theme', websiteThemeLabel(websiteTheme))}`)}${settingsGroup('time', 'Time tracking', 'Overview, history and color limits', `${settingsNav('overview', 'Time overview', 'Today, week, day and job')}${settingsNav('history', 'History', 'Completed Companion sessions')}${settingsNav('timer-limits', 'Time color limits', `${limitDraft?.yellowMinutes ?? 60} / ${limitDraft?.orangeMinutes ?? 120} / ${limitDraft?.redMinutes ?? 240} min`)}`)}${settingsGroup('jobs', 'Jobs and watching', 'Recent jobs and future watch tools', `${settingsNav('recent', 'Recent jobs', 'Visibility and archive actions')}${settingsUnavailable('Watched-job changes', 'Not available yet · needs a verified read-only source')}`)}${settingsGroup('notifications', 'Notifications', 'SquareCoil alerts', settingsUnavailable('SquareCoil alerts', 'Not available yet · no proven notification source'))}${settingsGroup('dashboard', 'Dashboard', `Design profile ${dashboardProfile === 'ON' ? 'on' : 'off'}`, settingsNav('presentation-packs', 'Design dashboard', `Dashboard profile ${dashboardProfile === 'ON' ? 'on' : 'off'}`))}${settingsGroup('privacy', 'Privacy and data', 'Backups, restore and cleanup', settingsNav('data-tools', 'Local data and backups', 'Export, restore and cleanup'))}${settingsGroup('help', 'Help and diagnostics', 'Support, feedback and technical details', `${settingsNav('submit-ticket', 'Submit a ticket', `Email ${SUPPORT_EMAIL}`)}${settingsNav('send-feedback', 'Send feedback', 'Suggestion, UI / UX or feature idea')}${settingsNav('advanced-diagnostics', 'Technical details', 'Status and privacy-safe diagnostics')}${settingsNav('developer-support', 'Support the developer', 'Free app · optional tips')}`)}</div></div>`;
+    return `<div class="sc-view">${viewHeader('Settings')}<p class="sc-settings-intro">Choose a category, then open only the option you need.</p><div class="sc-settings-list">${settingsGroup('appearance', 'Appearance', appearanceSummary, `${settingsNav('timer-appearance', 'Companion appearance', `${surface === 'GLASS' ? 'Glass' : 'Solid'} panel finish`)}${settingsNav('website-theme', 'SquareCoil theme', websiteThemeLabel(websiteTheme))}${settingsNav('dashboard', 'Analytics dashboard', dashboardEnabled ? 'Enabled on the SquareCoil dashboard' : 'Off')}${settingsNav('design-dashboard', 'Design Dashboard Enhancements', dashboardProfile === 'ON' ? 'On · Sleek Dark Design page' : 'Off')}`)}${settingsGroup('time', 'Time tracking', 'Overview, history and color limits', `${settingsNav('overview', 'Time overview', 'Today, week, day and job')}${settingsNav('history', 'History', 'Completed Companion sessions')}${settingsNav('timer-limits', 'Time color limits', `${limitDraft?.yellowMinutes ?? 60} / ${limitDraft?.orangeMinutes ?? 120} / ${limitDraft?.redMinutes ?? 240} min`)}`)}${settingsGroup('jobs', 'Jobs and watching', 'Recent jobs and future watch tools', `${settingsNav('recent', 'Recent jobs', 'Visibility and archive actions')}${settingsUnavailable('Watched-job changes', 'Not available yet · needs a verified read-only source')}`)}${settingsGroup('notifications', 'Notifications', 'SquareCoil alerts', settingsUnavailable('SquareCoil alerts', 'Not available yet · no proven notification source'))}${settingsGroup('privacy', 'Privacy and data', 'Backups, restore and cleanup', settingsNav('data-tools', 'Local data and backups', 'Export, restore and cleanup'))}${settingsGroup('help', 'Help and diagnostics', 'Support, feedback and technical details', `${settingsNav('submit-ticket', 'Submit a ticket', `Email ${SUPPORT_EMAIL}`)}${settingsNav('send-feedback', 'Send feedback', 'Suggestion, UI / UX or feature idea')}${settingsNav('advanced-diagnostics', 'Technical details', 'Status and privacy-safe diagnostics')}${settingsNav('developer-support', 'Support the developer', 'Free app · optional tips')}`)}</div></div>`;
   }
 
   function choiceMarkup(action, values, current) {
@@ -643,6 +715,23 @@ function createWorkspaceUi(options = {}) {
     return `<div class="sc-view">${viewHeader('Companion appearance', 'settings')}<div class="sc-eyebrow">Color</div>${choiceMarkup('preference', [['LIGHT', 'Light'], ['DARK', 'Dark'], ['AUTO', 'System']], theme)}<div class="sc-note">System follows your browser or operating-system appearance.</div><div class="sc-eyebrow sc-section-label">Panel finish</div>${choiceMarkup('preference-finish', [['SOLID', 'Solid'], ['GLASS', 'Glass']], surface)}${finishNote}</div>`;
   }
 
+  function dashboardView() {
+    const analytics = presentation?.optional?.analytics || {};
+    const state = analytics.state || 'DISABLED';
+    const status = state === 'APPLIED' ? 'Visible on this page'
+      : state === 'INACTIVE_PAGE' ? 'Ready on the SquareCoil dashboard'
+        : dashboardEnabled ? 'Waiting for a supported dashboard and Companion data' : 'Off';
+    return `<div class="sc-view">${viewHeader('Analytics dashboard', 'settings')}<div class="sc-eyebrow">Show on SquareCoil</div>${choiceMarkup('preference-dashboard', [['true', 'On'], ['false', 'Off']], String(dashboardEnabled))}<div class="sc-note" role="status">${escapeHtml(status)}. The dashboard appears beneath SquareCoil’s shortcuts and shows your recorded Companion time.</div><div class="sc-eyebrow sc-section-label">Dashboard appearance</div>${choiceMarkup('preference-dashboard-appearance', [['SITE', 'Website'], ['LIGHT', 'Light'], ['DARK', 'Dark']], dashboardAppearance)}<div class="sc-note">Website follows the selected SquareCoil theme. Light and Dark apply only to the analytics dashboard.</div></div>`;
+  }
+
+  function designDashboardView() {
+    const profile = presentation?.optional?.dashboard || {};
+    const status = profile.state === 'APPLIED' ? 'Active on this Design dashboard'
+      : profile.state === 'PARTIAL_SAFE' ? 'Partially applied where audited selectors match'
+        : dashboardProfile === 'ON' ? 'Ready when Sleek Dark is active on the Design dashboard' : 'Off';
+    return `<div class="sc-view">${viewHeader('Design Dashboard Enhancements', 'settings')}<div class="sc-eyebrow">Page presentation</div>${choiceMarkup('preference-design-dashboard', [['OFF', 'Off'], ['ON', 'On']], dashboardProfile)}<div class="sc-note" role="status">${escapeHtml(status)}. This optional restyle applies only to /dashboard.php?show=2 with Sleek Dark. It does not change SquareCoil records or actions.</div><div class="sc-note">Analytics dashboard is a separate option in Appearance.</div></div>`;
+  }
+
   function websiteThemeView() {
     const cinematic = presentation?.optional?.cinematic || {};
     return `<div class="sc-view">${viewHeader('SquareCoil theme', 'settings')}<div class="sc-theme-list">${[
@@ -650,13 +739,7 @@ function createWorkspaceUi(options = {}) {
       ['SLEEK_DARK', 'Dark Glass', 'v2.3.4 · cinematic night scene + glass'],
       ['LIGHT_GLASS', 'Light Glass', 'v1.0.0 · cinematic daylight scene + glass'],
       ['REFINED_LIGHT', 'Refined Light', 'v1.0.1 · bright, high-clarity workspace']
-    ].map(([value, label, detail]) => `<button class="sc-theme-choice" data-action="preference-site" data-value="${value}" data-active="${websiteTheme === value}"${busyAction ? ' disabled aria-disabled="true"' : ''}><span class="sc-theme-swatch" data-theme-swatch="${value}" aria-hidden="true"></span><span><strong>${label}</strong><small>${detail}</small></span><span class="sc-radio" aria-hidden="true"></span></button>`).join('')}</div><div class="sc-note"><strong>Background status:</strong> ${escapeHtml(cinematicStateLabel(cinematic))}.</div><div class="sc-note">Dark Glass and Light Glass include the rotating Bing photograph and translucent surfaces as one theme. Use Allow access in the Companion toolbar popup to grant optional access to www.bing.com. Companion accepts only a public OHR image ID, discards every other Bing metadata parameter, and constructs the fixed image request itself—never with job, timer, page, identity, account, or user content. If no safe image is available, Companion uses a readable built-in gradient. SquareCoil controls and data remain untouched.</div></div>`;
-  }
-
-  function presentationPacksView() {
-    const optional = presentation?.optional || {};
-    const dashboard = optional.dashboard || {};
-    return `<div class="sc-view">${viewHeader('Design dashboard', 'settings')}<div class="sc-eyebrow">Design dashboard profile</div>${choiceMarkup('preference-dashboard', [['OFF', 'Off'], ['ON', 'On']], dashboardProfile)}<div class="sc-note">${escapeHtml(optionalStateLabel(dashboard))}. This profile is limited to the Design dashboard and only changes presentation.</div><div class="sc-note">The background is part of Dark Glass or Light Glass and is managed in SquareCoil theme.</div><div class="sc-actions"><button data-action="restore-native">Restore Native / Off</button></div><div class="sc-note">Restoring Native / Off removes Companion-owned website styling and optional presentation without changing SquareCoil data.</div></div>`;
+    ].map(([value, label, detail]) => `<button class="sc-theme-choice" data-action="preference-site" data-value="${value}" data-active="${websiteTheme === value}"${busyAction ? ' disabled aria-disabled="true"' : ''}><span class="sc-theme-swatch" data-theme-swatch="${value}" aria-hidden="true"></span><span><strong>${label}</strong><small>${detail}</small></span><span class="sc-radio" aria-hidden="true"></span></button>`).join('')}</div><div class="sc-note"><strong>Background status:</strong> ${escapeHtml(cinematicStateLabel(cinematic))}.</div><div class="sc-note">Dark Glass and Light Glass include the rotating Bing photograph and translucent surfaces as one theme. Choosing either theme starts the background automatically. If an image is unavailable or your browser restricts access, Companion uses its built-in gradient. Image requests contain no job, timer, page, or account data.</div></div>`;
   }
 
   function timerLimitsView() {
@@ -707,11 +790,13 @@ function createWorkspaceUi(options = {}) {
   }
 
   function bodyMarkup(timer, core) {
+    if (view === 'home') return homeView(timer);
     if (!timer) {
       if (view === 'settings') return settingsView();
       if (view === 'timer-appearance') return timerAppearanceView();
       if (view === 'website-theme') return websiteThemeView();
-      if (view === 'presentation-packs') return presentationPacksView();
+    if (view === 'dashboard') return dashboardView();
+    if (view === 'design-dashboard') return designDashboardView();
       if (view === 'timer-limits') return timerLimitsView();
       if (view === 'submit-ticket') return supportView('ticket');
       if (view === 'send-feedback') return supportView('feedback');
@@ -728,7 +813,8 @@ function createWorkspaceUi(options = {}) {
     if (view === 'settings') return settingsView();
     if (view === 'timer-appearance') return timerAppearanceView();
     if (view === 'website-theme') return websiteThemeView();
-    if (view === 'presentation-packs') return presentationPacksView();
+    if (view === 'dashboard') return dashboardView();
+    if (view === 'design-dashboard') return designDashboardView();
     if (view === 'timer-limits') return timerLimitsView();
     if (view === 'submit-ticket') return supportView('ticket');
     if (view === 'send-feedback') return supportView('feedback');
@@ -796,7 +882,11 @@ function createWorkspaceUi(options = {}) {
     target.dataset.dragging = draggedContextId ? 'true' : 'false';
     const friendlyStatus = friendlyCompanionStatus(core, timer);
     const basis = timer?.timeBasis?.disclosed ? timer.timeBasis.label : timer?.workdayZone || 'waiting for time basis';
-    target.innerHTML = `${styleBlock()}<div class="sc-archive-veil" data-visible="false" data-tone="eligible" aria-hidden="true"><div><span data-sc-archive-veil-title>Release to archive</span><small data-sc-archive-veil-detail>Hours and history stay saved.</small></div></div>${tabs}<div class="sc-proto-shell"><div class="sc-proto-topbar"><div class="sc-proto-brand"><strong>SquareCoil Companion</strong></div><span class="sc-proto-status" data-tone="${friendlyStatus.tone}" data-sc-status>${escapeHtml(friendlyStatus.label)}</span><button class="sc-icon-btn" data-action="sync" aria-label="Refresh">↻</button><button class="sc-icon-btn" data-action="collapse" aria-label="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '▣' : '–'}</button></div><div class="sc-content" role="tabpanel" id="sc-workspace-panel">${archiveNoticeMarkup()}${snapshotStale ? '<div class="sc-stale">Showing the last saved view while Companion reconnects.</div>' : ''}${bodyMarkup(timer, core)}</div>${errorMessage ? `<div class="sc-error">${escapeHtml(errorMessage)}</div>` : ''}<div class="sc-foot"><span>${escapeHtml(basis)}</span><button data-action="open-diagnostics">Technical details</button></div></div>`;
+    const selected = timer ? selectedRow(timer) : null;
+    const summaryContext = selected?.kind === 'job' ? selected.projectId : selected ? 'General' : 'No job';
+    const summaryTime = selected ? formatDuration(selected.todayMs) : '--:--:--';
+    const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false" data-tone="eligible" aria-hidden="true"><div><span data-sc-archive-veil-title>Release to archive</span><small data-sc-archive-veil-detail>Hours and history stay saved.</small></div></div>${tabs}<div class="sc-proto-shell"><div class="sc-proto-topbar"><span class="sc-proto-timer-icon" aria-hidden="true">◴</span><div class="sc-proto-brand"><strong>SquareCoil Companion</strong><span class="sc-summary-title">Job Timer <small>${escapeHtml(summaryContext)}</small></span></div><time class="sc-summary-time" aria-label="Selected context today">${summaryTime}</time><span class="sc-proto-status" data-tone="${friendlyStatus.tone}" data-sc-status>${escapeHtml(friendlyStatus.label)}</span><button class="sc-icon-btn" data-action="view" data-view="home" aria-label="Open Companion home" title="Home">⌂</button><button class="sc-icon-btn" data-action="view" data-view="settings" aria-label="Open Settings" title="Settings">⚙</button><button class="sc-icon-btn" data-action="collapse" aria-label="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '⌄' : '⌃'}</button></div><div class="sc-content" role="tabpanel" id="sc-workspace-panel">${archiveNoticeMarkup()}${snapshotStale ? '<div class="sc-stale">Showing the last saved view while Companion reconnects.</div>' : ''}${bodyMarkup(timer, core)}</div>${errorMessage ? `<div class="sc-error">${escapeHtml(errorMessage)}</div>` : ''}<div class="sc-foot"><span>${escapeHtml(basis)}</span><div><button data-action="sync" aria-label="Refresh Companion">Refresh</button><button data-action="open-diagnostics">Technical details</button></div></div></div>`;
+    updateWorkspaceMarkup(target, markup);
     const content = target.querySelector?.('.sc-content');
     if (content) content.scrollTop = archiveNoticeShouldReveal ? 0 : previousScroll;
     archiveNoticeShouldReveal = false;
@@ -949,7 +1039,7 @@ function createWorkspaceUi(options = {}) {
     catch (error) {
       const reason = String(error?.message || error || '');
       const friendly = /Bing access was not granted|permission/i.test(reason)
-        ? 'Glass is active with its readable fallback. Open the Companion toolbar popup to allow rotating Bing images.'
+        ? 'The selected theme keeps its readable background while Bing images are unavailable.'
         : 'That change could not be completed. No SquareCoil data was changed. Open Technical details for more information.';
       recordTechnicalError(error, friendly);
     }
@@ -1131,25 +1221,26 @@ function createWorkspaceUi(options = {}) {
     if (action === 'preference-finish' && event.isTrusted === true) {
       withBusy('preference', () => commitPreferencePatch({ panelFinish: button.dataset.value })); return;
     }
-    if (action === 'preference-site' && event.isTrusted === true) {
-      const value = button.dataset.value;
-      withBusy('preference', async () => {
-        const handle = coreHandle();
-        await commitPreferencePatch({ websiteTheme: value });
-        if (!['SLEEK_DARK', 'LIGHT_GLASS'].includes(value) && typeof handle?.removeCinematicAccess === 'function') {
-          await handle.removeCinematicAccess();
-        }
-      });
-      return;
-    }
     if (action === 'preference-dashboard' && event.isTrusted === true) {
-      withBusy('dashboard-preference', () => commitPreferencePatch({ dashboardProfile: button.dataset.value })); return;
+      if (!['true', 'false'].includes(button.dataset.value)) return;
+      withBusy('preference', () => commitPreferencePatch({ dashboardEnabled: button.dataset.value === 'true' })); return;
     }
-    if (action === 'restore-native' && event.isTrusted === true) {
-      withBusy('restore-native', async () => {
-        await commitPreferencePatch({ websiteTheme: 'ORIGINAL', dashboardProfile: 'OFF' });
-        const handle = coreHandle();
-        if (typeof handle?.removeCinematicAccess === 'function') await handle.removeCinematicAccess();
+    if (action === 'preference-dashboard-appearance' && event.isTrusted === true) {
+      withBusy('preference', () => commitPreferencePatch({ dashboardAppearance: button.dataset.value })); return;
+    }
+    if (action === 'preference-design-dashboard' && event.isTrusted === true) {
+      withBusy('preference', () => commitPreferencePatch({ dashboardProfile: button.dataset.value })); return;
+    }
+    if (action === 'preference-site' && event.isTrusted === true) {
+      if (busyAction) return;
+      const value = button.dataset.value;
+      const handle = coreHandle();
+      const glass = ['SLEEK_DARK', 'LIGHT_GLASS'].includes(value);
+      withBusy('preference', async () => {
+        await commitPreferencePatch({ websiteTheme: value });
+        if (!glass && typeof handle?.clearCinematicBackground === 'function') {
+          await handle.clearCinematicBackground();
+        }
       });
       return;
     }
@@ -1435,9 +1526,18 @@ function createWorkspaceUi(options = {}) {
     consumeDragEvent(event);
     const slot = event.target.closest?.('.sc-tab-slot');
     if (!slot || !root.contains(slot)) {
-      setArchiveVeil(false);
       clearDropIndicators();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+      // On narrow screens the dock can occupy the whole viewport. A drag
+      // outside the tab rail therefore uses the explicit retirement veil.
+      if (window.innerWidth <= 760) {
+        dragAttemptedOutside = true;
+        const eligibility = refreshDraggedEligibility();
+        setArchiveVeil(true, eligibility);
+        if (event.dataTransfer) event.dataTransfer.dropEffect = eligibility?.eligible ? 'move' : 'none';
+      } else {
+        setArchiveVeil(false);
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+      }
       return;
     }
     setArchiveVeil(false);
@@ -1452,7 +1552,11 @@ function createWorkspaceUi(options = {}) {
     if (!draggedContextId || event.isTrusted !== true || !isOwnedDragEvent(event) || !root?.contains(event.target)) return;
     consumeDragEvent(event);
     const slot = event.target.closest?.('.sc-tab-slot');
-    if (!slot || !root.contains(slot)) { clearDragState(); return; }
+    if (!slot || !root.contains(slot)) {
+      if (window.innerWidth <= 760 && dragAttemptedOutside) finishArchiveDrop();
+      else clearDragState();
+      return;
+    }
     const source = draggedContextId;
     const target = slot.dataset.context;
     const placement = slot.dataset.dropPosition === 'after' ? 'after' : 'before';
@@ -1508,6 +1612,10 @@ function createWorkspaceUi(options = {}) {
     }
     if (root.contains(event.target)) return;
     consumeDragEvent(event);
+    finishArchiveDrop();
+  }
+
+  function finishArchiveDrop() {
     const contextId = draggedContextId;
     const previewEligibility = draggedArchiveEligibility;
     const eligibility = refreshDraggedEligibility({ force: true });

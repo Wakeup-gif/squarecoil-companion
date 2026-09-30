@@ -253,6 +253,61 @@ test('UT-B5-CINE-042 a granted exact Bing origin is recognized without accepting
   assert.equal(includesBingPermission({ permissions: ['tabs'] }), false);
 });
 
+test('UT-B5-BING-008 Native background cleanup retains required host access and exact acknowledgment', async () => {
+  installChromeHarness({ timerEnabled: true });
+  let listener; let permissionMutations = 0; const removedKeys = [];
+  global.chrome.runtime.onMessage.addListener = value => { listener = value; };
+  global.chrome.permissions = {
+    contains: async () => true,
+    request: () => { permissionMutations += 1; },
+    remove: () => { permissionMutations += 1; }
+  };
+  global.chrome.storage.local.remove = async key => { removedKeys.push(key); };
+  const background = loadBackground();
+  const message = { type: background.B5B_CLEAR_WALLPAPER_MESSAGE, requestId: 'skin-cleanup-12345', documentToken: DOCUMENT_TOKEN,
+    buildId: BUILD_ID, packageVersion: '0.7.1', candidateFingerprint: CANDIDATE_FINGERPRINT };
+  const sender = { tab: { id: 7 }, frameId: 0, documentId: DOCUMENT_ID,
+    url: 'https://ussignandmill.squarecoil.net/dashboard.php?show=2' };
+  let response;
+  const listening = listener(message, sender, value => { response = value; });
+  assert.equal(listening, true);
+  for (let index = 0; index < 12 && !response; index += 1) await Promise.resolve();
+  assert.equal(response?.cacheCleared, true);
+  assert.equal(response?.type, background.B5B_ACK_MESSAGE);
+  assert.equal(response?.requestId, message.requestId);
+  assert.equal(response?.candidateFingerprint, CANDIDATE_FINGERPRINT);
+  assert.deepEqual(removedKeys, ['squarecoilCompanionB5BWallpaperCacheV1']);
+  assert.equal(permissionMutations, 0);
+  assert.equal(await global.chrome.permissions.contains(), true);
+});
+
+test('UT-B5-BING-009 stale, wrong-frame, non-Glass and non-content messages cannot retrieve wallpaper', async () => {
+  installChromeHarness({ timerEnabled: true });
+  let listener; let requestCalls = 0;
+  global.chrome.runtime.onMessage.addListener = value => { listener = value; };
+  global.chrome.permissions = { contains: async () => false, request: () => { requestCalls += 1; return true; } };
+  const background = loadBackground();
+  const message = { type: background.B5B_WALLPAPER_MESSAGE, requestId: 'skin-request-12345',
+    websiteTheme: 'LIGHT_GLASS', documentToken: DOCUMENT_TOKEN,
+    buildId: BUILD_ID, packageVersion: '0.7.1', candidateFingerprint: CANDIDATE_FINGERPRINT };
+  const sender = { tab: { id: 7 }, frameId: 0, documentId: DOCUMENT_ID,
+    url: 'https://ussignandmill.squarecoil.net/dashboard.php?show=2' };
+  for (const [value, from] of [
+    [{ ...message, candidateFingerprint: 'stale' }, sender],
+    [message, { ...sender, frameId: 1 }],
+    [message, { ...sender, url: 'https://unrelated.example/' }],
+    [{ ...message, websiteTheme: 'ORIGINAL' }, sender],
+    [{ ...message, requestId: 'bad' }, sender],
+    [message, {}]
+  ]) {
+    let response;
+    listener(value, from, result => { response = result; });
+    for (let index = 0; index < 12 && !response; index += 1) await Promise.resolve();
+    assert.equal(response?.ok, false);
+  }
+  assert.equal(requestCalls, 0);
+});
+
 test('boot request waits for teardown, retires the old runtime, and injects a fresh generation', async () => {
   const runtimeInstanceId = 'runtime-teardown-race';
   const root = {

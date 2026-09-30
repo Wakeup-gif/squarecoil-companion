@@ -1,7 +1,22 @@
 # SquareCoil Companion Execution Gate Matrix
 
-**Status:** UI/theme/lab/Figma stabilization plus active Bing delivery repair; exact packaged Chrome/Edge acceptance pending
+**Status:** confirmed Companion prototype and separate analytics dashboard integration in progress; exact packaged Chrome/Edge acceptance pending
 **Execution authority:** `docs/EXECUTION-ENFORCEMENT-PLAN.md`
+
+Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.
+
+## Active handoff UI port — September 30
+
+```text
+Intent: adapt the exact GitHub September 9 frosted dock, Context tabs, Home and integrated Settings into the existing single Companion renderer.
+Behavior: preserve canonical Timer/Bridge/authority data flow; add Home and direct Open Job affordances, retain selected versus operational truth, stabilize shell/focus across clock ticks, and keep archive/preferences on trusted commands.
+Files: workspace renderer and scoped dock style, B3/B5 UI tests, sealed lab, integration/evidence documentation.
+Impact tags: SHARED_UI_ROOT, WORKSPACE_SETTINGS, PRESENTATION, PACKAGE_ARTIFACT, DOCS_ONLY.
+Targeted gates: B3 workspace/UI, B4 archive UI, B5 Settings/theme UI, prototype UI tests, renderer/lifecycle checks.
+Composed journeys: selected versus running tabs, compact/expanded and Home/Settings routing, known Job opening, responsive/reduced-motion, protected archive and keyboard alternative, Chrome/Edge sealed lab.
+Full candidate gate required: yes; exact installed acceptance follows targeted checks.
+Exclusions: no UI-owned Timer/Ledger/Bridge/clock authority, no sample state, no bundled demo wallpaper, no live SquareCoil mutation or main promotion.
+```
 
 This file maps the cross-stage requirements most relevant to the current stabilization work. `OPEN` means the requirement must be verified against the new exact candidate even if an older artifact previously passed related checks.
 
@@ -17,6 +32,20 @@ Targeted gates: settings disclosure semantics/interactions, text-only Companion 
 Composed journeys: clocked-out Settings -> expand one category -> open subroute -> back; Companion popup/workspace render without logo artwork; Original -> Refined Light/Glass website-logo replacement -> Original restoration; expanded sidebar -> collapsed -> visible reopen control -> expanded; short viewport and keyboard navigation
 Full candidate gate required at completion: yes
 Explicit exclusions: no real account/login or clock action; no Timer/Ledger/Bridge/native-clock authority change; no generated or substituted logo/background artwork; no B7/store publication/main-branch promotion
+```
+
+## Historical B6 profile retirement — superseded by September 30 user direction
+
+```text
+Intent: remove the redundant optional Design Dashboard profile while retaining the settled website themes and all Companion time/history tools
+Behavior changed or restored: remove the Settings category, preference field, exact-route CSS/summary module, and owned dashboard artifacts; ignore legacy stored dashboard-profile values so they cannot reactivate a removed feature
+Files expected: Preferences schema/storage, content presentation wiring, workspace Settings, optional registry, B5 tests/browser harness, current feature documentation
+Impact tags: WORKSPACE_SETTINGS, PRESENTATION, PACKAGE_ARTIFACT, DOCS_ONLY
+Contracts touched: L7 Settings/Themes, B5-B optional presentation, L8 exact installed acceptance
+Targeted gates: preferences compatibility/revision tests, Settings no-dashboard regression, no-dashboard-route resource assertion, B5 integration, package validation
+Composed journeys: zero-history Settings has no Dashboard category; legacy preference snapshot settles without dashboard ownership; `/dashboard.php?show=2` has no Companion dashboard layer while website themes continue normally
+Full candidate gate required at completion: yes
+Explicit exclusions: no Timer/Ledger/Bridge/native-clock authority change; no real account/login or clock action; no new dashboard replacement or B7/store/main promotion
 ```
 
 ## Active Bing delivery repair — canonical OHR identity, retained cache, and visible Glass image

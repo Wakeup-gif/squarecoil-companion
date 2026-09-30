@@ -24,7 +24,6 @@ Userscripts, audit documents, and the theme branch are evidence. They are not ru
 |---|---|---|---|
 | Full UI Theme | Broad CSS plus userscript runtime/menu/storage | Selector and token evidence only | Four real theme choices; no userscript dependency |
 | Cinematic wallpaper | Optional public image feed, cache, timers, image layers | Existing generation-fenced service retained; eligible for Dark Glass and Light Glass; one host/layer | Optional Wallpaper On/Off |
-| Design Dashboard | Exact-route presentation profile | Existing exact `/dashboard.php?show=2` profile retained; one bounded read-only Companion summary added | Optional Design dashboard On/Off |
 | Companion timer workspace | Local read model and approved local actions | Existing extension-native implementation refined visually; core API unchanged | Available before clock-in; current work appears when present |
 | Companion time overview/history | Local Companion records | Existing extension-native read models retained | Today, week, day, job and completed-session views |
 | Local backup/restore/CSV | Existing explicit local data tools | Retained; copy clarified | Privacy and permissions / Local data and backups |
@@ -45,8 +44,8 @@ Userscripts, audit documents, and the theme branch are evidence. They are not ru
 ## Ownership and teardown
 
 - Site themes own exactly `#squarecoil-companion-site-theme`, root theme/route attributes, and bounded same-origin CKEditor document styles.
-- Cinematic owns one host, one style layer, one bounded extension cache entry, and optional Bing origin access.
-- Dashboard owns one style layer and one read-only summary host on the exact Design dashboard route.
+- Cinematic owns one presentation host, one style layer, and one bounded extension cache entry. Exact Bing origin access is a required installation/update capability; skins never request or revoke it at runtime.
+- The former Design Dashboard profile was removed as redundant with the settled website themes; it owns no route, style layer, summary host, or preference.
 - The popup requests a bounded read-only summary directly from the extension content controller. It cannot invoke a timer, data, native clock, or business action.
 - Native / Off, disabled optional preferences, accessibility fallback, route departure, and teardown remove the relevant owned resources without touching SquareCoil values or handlers.
 

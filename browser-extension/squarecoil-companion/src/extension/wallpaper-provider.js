@@ -17,7 +17,7 @@ const WALLPAPER_STATUS = Object.freeze({
   ACTIVE: 'BING_IMAGE_ACTIVE',
   RECENT_CACHE: 'RECENT_CACHED_BING_IMAGE_ACTIVE',
   RETAINED_CACHE: 'OLDER_CACHED_BING_IMAGE_RETAINED',
-  PERMISSION_REQUIRED: 'BING_PERMISSION_REQUIRED',
+  ACCESS_RESTRICTED: 'BING_ACCESS_RESTRICTED',
   RESPONSE_REJECTED: 'BING_RESPONSE_REJECTED',
   NETWORK_UNAVAILABLE: 'NETWORK_UNAVAILABLE'
 });
@@ -93,28 +93,27 @@ function createWallpaperProvider(options = {}) {
   if (!permissions || !storage || typeof fetchFn !== 'function') throw new Error('wallpaper-provider-environment-required');
   let generation = 0;
   let inFlight = null;
-  let permissionRemovalInProgress = false;
+  let cacheClearingInProgress = false;
+  let clearInFlight = null;
   const activeControllers = new Set();
 
   async function hasPermission() {
-    if (permissionRemovalInProgress) return false;
+    if (cacheClearingInProgress) return false;
     try { return await permissions.contains({ origins: [BING_ORIGIN_PATTERN] }); } catch (_) { return false; }
   }
 
-  async function removePermission() {
-    permissionRemovalInProgress = true;
+  function clearWallpaper() {
+    if (clearInFlight) return clearInFlight;
+    cacheClearingInProgress = true;
     generation += 1;
     for (const controller of activeControllers) controller.abort();
     inFlight = null;
-    let removed = false;
-    let reason = null;
-    try {
-      removed = await permissions.remove({ origins: [BING_ORIGIN_PATTERN] });
-    } catch (error) { reason = String(error?.message || error); }
-    let cacheCleared = false;
-    try { await storage.remove(CACHE_KEY); cacheCleared = true; } catch (_) {}
-    permissionRemovalInProgress = false;
-    return Object.freeze({ ok: reason === null, removed: removed === true, cacheCleared, reason });
+    clearInFlight = (async () => {
+      let cacheCleared = false;
+      try { await storage.remove(CACHE_KEY); cacheCleared = true; } catch (_) {}
+      return Object.freeze({ ok: cacheCleared, cacheCleared, reason: cacheCleared ? null : 'wallpaper-cache-clear-unavailable' });
+    })().finally(() => { cacheClearingInProgress = false; clearInFlight = null; });
+    return clearInFlight;
   }
 
   async function readCache(maxAgeMs = CACHE_MAX_AGE_MS) {
@@ -132,12 +131,12 @@ function createWallpaperProvider(options = {}) {
   }
 
   async function cacheFallback(failure, requestGeneration = generation) {
-    if (permissionRemovalInProgress || requestGeneration !== generation) return invalidatedResult();
+    if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
     const cached = await readCache();
-    if (permissionRemovalInProgress || requestGeneration !== generation) return invalidatedResult();
+    if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
     const normalized = typeof failure === 'string'
-      ? { reason: failure, statusCode: failure === 'optional-origin-permission-required'
-        ? WALLPAPER_STATUS.PERMISSION_REQUIRED : WALLPAPER_STATUS.NETWORK_UNAVAILABLE, detail: failure }
+      ? { reason: failure, statusCode: failure === 'bing-origin-access-restricted'
+        ? WALLPAPER_STATUS.ACCESS_RESTRICTED : WALLPAPER_STATUS.NETWORK_UNAVAILABLE, detail: failure }
       : failure;
     if (cached) return Object.freeze({ ok: true, source: 'CACHE_RETAINED', dataUrl: cached.dataUrl,
       title: cached.title || 'Cached Bing wallpaper', imageDate: cached.imageDate || '',
@@ -204,21 +203,22 @@ function createWallpaperProvider(options = {}) {
   }
 
   function invalidatedResult(reason = 'provider-invalidated') {
-    const statusCode = reason === 'optional-origin-permission-required'
-      ? WALLPAPER_STATUS.PERMISSION_REQUIRED : WALLPAPER_STATUS.NETWORK_UNAVAILABLE;
+    const statusCode = reason === 'bing-origin-access-restricted'
+      ? WALLPAPER_STATUS.ACCESS_RESTRICTED : WALLPAPER_STATUS.NETWORK_UNAVAILABLE;
     return Object.freeze({ ok: false, source: null, reason,
       failureCode: statusCode, statusCode });
   }
 
   async function retrieveWallpaper(requestGeneration) {
-    if (permissionRemovalInProgress || requestGeneration !== generation) return invalidatedResult();
+    if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
     const freshCache = await readCache(FRESH_CACHE_MAX_AGE_MS);
-    if (permissionRemovalInProgress || requestGeneration !== generation) return invalidatedResult();
+    if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
     if (freshCache) return Object.freeze({ ok: true, source: 'CACHE_FRESH', dataUrl: freshCache.dataUrl,
       title: freshCache.title || 'Cached Bing wallpaper', imageDate: freshCache.imageDate || '',
       reason: 'fresh-cache-reused', failureCode: null, statusCode: WALLPAPER_STATUS.RECENT_CACHE });
-    if (!await hasPermission()) return cacheFallback({ reason: 'optional-origin-permission-required',
-      statusCode: WALLPAPER_STATUS.PERMISSION_REQUIRED, detail: 'optional-origin-permission-required' }, requestGeneration);
+    if (!await hasPermission()) return cacheFallback({ reason: 'bing-origin-access-restricted',
+      statusCode: WALLPAPER_STATUS.ACCESS_RESTRICTED, detail: 'bing-origin-access-restricted' }, requestGeneration);
+    if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
     try {
       const metadataResults = await Promise.allSettled(markets.map(async market => {
         const { response: metadataResponse, bytes } = await fetchBounded(metadataUrl(market),
@@ -264,6 +264,7 @@ function createWallpaperProvider(options = {}) {
       const imageUrl = canonicalBingImageUrl(image?.imageId);
       if (!imageUrl) return cacheFallback({ reason: 'bing-response-rejected',
         statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: 'metadata-image-policy-rejected' }, requestGeneration);
+      if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
       const { response: imageResponse, bytes } = await fetchBounded(imageUrl,
         { headers: { Accept: 'image/webp,image/png,image/jpeg' } }, MAX_IMAGE_BYTES);
       if (!imageResponse?.ok) return cacheFallback({ reason: 'bing-response-rejected',
@@ -278,19 +279,19 @@ function createWallpaperProvider(options = {}) {
         title: String(image?.title || image?.copyright || 'Bing wallpaper').slice(0, 300),
         imageDate: /^\d{8}$/.test(String(image?.startdate || '')) ? String(image.startdate) : '',
         market: String(image.market || '').slice(0, 10) };
-      if (permissionRemovalInProgress || requestGeneration !== generation || !await hasPermission()) {
-        return invalidatedResult('optional-origin-permission-required');
+      if (cacheClearingInProgress || requestGeneration !== generation || !await hasPermission()) {
+        return invalidatedResult('bing-origin-access-restricted');
       }
       try { await storage.set({ [CACHE_KEY]: cache }); } catch (_) {}
-      if (permissionRemovalInProgress || requestGeneration !== generation || !await hasPermission()) {
+      if (cacheClearingInProgress || requestGeneration !== generation || !await hasPermission()) {
         try { await storage.remove(CACHE_KEY); } catch (_) {}
-        return invalidatedResult('optional-origin-permission-required');
+        return invalidatedResult('bing-origin-access-restricted');
       }
       return Object.freeze({ ok: true, source: 'REMOTE', dataUrl: cache.dataUrl, title: cache.title,
         imageDate: cache.imageDate, reason: 'fresh-bing-image', failureCode: null,
         statusCode: WALLPAPER_STATUS.ACTIVE });
     } catch (error) {
-      if (permissionRemovalInProgress || requestGeneration !== generation) return invalidatedResult();
+      if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
       return cacheFallback(failureClassification(error), requestGeneration);
     }
   }
@@ -304,7 +305,7 @@ function createWallpaperProvider(options = {}) {
     return record.promise;
   }
 
-  return Object.freeze({ hasPermission, removePermission, getWallpaper });
+  return Object.freeze({ hasPermission, clearWallpaper, getWallpaper });
 }
 
 module.exports = { BING_ORIGIN_PATTERN, BING_ORIGIN, CACHE_KEY, CACHE_MAX_AGE_MS, ROTATION_INTERVAL_MS,

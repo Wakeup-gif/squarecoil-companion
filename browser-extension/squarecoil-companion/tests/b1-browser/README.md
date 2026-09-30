@@ -46,21 +46,20 @@ The harness also locates the bundled Codex Playwright runtime automatically when
 
 Use `--headed` only when visible browser windows are useful. Browser executables default to the standard Windows Chrome and Edge locations and can be overridden with `--chrome-executable` and `--edge-executable`.
 
-The default headless run leaves optional permission absent and requires the integrated Glass fallback to remain readable without a Bing request; it does not open a browser prompt that headless automation cannot answer. Prove the explicit granted path separately with `--interactive-permission-only --browser all`. That supplemental gate opens one short isolated window per selected installed browser, opens the real toolbar action popup, clicks **Allow access**, and waits for a human to choose **Allow** in the browser-owned prompt. It never pre-grants or fabricates the decision. The provider then contacts only the fixed Bing metadata route and the internally constructed canonical `/th?id=<validated OHR ID>&w=3840&h=2160&rs=1&c=4` route. The gate requires a real decoded photograph with varied pixels to be the computed active layer behind both Dark Glass and Light Glass, captures both pages, then simulates a network outage and proves the older safe cache remains visible with accurate UI status. It cannot reach the real SquareCoil site. The normal clean/upgrade Chrome and Edge matrix remains headless and must pass independently.
+The required install hosts are exactly the SquareCoil tenant and `https://www.bing.com/*`; optional runtime host grants are absent. The default headless matrix selects the real Glass controls against a sealed Bing network outage, verifies a readable gradient fallback and zero calls to `chrome.permissions.request`, and preserves all native SquareCoil boundaries. The request observer wraps the real API only to count calls; it never grants or denies permission.
 
-The supplemental live-Bing command is:
+Use `--live-bing-only --browser all` for the supplemental real photograph/cache check. It runs headless by default (add `--headed` only if useful), selects Dark Glass and Light Glass through the actual Companion controls, verifies required access already exists at install, and asserts no runtime permission request. It contacts only the fixed public Bing metadata and canonical image route. It then ages the safe cache, simulates network failure, and verifies the retained photograph and truthful status. The real SquareCoil site remains sealed. This is supplemental evidence and never substitutes for the clean/upgrade matrix.
 
 ```powershell
 node tests/b1-browser/run.js `
   --package C:\absolute\path\to\exact-package `
   --archive C:\absolute\path\to\exact-package.zip `
   --expected-source-sha 0123456789abcdef0123456789abcdef01234567 `
-  --browser all `
-  --interactive-permission-only `
+  --browser all --live-bing-only `
   --evidence C:\absolute\path\to\live-bing-evidence.json
 ```
 
-Choose **Allow** once in each browser-owned prompt. The test rejects inherited permission, a direct extension-page grant, noncanonical Bing parameters, credential/referrer headers, synthetic one-pixel assets, hidden image layers, or status-only success.
+No runtime Allow/Deny prompt, permission-grant API, or browser auto-confirm flag is part of this flow. Installation/update approval remains browser-owned.
 
 The default `--profile all` is mandatory for acceptance. `--profile clean` and `--profile upgrade` are diagnostic subsets and are always labeled `NON_ACCEPTANCE`, even with clean package bytes.
 
@@ -76,6 +75,12 @@ The default `--profile all` is mandatory for acceptance. `--profile clean` and `
 The JSON evidence records browser/CDP identity, profile class, executable hash, extension ID/path/version, exact build/package/candidate identity, candidate embedding counts for all four page/worker runtime bundles, commanded and packaged source SHA, ZIP filename/hash, exact ZIP/extracted inventory binding, synthetic-network ledger, test results, lifecycle/root snapshots, and isolated-world authority snapshots. Evidence output must be outside the tested package and cannot overwrite the ZIP. A browser launch or extension load never counts as a gate pass by itself.
 
 Every message the harness sends directly from the content-script execution world carries the exact packaged `buildId`, `packageVersion`, and `candidateFingerprint` plus the live document token. Popup messages originate from an extension page and remain extension-origin messages; the harness does not mislabel them as content-origin traffic.
+
+## Prototype integration journeys
+
+`A4-PI-<browser>-DASHBOARD-LIFECYCLE` adds `PI-DASH-001`, `PI-DASH-002` and `PI-THEME-001`: a real Companion On/Off click mounts the analytics shadow root only on the audited Design dashboard; chart period, line mode, History and keyboard tooltip work; independent dashboard appearance preserves website/Companion scope; narrow layout stays bounded; reload and same-document route changes preserve one root; disable restores native markup and controls exactly. It reads the existing canonical Timer/Ledger boundary before and after the journey and requires zero native mutation requests. The obsolete Design Dashboard CSS profile remains absent.
+
+The shared journey helper lives in `dev/local-lab/prototype-journey.js`. The separate sealed lab also exercises `PI-UI-001` by selecting an inactive fictional job while another job remains operational, and binds screenshots to the dirty/clean source fingerprint. A diagnostic run on unfinished source remains `NON_ACCEPTANCE`; it does not certify the unrecovered Companion prototype's visual port.
 
 ## Covered gates
 
@@ -111,17 +116,17 @@ Every message the harness sends directly from the content-script execution world
 - malformed restore inputs and active-state Replace fail closed without mutation;
 - Archive and Restore preserve Context totals while passing through the fenced authoritative writer;
 - an exact backup merge dedupes existing history and cannot double-count ledger time.
-- Settings Home remains available with zero history and exposes Appearance, Time tracking, Jobs and watching, Notifications, Dashboard, Privacy and permissions, and Advanced diagnostics;
+- Settings Home remains available with zero history and exposes Appearance (including Analytics dashboard), Time tracking, Jobs and watching, Notifications, Privacy and data, and Help and diagnostics;
 - Native/Off, Dark Glass, Light Glass, and Refined Light are mutually exclusive, report their real effective presentation, and own at most one removable style layer;
 - Light Glass and Refined Light apply bounded same-origin CKEditor document treatment; Dark Glass retains the accepted vendor, overlay, calendar, and responsive adapters;
 - one revisioned Preferences service synchronizes owner/observer tabs and rejects a stale Timer Limits form before allowing one coherent replacement batch;
 - Support diagnostics are opt-in and frozen, expose only coarse allowlisted state, and delivery remains an explicit user action;
 - dirty Settings drafts require confirmation, missing Developer Support configuration stays unavailable, and no settings action mutates Timer/Ledger or native SquareCoil state.
-- Bing cinematic presentation is active only with Dark Glass or Light Glass and makes no Bing request without exact optional host permission granted from the toolbar popup;
+- Bing cinematic presentation is active only with Dark Glass or Light Glass and uses the exact required install host; selecting either skin makes no runtime permission request;
 - provider metadata may contribute only one strictly validated public `OHR.*_UHD.jpg` identity; every other provider query parameter is discarded and the image route is constructed internally;
 - each Glass theme owns one bounded background host/style, settles safely to cache/gradient fallback/remote presentation, and Restore Native removes its resources;
 - a real Bing photograph must be the computed, visible, viewport-covering layer behind both installed Glass themes; an older safe cached image remains visible after network failure and UI/diagnostics report source, failure, and gradient fallback separately;
-- the Design Dashboard profile applies only to exact `/dashboard.php?show=2`, preserves native KPI text, row order/targets, selects, disabled controls, and warnings, adds one non-interactive read-only Companion summary, and does not leak to another dashboard mode;
+- the retired Design Dashboard profile leaves no legacy preference, style layer, or Companion summary on `/dashboard.php?show=2`;
 - optional presentation changes no Timer/Ledger/native-clock authority and attempts no native SquareCoil mutation.
 - a fresh clean profile contains no inherited authority document or runtime before the B6 candidate begins its inherited gates;
 - a separate valid v0.7 upgrade profile migrates two dated sessions plus the undated accumulated remainder exactly once, retains the legacy source byte-for-byte, imports compatible preferences with optional presentation still off, never revives legacy live state, and reaches READY only after the full settled B2 gate;
@@ -129,4 +134,4 @@ Every message the harness sends directly from the content-script execution world
 
 Each browser result carries the canonical stable IDs it proves: `B1-LC-001` through `B1-LC-010` and `B1-LC-012` through `B1-LC-018`. `B1-LC-011` is intentionally an A2/A3-only persistence-concurrency fixture. The B2.1 cases carry `B2-KERNEL-001` (multi-tab OWNER/OBSERVER) and `B2-KERNEL-002` (worker-restart reconnection). The B2.2 cases carry `B2-TRANSITION-001` through `B2-TRANSITION-005` for action 7 start, owner/observer synchronization, atomic job switch, exactly-once disable, and legacy fail-closed behavior. Final settlement cases carry `B2-READY-001` through `B2-READY-003` for OWNER plus popup READY, non-writing OBSERVER READY, and migration-blocked degradation.
 
-The B3 cases carry `B3-WORKSPACE-001` through `B3-WORKSPACE-004`. The B4 cases carry `B4-DATA-001` through `B4-DATA-004`. The B5-A cases carry `B5-SETTINGS-001` through `B5-SETTINGS-005`. B5-B carries `B5B-CINE-001`, `B5B-CINE-002`, `B5B-DASH-001`, `B5B-DASH-002`, and `B5B-SAFETY-001`. B5-C carries `B5C-THEME-001` through `B5C-THEME-004`. B5-D carries `B5D-UI-001`, `B5D-VENDOR-001`, `B5D-OVERLAY-001`, `B5D-EDITOR-001`, and `B5D-LAYOUT-001`; these prove zero-history navigation, route-bounded vendor/overlay theming, same-origin editor-document theming, responsive/print behavior, forced-color fallback, and exact restoration. B6 carries `B6-CANDIDATE-001`, `B6-PROFILE-001`, and `B6-PROFILE-002`; all three must be observed per browser across the clean and upgrade suites. Passing the harness proves the installed-browser A4 portion of B5-D and B6 while preserving every earlier gate. READY-C04 verification-fallback behavior remains covered by mandatory unit/integration fixtures because the installed candidate has `chrome.webRequest`; A4 does not alter the candidate to manufacture an unavailable hook. Final B5-D acceptance requires this A4 pass together with the repository's unit, integration, prototype-compatibility, package, and CI gates.
+The B3 cases carry `B3-WORKSPACE-001` through `B3-WORKSPACE-004`. The B4 cases carry `B4-DATA-001` through `B4-DATA-004`. The B5-A cases carry `B5-SETTINGS-001` through `B5-SETTINGS-005`. B5-B carries `B5B-CINE-001`, `B5B-CINE-002`, `B5B-DASH-001`, `B5B-DASH-002`, and `B5B-SAFETY-001`; the retained DASH IDs now prove absence of the retired redundant profile. B5-C carries `B5C-THEME-001` through `B5C-THEME-004`. B5-D carries `B5D-UI-001`, `B5D-VENDOR-001`, `B5D-OVERLAY-001`, `B5D-EDITOR-001`, and `B5D-LAYOUT-001`; these prove zero-history navigation, route-bounded vendor/overlay theming, same-origin editor-document theming, responsive/print behavior, forced-color fallback, and exact restoration. B6 carries `B6-CANDIDATE-001`, `B6-PROFILE-001`, and `B6-PROFILE-002`; all three must be observed per browser across the clean and upgrade suites. Passing the harness proves the installed-browser A4 portion of B5-D and B6 while preserving every earlier gate. READY-C04 verification-fallback behavior remains covered by mandatory unit/integration fixtures because the installed candidate has `chrome.webRequest`; A4 does not alter the candidate to manufacture an unavailable hook. Final B5-D acceptance requires this A4 pass together with the repository's unit, integration, prototype-compatibility, package, and CI gates.

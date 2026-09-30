@@ -64,7 +64,7 @@ function harness(options = {}) {
   };
   let calls = 0;
   const provider = options.provider || (async () => ({ ok: true, source: 'REMOTE', dataUrl: 'data:image/png;base64,AAAA' }));
-  const service = createCinematicBackground({ document, window, refreshIntervalMs: 1000,
+  const service = createCinematicBackground({ document, window, refreshIntervalMs: 1000, now: options.now,
     fetchWallpaper: request => { calls += 1; return provider(request, calls); },
     loadImage: options.loadImage || (() => true) });
   return { service, document, window, root, head, body, forced, transparency, motion, listeners, timers,
@@ -74,7 +74,7 @@ function harness(options = {}) {
 function prefs(values = {}) {
   return { preferencesSchemaVersion: 2, preferenceRevision: values.revision || 1,
     timerAppearance: 'LIGHT', panelFinish: 'SOLID', websiteTheme: values.theme || 'SLEEK_DARK',
-    cinematicBackground: values.cinematic || 'CINEMATIC', dashboardProfile: 'OFF',
+    cinematicBackground: values.cinematic || 'CINEMATIC',
     yellowMinutes: 60, orangeMinutes: 120, redMinutes: 240 };
 }
 
@@ -169,6 +169,52 @@ test('UT-B5-CINE-011 hidden and visible lifecycle does not stack requests or ref
   h.fireVisibility(); assert.equal(h.timers.size, 1);
 });
 
+test('UT-B5-CINE-043 an overdue hidden image refreshes on return without fetching while hidden', async () => {
+  let clock = 10000;
+  const h = harness({ now: () => clock });
+  h.service.apply(prefs(), sleek); await h.service.refresh();
+  assert.equal(h.service.snapshot().nextRefreshAtMs, 11000);
+  h.document.hidden = true; h.fireVisibility();
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.service.snapshot().nextRefreshAtMs, 11000);
+  clock = 15000;
+  await h.service.refresh('scheduled');
+  assert.equal(h.calls(), 1, 'no hidden-page network refresh');
+  h.document.hidden = false; h.fireVisibility();
+  assert.equal(h.calls(), 2, 'overdue wallpaper starts refreshing immediately on return');
+  await h.service.refresh();
+  assert.equal(h.timers.size, 1);
+  assert.equal(h.service.snapshot().nextRefreshAtMs, 16000);
+  h.service.teardown();
+});
+
+test('UT-B5-CINE-044 repeated tab switching preserves the deadline and Native still clears it', async () => {
+  let clock = 0;
+  const h = harness({ now: () => clock });
+  h.service.apply(prefs(), sleek); await h.service.refresh();
+  for (clock = 100; clock <= 900; clock += 100) {
+    h.document.hidden = true; h.fireVisibility();
+    assert.equal(h.timers.size, 0);
+    h.document.hidden = false; h.fireVisibility();
+    assert.equal(h.calls(), 1);
+    assert.equal(h.service.snapshot().nextRefreshAtMs, 1000, 'visibility changes must not postpone rotation');
+    assert.equal(h.timers.size, 1);
+    assert.equal([...h.timers.values()][0].delay, 1000 - clock);
+  }
+  const [timerId, timer] = [...h.timers][0];
+  h.timers.delete(timerId); timer.callback(); await h.service.refresh();
+  assert.equal(h.calls(), 2);
+  assert.equal(h.service.snapshot().nextRefreshAtMs, 2000);
+  h.document.hidden = true; h.fireVisibility();
+  h.service.apply(prefs({ theme: 'ORIGINAL', revision: 2 }), { websiteThemeEffective: 'ORIGINAL' });
+  h.document.hidden = false; h.fireVisibility();
+  assert.equal(h.service.snapshot().nextRefreshAtMs, null);
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.calls(), 2);
+  assert.equal(h.document.getElementById(CINEMATIC_HOST_ID), null);
+  h.service.teardown();
+});
+
 test('UT-B5-CINE-012 teardown and recovery own at most one host and style', async () => {
   const h = harness(); h.service.apply(prefs(), sleek); await h.service.refresh();
   assert.equal(h.document.querySelectorAll(`#${CINEMATIC_HOST_ID}`).length, 1);
@@ -203,15 +249,15 @@ test('UT-B5-CINE-020 fresh cache is healthy presentation evidence rather than re
 });
 
 test('UT-B5-CINE-022 a no-permission fallback keeps its truthful reason across Dark to Light restoration', async () => {
-  const h = harness({ provider: async () => ({ ok: false, reason: 'optional-origin-permission-required' }) });
+  const h = harness({ provider: async () => ({ ok: false, reason: 'bing-origin-access-restricted' }) });
   h.service.apply(prefs(), sleek); await h.service.refresh();
   assert.equal(h.service.snapshot().state, 'DEGRADED_FALLBACK');
-  assert.equal(h.service.snapshot().reason, 'optional-origin-permission-required');
+  assert.equal(h.service.snapshot().reason, 'bing-origin-access-restricted');
 
   const restored = h.service.apply(prefs({ revision: 2, theme: 'LIGHT_GLASS' }), light);
   assert.equal(restored.state, 'DEGRADED_FALLBACK');
   assert.equal(restored.source, 'FALLBACK');
-  assert.equal(restored.reason, 'optional-origin-permission-required');
+  assert.equal(restored.reason, 'bing-origin-access-restricted');
   assert.equal(h.document.getElementById(CINEMATIC_HOST_ID).getAttribute('data-theme'), 'LIGHT_GLASS');
 });
 
@@ -289,7 +335,7 @@ test('UT-B5-CINE-040 decoded image dimensions reject empty, excessive-axis, and 
 
 test('UT-B5-CINE-041 fallback, permission, rejection, network, cache, and accessibility statuses remain distinct', async () => {
   for (const [reason, expected] of [
-    ['optional-origin-permission-required', CINEMATIC_STATUS.PERMISSION_REQUIRED],
+    ['bing-origin-access-restricted', CINEMATIC_STATUS.ACCESS_RESTRICTED],
     ['bing-response-rejected', CINEMATIC_STATUS.RESPONSE_REJECTED],
     ['network-unavailable', CINEMATIC_STATUS.NETWORK_UNAVAILABLE]
   ]) {

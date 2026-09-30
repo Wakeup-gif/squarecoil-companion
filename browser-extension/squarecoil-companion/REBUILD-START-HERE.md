@@ -1,5 +1,7 @@
 # SquareCoil Companion Rebuild: Start Here
 
+**Current work: confirmed prototype integration (September 30, 2026).** The isolated branch is `codex/squarecoil-prototype-integration`, based on `07d6b575a7ac908ecff42d425eb245d58341670e`. The original September 9 Companion UI was recovered and ported into the real extension. The analytics dashboard and restored Design Dashboard Enhancements are separate off-by-default options. Bing uses narrow required installation/update host access with no runtime consent request. Aggregate checks, Chrome/Edge sealed labs, and installed clean/upgrade diagnostics pass against dirty development bytes. Exact clean-source Chrome/Edge acceptance remains open. Prior UI/theme/lab/Figma stabilization evidence below is historical and does not certify this change. See [the integration checkpoint](docs/PROTOTYPE-INTEGRATION-2026-09-14.md) for current scope and proof.
+
 This is the recovery checkpoint for the active SquareCoil Companion prototype/rebuild.
 
 If chat context is lost or implementation direction becomes unclear, start here before changing code.
@@ -8,7 +10,7 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 ## Current checkpoint
 
-**Active branch:** `codex/squarecoil-b2c-migration`
+**Active branch:** `codex/squarecoil-prototype-integration`
 
 **Production baseline:** `main` at `9378da24f393b40066816133e7fa0f48063115f0` (`v0.7.1 Chrome Interaction Recovery`)
 
@@ -18,7 +20,7 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 **Logic status:** L0-L8 settled + post-mine L5A tab/focus delta settled
 
-**Implementation status:** B1 through B6, B5-D, the prior Glass/theme recovery batch, and the bounded UI/theme/lab/Figma stabilization are accepted; the latest exact implementation source is `4a9368bf4edde8cb10a7a53fcf16512e86b1b623`
+**Historical accepted implementation status:** B1 through B6, B5-D, the prior Glass/theme recovery batch, and the bounded UI/theme/lab/Figma stabilization are accepted; the latest exact implementation source is `4a9368bf4edde8cb10a7a53fcf16512e86b1b623`
 
 **Workspace UI:** canonical B3 Main/Recent/Overview/By Day/By Context/Context Detail/History implementation present
 
@@ -26,7 +28,7 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 **Logic delta authority:** `logic/L5A-TAB-PARITY-FOCUS-DELTA.md`
 
-**Next canonical build action:** no implementation gate is open in this bounded batch; optional live Bing permission and target-file Figma comparison remain supplemental, while publication/promotion remain separately gated
+**Next canonical build action:** finish the confirmed prototype integration and its exact candidate gates; prior accepted batches remain source-bound evidence. Production publication/promotion is not authorized.
 
 The user explicitly authorized sequential B3 through B6 work on this existing branch. That authorization does not promote the branch to production, authorize a release/store upload, or authorize new live SquareCoil mutations.
 

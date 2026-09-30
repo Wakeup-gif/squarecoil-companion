@@ -45,14 +45,18 @@ test('UT-B6-PKG-001 one canonical inventory drives build validation browser pack
   }
 });
 
-test('UT-B6-DOC-001 current authority documents agree on the bounded UI stabilization batch', () => {
+test('UT-B6-DOC-001 current authority documents agree on confirmed prototype integration and retain historical evidence', () => {
   const documents = [
     read('AGENTS.md'),
     read('REBUILD-START-HERE.md'),
     read('implementation/NEXT-CHAT-HANDOFF.md'),
     read('docs/EXECUTION-GATE-MATRIX.md')
   ];
-  for (const document of documents) assert.match(document, /UI\/theme\/lab\/Figma stabilization/);
+  for (const document of documents) {
+    assert.match(document, /confirmed prototype integration/);
+    assert.match(document, /UI\/theme\/lab\/Figma stabilization/);
+    assert.match(document, /PROTOTYPE-INTEGRATION-2026-09-14\.md/);
+  }
   for (const document of documents.slice(0, 3)) {
     assert.doesNotMatch(document, /current authorization covers only the Glass\/theme and recovery stabilization batch/i);
   }

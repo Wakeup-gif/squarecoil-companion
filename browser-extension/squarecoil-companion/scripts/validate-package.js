@@ -5,18 +5,9 @@ const path = require('path');
 const crypto = require('crypto');
 const { BUILD_ID, BUILD_STAGE } = require('../src/core/build-identity');
 const { PACKAGE_FILES } = require('./package-inventory');
-const EXPECTED_PERMISSIONS = Object.freeze(['storage', 'scripting', 'webRequest']);
-const EXPECTED_HOST_PERMISSIONS = Object.freeze(['https://ussignandmill.squarecoil.net/*']);
-const EXPECTED_OPTIONAL_HOST_PERMISSIONS = Object.freeze(['https://www.bing.com/*']);
-const EXPECTED_WEB_ACCESSIBLE_RESOURCES = Object.freeze([Object.freeze({
-  resources: Object.freeze(['dist/themes/dark-glass.css', 'dist/themes/light-glass.css']),
-  matches: Object.freeze(['https://ussignandmill.squarecoil.net/*'])
-})]);
-const EXPECTED_CONTENT_SCRIPT_KEYS = Object.freeze(['all_frames', 'js', 'match_about_blank', 'matches', 'run_at']);
+const { validateManifestPolicy } = require('./manifest-policy');
 
-function assert(condition, message) {
-  if (!condition) throw new Error(message);
-}
+function assert(condition, message) { if (!condition) throw new Error(message); }
 
 function parseArguments(argv) {
   const packageArgument = argv[0];
@@ -103,27 +94,6 @@ function validatePopupHtml(html) {
   assert(linkAttributes.href === 'popup.css', 'Packaged popup must load only popup.css');
 }
 
-function validateManifestPolicy(manifest) {
-  assert(manifest.manifest_version === 3, 'Packaged manifest must be MV3');
-  assert(JSON.stringify(manifest.permissions || []) === JSON.stringify(EXPECTED_PERMISSIONS), 'Packaged permissions must remain storage + scripting + passive webRequest observation only');
-  assert(JSON.stringify(manifest.host_permissions || []) === JSON.stringify(EXPECTED_HOST_PERMISSIONS), 'Packaged host permission must remain limited to the exact SquareCoil tenant');
-  assert(JSON.stringify(manifest.optional_host_permissions || []) === JSON.stringify(EXPECTED_OPTIONAL_HOST_PERMISSIONS), 'Packaged optional host permission must remain limited to the exact Bing image origin');
-  assert(JSON.stringify(manifest.web_accessible_resources || []) === JSON.stringify(EXPECTED_WEB_ACCESSIBLE_RESOURCES), 'Packaged presentation resources must remain limited to the exact CSS files and tenant');
-  assert(JSON.stringify(Object.keys(manifest.background || {}).sort()) === JSON.stringify(['service_worker']), 'Packaged background policy must contain only the service worker entry');
-  assert(manifest.background.service_worker === 'dist/background.js', 'Packaged service worker reference is invalid');
-  assert(manifest.action?.default_popup === 'popup/popup.html', 'Packaged popup reference is invalid');
-
-  const contentScripts = manifest.content_scripts || [];
-  assert(contentScripts.length === 1, 'Packaged manifest must contain exactly one content controller entry');
-  const contentScript = contentScripts[0];
-  assert(JSON.stringify(Object.keys(contentScript).sort()) === JSON.stringify([...EXPECTED_CONTENT_SCRIPT_KEYS].sort()), 'Packaged content controller policy contains unexpected fields');
-  assert(JSON.stringify(contentScript.matches || []) === JSON.stringify(EXPECTED_HOST_PERMISSIONS), 'Packaged content match must remain limited to the exact SquareCoil tenant');
-  assert(JSON.stringify(contentScript.js || []) === JSON.stringify(['dist/presentation-bootstrap.js', 'dist/content-controller.js']), 'Packaged content entry ordering is invalid');
-  assert(contentScript.run_at === 'document_start', 'Packaged content controller must start at document_start');
-  assert(contentScript.all_frames === false, 'Packaged content controller must be top-frame only');
-  assert(contentScript.match_about_blank === false, 'Packaged content controller must not enter about:blank frames');
-  return contentScripts;
-}
 
 const options = parseArguments(process.argv.slice(2));
 const { packageRoot, expectedSourceSha, evidencePath, allowDirty } = options;
@@ -180,6 +150,7 @@ for (const file of files) {
   const text = contents.toString('utf8');
   for (const pattern of secretPatterns) assert(!pattern.test(text), `Sensitive credential pattern detected in ${file}`);
   if (file.endsWith('.js')) {
+    assert(!/\bpermissions\s*(?:\.|\?\.)\s*(?:request|remove)\s*(?:\?\.)?\s*\(/.test(text), `Runtime host permission requests or removals are prohibited in ${file}`);
     assert(!/\beval\s*\(/.test(text), `eval is prohibited in ${file}`);
     assert(!/\bnew\s+Function\s*\(/.test(text), `new Function is prohibited in ${file}`);
     assert(!/\bimportScripts\s*\(/.test(text), `importScripts is prohibited in ${file}`);

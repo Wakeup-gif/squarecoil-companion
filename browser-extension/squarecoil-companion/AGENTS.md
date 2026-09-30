@@ -1,5 +1,7 @@
 # SquareCoil Companion — Codex Working Instructions
 
+**Current work: confirmed prototype integration (September 30, 2026).** The isolated branch is `codex/squarecoil-prototype-integration`, based on `07d6b575a7ac908ecff42d425eb245d58341670e`. The original September 9 Companion UI was recovered and ported into the real extension; the separate analytics dashboard and restored Design Dashboard Enhancements are independent, off-by-default options per user clarification. The Bing policy is narrow required installation/update host access with no runtime consent request. Aggregate checks, Chrome/Edge sealed labs, and installed clean/upgrade diagnostics pass against dirty development bytes. Exact clean-source Chrome/Edge acceptance remains open. Prior UI/theme/lab/Figma stabilization evidence below is historical and does not certify this change. See [the integration checkpoint](docs/PROTOTYPE-INTEGRATION-2026-09-14.md) for current scope and proof.
+
 This file scopes only `browser-extension/squarecoil-companion/`.
 
 ## Current task
