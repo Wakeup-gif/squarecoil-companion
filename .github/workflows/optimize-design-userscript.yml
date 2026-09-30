@@ -1,10 +1,6 @@
 name: Optimize Design userscript
 
 on:
-  push:
-    paths:
-      - "scripts/optimize_design_userscript.py"
-      - ".github/workflows/optimize-design-userscript.yml"
   workflow_dispatch:
 
 permissions:
