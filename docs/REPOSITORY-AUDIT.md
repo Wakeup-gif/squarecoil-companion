@@ -16,7 +16,7 @@ The extension currently has no tracked test directory; CI performs syntax, manif
 
 ## Prototype reference material
 
-Everything under `tampermonkey/` is **legacy prototype work formatted for Tampermonkey**. It is a source of product ideas and behavior examples, not an installable compatibility product or code ready to ship in MV3. Do not run a prototype timer alongside the extension.
+Everything under `tampermonkey/` is **legacy prototype work formatted for Tampermonkey**. It is migration source material: systems, behavior, JavaScript logic, CSS, selectors, and assets may be reused or adapted where they fit the extension. Tampermonkey itself is a retired execution and distribution mechanism; these files are not installable compatibility products or code ready to ship unchanged in MV3. Do not run a prototype timer alongside the extension.
 
 | Prototype family | Relevance to a future extension | Disposition |
 | --- | --- | --- |
@@ -40,6 +40,6 @@ There are exact duplicate blobs among versioned and unversioned userscripts, inc
 
 ## Porting rule
 
-For each prototype feature, first record its user-visible behavior and whether the extension already covers it. Then design it for MV3: background/content/page responsibilities, host permissions, content security policy, storage, and tests. Preserve SquareCoil as the authority for the real company clock. Rebuild useful features in `browser-extension/squarecoil-companion/` rather than copying Tampermonkey wrappers or installing parallel userscripts.
+For each prototype feature, inventory its user-visible behavior, underlying logic, styles, assets, and whether the extension already covers it. Decide which pieces to reuse, adapt, rebuild, or retire. Then fit the chosen pieces into MV3 background/content/page responsibilities, host permissions, content security policy, storage, and tests. Preserve SquareCoil as the authority for the real company clock. Rebuild useful features in `browser-extension/squarecoil-companion/` rather than copying Tampermonkey wrappers or installing parallel userscripts.
 
 Next organizational steps: rename the GitHub repository and update the hard-coded `test_repo` references in `background.js` and `manifest.json` as one release change; document feature-by-feature port decisions; and only then archive or remove unreferenced prototype build files. No historical source has been deleted.
