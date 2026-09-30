@@ -1,7 +1,7 @@
-# Repository scripts
+# Historical prototype tooling
 
-Scripts here support packaging, validation, migration, and historical UI patch work.
+The scripts here package, assemble, optimize, or patch Tampermonkey userscript prototypes. They are not part of the active SquareCoil Companion MV3 extension build.
 
-Keep scripts that are referenced by `.github/workflows/` or the active extension workflow. Before deleting or archiving a one-off patch, search workflow files and documentation for its path. Files ending in `.tmp` are historical inputs, not release sources.
+The related GitHub Actions workflows are manual-only. Keep these files while extracting prototype requirements or reproducing old artifacts. Before archiving or deleting a script, check its workflow and documentation references. Files ending in `.tmp` are historical patch inputs.
 
-The active extension source remains `browser-extension/squarecoil-companion/`.
+Active extension validation and packaging live in `.github/workflows/squarecoil-extension-validate.yml`, using source from `browser-extension/squarecoil-companion/`.
