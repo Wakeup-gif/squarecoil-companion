@@ -10,9 +10,9 @@ Inventory on 2026-09-30: 166 tracked files: 18 extension files, 8 workflow files
 | --- | --- | --- |
 | `browser-extension/squarecoil-companion/` | Canonical MV3 extension | Develop and release from here. Its manifest, background worker, content controller, page runtime, popup, CSS, and release metadata are the active implementation. |
 | `.github/workflows/squarecoil-extension-validate.yml` | Active CI | Keep. It checks JavaScript and manifest references, then packages the extension for Chrome and Edge. |
-| `browser-extension/squarecoil-companion/HANDOFF.md`, `CURRENT.md`, `CHROME-INTERACTION-DIAGNOSIS.md` | Active maintainer context | Read before changing timer authority, injection, or theme behavior. `CURRENT.md` says v0.7.1; the extension README still opens with v0.7.0 and needs a documentation refresh. |
+| `browser-extension/squarecoil-companion/HANDOFF.md`, `CURRENT.md`, `CHROME-INTERACTION-DIAGNOSIS.md` | Active maintainer context | Read before changing timer authority, injection, or theme behavior. `CURRENT.md` and the extension README identify v0.7.1 as the current release. |
 
-The extension currently has no tracked test directory; CI performs syntax, manifest, and package checks. A file named `tampermonkey/SquareCoil-Job-Timer-v1.1.2.user.js` has the same blob as `browser-extension/squarecoil-companion/page/timer-runtime.js`. That historical copy does not make the userscript tree an active extension source.
+The extension currently has no tracked test directory; CI performs syntax, manifest, and package checks. `page/timer-runtime.js` still begins with Tampermonkey update/download metadata from its prototype origin; remove that metadata as part of a deliberate runtime cleanup, after checking the release flow. A file named `tampermonkey/SquareCoil-Job-Timer-v1.1.2.user.js` has the same blob as `browser-extension/squarecoil-companion/page/timer-runtime.js`. That historical copy does not make the userscript tree an active extension source.
 
 ## Prototype reference material
 
@@ -42,4 +42,4 @@ There are exact duplicate blobs among versioned and unversioned userscripts, inc
 
 For each prototype feature, first record its user-visible behavior and whether the extension already covers it. Then design it for MV3: background/content/page responsibilities, host permissions, content security policy, storage, and tests. Preserve SquareCoil as the authority for the real company clock. Rebuild useful features in `browser-extension/squarecoil-companion/` rather than copying Tampermonkey wrappers or installing parallel userscripts.
 
-Next organizational steps: rename the GitHub repository; document feature-by-feature port decisions; refresh the extension README's release version; and only then archive or remove unreferenced prototype build files. No historical source has been deleted.
+Next organizational steps: rename the GitHub repository and update the hard-coded `test_repo` references in `background.js` and `manifest.json` as one release change; document feature-by-feature port decisions; and only then archive or remove unreferenced prototype build files. No historical source has been deleted.
