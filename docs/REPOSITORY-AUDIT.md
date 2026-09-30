@@ -1,6 +1,6 @@
 # Repository organization audit
 
-This repository is a mixed SquareCoil customization workspace. The recommended repository name is **squarecoil-companion**. The current name, **test_repo**, does not describe the product or its Chrome/Edge extension role.
+This repository contains 163 tracked files across the active SquareCoil extension, CI, documentation, release artifacts, restore notes, build tooling, and legacy Tampermonkey history. The recommended repository name is **squarecoil-companion**. The current name, **test_repo**, does not describe the product or its Chrome/Edge extension role.
 
 ## Canonical project
 
@@ -22,11 +22,11 @@ Read these before changing behavior:
 | --- | --- | --- |
 | `browser-extension/squarecoil-companion/` | Canonical | Keep as the maintained Chrome/Edge MV3 project. |
 | `.github/workflows/squarecoil-extension-validate.yml` | Canonical CI | Keep; it validates and packages the extension. |
+| `docs/` | Canonical documentation | Keep architecture, current-state, and audit notes here. |
 | `packages/` | Release artifacts | Keep only reproducible, named packages and checksums. Prefer GitHub Releases for future binaries. |
 | `restore-points/` | Recovery documentation | Keep short rollback notes; do not add active implementation here. |
 | `tampermonkey/` | Legacy/compatibility | Keep as migration material. Put versioned and duplicate copies under `tampermonkey/archive/`. |
 | `scripts/` | Mixed tooling | Keep build/validation/migration scripts; archive or remove unreferenced one-off patches and `.tmp` files after reference checks. |
-| `kindle-jailbreak-prep/` | Unrelated | Separate from this repository or move to its own repository. |
 
 ## Recommended cleanup order
 
@@ -34,9 +34,8 @@ Read these before changing behavior:
 2. Keep `browser-extension/squarecoil-companion/` as the only active implementation root.
 3. Add a short README to `tampermonkey/` identifying it as legacy compatibility material.
 4. Archive or remove unreferenced patch inputs after checking workflow references.
-5. Move `kindle-jailbreak-prep/` to a separate repository.
-6. Store release ZIPs in GitHub Releases when possible; keep checksums or small manifests in the repository.
-7. Keep restore points and migration notes labeled with dates and release targets.
+5. Store release ZIPs in GitHub Releases when possible; keep checksums or small manifests in the repository.
+6. Keep restore points and migration notes labeled with dates and release targets.
 
 ## Scope decisions
 
