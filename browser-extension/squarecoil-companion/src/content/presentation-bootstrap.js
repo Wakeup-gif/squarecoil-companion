@@ -98,13 +98,13 @@ const ROUTES = Object.freeze([
     root.removeAttribute?.(WARM_ATTRIBUTE);
   }
 
-  function primeWarmWallpaper(theme, rawCache) {
+  function primeWarmWallpaper(theme, rawCache, photoEnabled = true) {
     if (!GLASS_THEMES.has(theme) || window.matchMedia?.('(forced-colors: active)')?.matches === true ||
         window.matchMedia?.('(prefers-reduced-transparency: reduce)')?.matches === true) {
       releaseWarmWallpaper();
       return;
     }
-    const cache = cachedWallpaper({ [CACHE_KEY]: rawCache }, Date.now());
+    const cache = photoEnabled ? cachedWallpaper({ [CACHE_KEY]: rawCache }, Date.now()) : null;
     // The full Companion owns this host after startup. Never repaint its image
     // from a later storage event or preference reconciliation.
     if (document.getElementById?.(CINEMATIC_HOST_ID)) {
@@ -246,16 +246,18 @@ const ROUTES = Object.freeze([
     return snapshot();
   }
 
-  async function reconcile(rawTheme, reason = 'reconcile', rawCache) {
+  async function reconcile(rawTheme, reason = 'reconcile', rawCache, photoEnabled = true) {
     if (disposed) return snapshot();
     const theme = normalizeTheme(rawTheme);
     if (!GLASS_THEMES.has(theme) || window.matchMedia?.('(forced-colors: active)')?.matches === true) {
       return removeTheme(theme === 'ORIGINAL' ? reason : 'accessibility-native');
     }
+    // Paint the known cached image or matching gradient before awaiting the
+    // stylesheet. Each full SquareCoil navigation creates a new document.
+    if (rawCache !== undefined) primeWarmWallpaper(theme, rawCache, photoEnabled);
     const existing = document.getElementById?.(STYLE_ID);
     if (activeTheme === theme && existing?.getAttribute?.('data-squarecoil-companion-theme-port') === 'authoritative' &&
         root.getAttribute(ROOT_THEME_ATTRIBUTE) === theme) {
-      if (rawCache !== undefined) primeWarmWallpaper(theme, rawCache);
       syncRoute();
       releaseGuard('theme-unchanged');
       return snapshot();
@@ -276,7 +278,6 @@ const ROUTES = Object.freeze([
       installSourceMarkers(theme);
       activeTheme = theme;
       lastReason = reason;
-      if (rawCache !== undefined) primeWarmWallpaper(theme, rawCache);
       markers.apply();
       releaseGuard('theme-applied');
       return snapshot();
@@ -301,11 +302,15 @@ const ROUTES = Object.freeze([
     try {
       const values = await chrome.storage.local.get({ timerEnabled: true, [AUTHORITY_STORAGE_KEY]: null, [CACHE_KEY]: null });
       if (values.timerEnabled === false) return removeTheme('companion-disabled');
-      const preference = values[AUTHORITY_STORAGE_KEY]?.document?.dataSafety?.preferences?.websiteTheme;
-      return reconcile(preference, reason, values[CACHE_KEY]);
+      const preferences = values[AUTHORITY_STORAGE_KEY]?.document?.dataSafety?.preferences;
+      return reconcile(preferences?.websiteTheme, reason, values[CACHE_KEY], backgroundEnabled(preferences));
     } catch (error) {
       return removeTheme(String(error?.message || error || 'storage-read-failed'));
     }
+  }
+
+  function backgroundEnabled(preferences) {
+    return preferences?.preferencesSchemaVersion !== 3 || preferences.cinematicBackground !== 'NONE';
   }
 
   function onStorageChanged(changes, area) {
@@ -316,7 +321,9 @@ const ROUTES = Object.freeze([
       const alreadySettled = GLASS_THEMES.has(after)
         ? activeTheme === after && document.getElementById?.(STYLE_ID)?.getAttribute?.('data-squarecoil-companion-theme-port') === 'authoritative'
         : activeTheme === 'ORIGINAL';
-      if (before === after && alreadySettled) return;
+      const beforePhoto = backgroundEnabled(changes[AUTHORITY_STORAGE_KEY].oldValue?.document?.dataSafety?.preferences);
+      const afterPhoto = backgroundEnabled(changes[AUTHORITY_STORAGE_KEY].newValue?.document?.dataSafety?.preferences);
+      if (before === after && beforePhoto === afterPhoto && alreadySettled) return;
     }
     void reconcileStored('storage-change');
   }

@@ -44,6 +44,7 @@ const EVIDENCE_FILES = Object.freeze({
   storeWorkspace: '14-store-workspace-1280x800.png',
   storeSettings: '15-store-settings-1280x800.png',
   quietDesign: '16-design-page-quiet-glass.png',
+  quietDesignLight: '17-design-page-quiet-light-glass.png',
   manifest: 'visual-evidence.json'
 });
 
@@ -147,11 +148,15 @@ function labPageHtml(url) {
   const source = loadLabAsset('index.html');
   if (url.pathname === '/project_designs.php') {
     const design = `<section id="lab-native-design" class="lab-section panel" aria-label="Fictional Design page fixture">
-      <div id="us-sign-design-project-header"><div class="us-sign-design-project-name">910001 — Northstar Museum Wayfinding</div><div class="us-sign-design-project-status">In progress</div></div>
+      <aside id="pmlt" class="panel" aria-label="Fictional project tray">910001 · Design navigation</aside>
+      <div class="lab-native-design-main">
+      <div id="us-sign-design-project-header"><div id="customer-name">910001 — Northstar Museum Wayfinding</div><div id="customer-info" class="panel col-xs-12 no-gutter">Fictional project header</div></div>
       <div id="us-sign-design-summary"><div class="us-sign-djt-summary-cell"><span>Status</span><strong>In progress</strong></div></div>
       <div id="us-sign-job-overview">Design overview</div>
-      <div id="us-sign-design-actionbar"><button type="button" disabled>Native Design action</button></div>
-      <div id="us-sign-design-right-stack"><section class="us-sign-designs-panel panel"><header class="panel-heading">Designs</header><div class="panel-body">910001-01</div></section></div>
+      <div id="us-sign-design-actionbar"><button type="button" data-lab-design-focus>View designs</button></div>
+      <div class="alert" role="status">Pending review</div>
+      <div id="us-sign-design-right-stack"><section class="us-sign-designs-panel panel panel-primary panel-border top"><header class="panel-heading">Designs</header><div class="panel-body"><div class="panel" data-lab-nested-card>910001-01</div></div></section></div>
+      </div>
     </section>`;
     return source.replace('<main id="content">', `<main id="content">${design}`);
   }
@@ -715,56 +720,80 @@ async function verifyThemeEvidence(page, evidence, bingPermissionGranted, timeou
 }
 
 async function verifyQuietGlassNavigation(page, evidence, timeout) {
-  await openSettings(page, timeout);
-  await openSettingsDestination(page, 'appearance', 'website-theme', timeout);
-  await page.locator('#ussign-job-timer .sc-theme-choice[data-value="SLEEK_DARK"]').click();
-  await page.waitForFunction(() => document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === 'SLEEK_DARK', null, { timeout });
-  await closeSettings(page, timeout);
-  await page.goto(`${ORIGIN}/project_designs.php`, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.documentElement.classList.contains('us-sign-design-page') &&
-    document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === 'SLEEK_DARK' &&
-    Boolean(document.querySelector('#squarecoil-companion-cinematic-host')), null, { timeout });
-  const proof = await page.evaluate(() => {
-    const selectors = [
-      '#us-sign-design-project-header', '#us-sign-design-summary', '#us-sign-job-overview',
-      '#us-sign-design-actionbar', '#us-sign-design-right-stack .us-sign-designs-panel',
-      '#us-sign-design-right-stack .panel-heading', '#projectbox', '#descriptionbox', '#filesbox'
-    ];
-    const surfaces = selectors.map(selector => {
-      const node = document.querySelector(selector);
-      const css = node ? getComputedStyle(node) : null;
-      return { selector, present: Boolean(node), border: css?.borderTopWidth || null,
-        outlineWidth: css?.outlineWidth || null, outlineStyle: css?.outlineStyle || null,
+  const proofs = {};
+  for (const [theme, screenshot] of [
+    ['SLEEK_DARK', evidence?.files.quietDesign],
+    ['LIGHT_GLASS', evidence?.files.quietDesignLight]
+  ]) {
+    await openSettings(page, timeout);
+    await openSettingsDestination(page, 'appearance', 'website-theme', timeout);
+    await page.locator(`#ussign-job-timer .sc-theme-choice[data-value="${theme}"]`).click();
+    await page.waitForFunction(expected => document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === expected,
+      theme, { timeout });
+    await closeSettings(page, timeout);
+    await page.goto(`${ORIGIN}/project_designs.php`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(expected => document.documentElement.classList.contains('us-sign-design-page') &&
+      document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === expected &&
+      Boolean(document.querySelector('#lab-native-design .panel.panel-primary.panel-border.top')) &&
+      document.querySelector('#lab-native-design .alert')?.getAttribute('data-us-state') === 'pending' &&
+      !document.documentElement.hasAttribute('data-squarecoil-companion-warm-wallpaper'),
+    theme, { timeout });
+    const proof = await page.evaluate(() => {
+      const selectors = [
+        '#lab-native-design #pmlt', '#lab-native-design #customer-name',
+        '#lab-native-design #customer-info.panel.col-xs-12.no-gutter',
+        '#lab-native-design .panel.panel-primary.panel-border.top',
+        '#lab-native-design .panel.panel-primary.panel-border.top .panel-heading',
+        '#lab-native-design .panel.panel-primary.panel-border.top .panel-body',
+        '#lab-native-design [data-lab-nested-card]'
+      ];
+      const surfaces = selectors.map(selector => {
+        const node = document.querySelector(selector);
+        const css = node ? getComputedStyle(node) : null;
+        return { selector, present: Boolean(node), borders: css ? [css.borderTopWidth, css.borderRightWidth,
+          css.borderBottomWidth, css.borderLeftWidth] : null,
+        shadow: css?.boxShadow || null, outlineWidth: css?.outlineWidth || null,
+        outlineStyle: css?.outlineStyle || null,
         blur: css?.backdropFilter || css?.webkitBackdropFilter || null };
+      });
+      const alert = document.querySelector('#lab-native-design .alert');
+      const alertCss = alert ? getComputedStyle(alert) : null;
+      const layer = document.querySelector('#squarecoil-companion-cinematic-host .sc-cinematic-layer');
+      const layerCss = layer ? getComputedStyle(layer) : null;
+      return { route: location.pathname,
+        theme: document.documentElement.getAttribute('data-squarecoil-companion-site-theme'),
+        styleCount: document.querySelectorAll('#squarecoil-companion-site-theme').length,
+        hostCount: document.querySelectorAll('#squarecoil-companion-cinematic-host').length,
+        rootBackground: getComputedStyle(document.documentElement).backgroundImage,
+        warmAttribute: document.documentElement.getAttribute('data-squarecoil-companion-warm-wallpaper'),
+        surfaces, alert: alertCss ? { state: alert.getAttribute('data-us-state'),
+          background: alertCss.backgroundColor, color: alertCss.color } : null,
+        layer: layerCss ? { animation: layerCss.animationName,
+          transition: layerCss.transitionDuration, transform: layerCss.transform, filter: layerCss.filter } : null };
     });
-    const layer = document.querySelector('#squarecoil-companion-cinematic-host .sc-cinematic-layer');
-    const layerCss = layer ? getComputedStyle(layer) : null;
-    return { route: location.pathname,
-      theme: document.documentElement.getAttribute('data-squarecoil-companion-site-theme'),
-      styleCount: document.querySelectorAll('#squarecoil-companion-site-theme').length,
-      hostCount: document.querySelectorAll('#squarecoil-companion-cinematic-host').length,
-      warmAttribute: document.documentElement.getAttribute('data-squarecoil-companion-warm-wallpaper'),
-      surfaces, layer: layerCss ? { animation: layerCss.animationName,
-        transition: layerCss.transitionDuration, transform: layerCss.transform, filter: layerCss.filter } : null };
-  });
-  assertVisualCondition(proof.route === '/project_designs.php' && proof.theme === 'SLEEK_DARK' &&
-    proof.styleCount === 1 && proof.hostCount === 1 && proof.warmAttribute === null &&
-    proof.surfaces.every(surface => surface.present && surface.border === '0px' &&
-      (surface.outlineStyle === 'none' || surface.outlineWidth === '0px') && surface.blur === 'none') &&
-    proof.layer?.animation === 'none' && proof.layer.transition === '0s' &&
-    proof.layer.transform === 'none' && proof.layer.filter === 'none',
-  'Design navigation retained outlines, blur, or animated wallpaper', proof);
-  if (evidence) await page.screenshot({ path: evidence.files.quietDesign, fullPage: false, animations: 'disabled', caret: 'hide' });
-  await page.goto(`${ORIGIN}${LAB_ROOT}/index.html`, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === 'SLEEK_DARK' &&
-    Boolean(document.querySelector('#ussign-job-timer')), null, { timeout });
+    assertVisualCondition(proof.route === '/project_designs.php' && proof.theme === theme &&
+      proof.styleCount === 1 && proof.hostCount <= 1 && proof.warmAttribute === null &&
+      proof.rootBackground.includes('radial-gradient') &&
+      proof.surfaces.every(surface => surface.present && surface.borders.every(border => border === '0px') &&
+        surface.shadow === 'none' && (surface.outlineStyle === 'none' || surface.outlineWidth === '0px') &&
+        surface.blur === 'none') &&
+      proof.alert?.state === 'pending' && proof.alert.background !== 'rgba(0, 0, 0, 0)' &&
+      (!proof.layer || (proof.layer.animation === 'none' && proof.layer.transition === '0s' &&
+        proof.layer.transform === 'none' && proof.layer.filter === 'none')),
+    'Design navigation retained borders, shadows, blur, or lost status meaning', proof);
+    if (screenshot) await page.screenshot({ path: screenshot, fullPage: false, animations: 'disabled', caret: 'hide' });
+    proofs[theme] = proof;
+    await page.goto(`${ORIGIN}${LAB_ROOT}/index.html`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(expected => document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === expected &&
+      Boolean(document.querySelector('#ussign-job-timer')), theme, { timeout });
+  }
   await openSettings(page, timeout);
   await openSettingsDestination(page, 'appearance', 'website-theme', timeout);
   await page.locator('#ussign-job-timer .sc-theme-choice[data-value="ORIGINAL"]').click();
   await page.waitForFunction(() => !document.documentElement.hasAttribute('data-squarecoil-companion-site-theme') &&
     !document.querySelector('#squarecoil-companion-cinematic-host'), null, { timeout });
   await closeSettings(page, timeout);
-  return proof;
+  return proofs;
 }
 
 async function verifyVisualContract(page, evidence, timeout, options = {}) {
@@ -1439,7 +1468,8 @@ async function main() {
             designProfile: EVIDENCE_FILES.designProfile,
             storeWorkspace: EVIDENCE_FILES.storeWorkspace,
             storeSettings: EVIDENCE_FILES.storeSettings,
-            quietDesign: EVIDENCE_FILES.quietDesign
+            quietDesign: EVIDENCE_FILES.quietDesign,
+            quietDesignLight: EVIDENCE_FILES.quietDesignLight
           },
           screenshotDigests,
           visualProof,

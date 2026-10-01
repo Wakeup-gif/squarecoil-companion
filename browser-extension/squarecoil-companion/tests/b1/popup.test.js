@@ -520,7 +520,10 @@ test('UT-B2-READY-022 popup static copy preserves the final fail-closed gate beh
   const html = fs.readFileSync(path.resolve(__dirname, '../../popup/popup.html'), 'utf8');
   assert.match(html, /<h1>SquareCoil Companion<\/h1>/);
   assert.doesNotMatch(html, /<img\b|brand-mark|US Sign &amp; Mill/);
-  assert.match(html, /Companion workspace/);
+  assert.match(html, /Your work at a glance/);
+  assert.match(html, /<summary>Appearance<\/summary>/);
+  assert.match(html, /Show Companion panel/);
+  assert.match(html, /Bing photo background/);
   assert.match(html, /Ready appears only after every required safety check passes\./);
   assert.match(html, /Technical details/);
   assert.doesNotMatch(html, /B6 · Release candidate|OWNER|fenced authority|trusted core|Bridge settlement/);
@@ -628,7 +631,7 @@ test('UT-B5-POPUP-003 popup reports existing Bing access without a second consen
   assert.equal(nodes.get('enableWallpaper').onclick, undefined);
   assert.equal(requests.some(item => item.type === 'request'), false);
   assert.equal(permissionCard.dataset.granted, 'true');
-  assert.match(nodes.get('wallpaperPermission').textContent, /Bing backgrounds are included/);
+  assert.match(nodes.get('wallpaperPermission').textContent, /Bing photos are available when the switch is on/);
   assert.equal(tabMessages.some(item => item.message.type === 'SC_COMPANION_B5B_PERMISSION_CHANGED'), false);
 });
 
@@ -663,6 +666,103 @@ test('UT-B5-POPUP-004 browser-restricted Bing access reports fallback without a 
   assert.equal(nodes.get('enableWallpaper').onclick, undefined);
   assert.equal(requestCalls, 0);
   assert.equal(permissionCard.dataset.granted, 'false');
-  assert.match(nodes.get('wallpaperPermission').textContent, /restricted by the browser.*cached image.*built-in gradient/i);
+  assert.match(nodes.get('wallpaperPermission').textContent, /Bing photos are unavailable.*built-in background/i);
   assert.equal(messages.some(message => message.type === 'SC_COMPANION_B5B_PERMISSION_CHANGED'), false);
+});
+
+test('UT-B5-POPUP-006 Appearance uses revisioned theme and photo commands while panel visibility stays independent', async () => {
+  const listeners = new Map(); const nodes = new Map();
+  for (const id of ['classification', 'lifecycle', 'reason', 'runtimeId', 'retryCleanup', 'startFresh', 'enabled', 'refresh',
+    'version', 'stage', 'friendlyStatus', 'friendlyMessage', 'statusIcon', 'summaryCard', 'emptySummary', 'emptySummaryText',
+    'websiteTheme', 'bingPhoto', 'appearanceMessage', 'wallpaperPermission', 'panelVisible', 'panelMessage']) {
+    nodes.set(id, { id, textContent: '', hidden: false, checked: true, disabled: false, value: '',
+      addEventListener(type, listener) { this[`on${type}`] = listener; } });
+  }
+  const card = { dataset: {} };
+  const document = { body: { dataset: {} }, getElementById: id => nodes.get(id) || null,
+    querySelector: selector => selector === '.permission-card' ? card : null,
+    addEventListener: (type, listener) => listeners.set(type, listener) };
+  let current = { websiteTheme: 'SLEEK_DARK', cinematicBackground: 'CINEMATIC', preferenceRevision: 3 };
+  const messages = []; const writes = []; let permissionRequests = 0;
+  const chrome = {
+    permissions: { contains: async () => true, request: async () => { permissionRequests += 1; return true; } },
+    tabs: { query: async () => [{ id: 7 }], sendMessage: async (tabId, message) => {
+      assert.equal(tabId, 7); messages.push(message);
+      if (message.type === 'SC_COMPANION_GET_POPUP_SUMMARY') return { ok: true, current: null };
+      if (message.type === 'SC_COMPANION_GET_APPEARANCE') return { ok: true, preferences: current, panelVisible: true };
+      if (message.type === 'SC_COMPANION_SET_APPEARANCE') {
+        assert.equal(message.expectedPreferenceRevision, current.preferenceRevision);
+        current = { ...current, ...message.patch, preferenceRevision: current.preferenceRevision + 1 };
+        return { ok: true, preferences: current, panelVisible: true };
+      }
+      throw new Error(`unexpected content message: ${message.type}`);
+    } },
+    storage: { local: { get: async () => ({ timerEnabled: true, companionPanelVisible: true }),
+      set: async value => { writes.push(value); } } },
+    runtime: { getManifest: () => ({ version: '0.7.1' }), sendMessage: async () => ({
+      ok: true, ready: true, classification: 'HEALTHY_SAME_BUILD', health: { state: 'READY', mode: 'ENABLED', reason: 'ready' }
+    }) }
+  };
+  const source = fs.readFileSync(path.resolve(__dirname, '../../src/popup/popup.js'), 'utf8');
+  vm.runInNewContext(source, { chrome, document, console }, { filename: 'src/popup/popup.js' });
+  await listeners.get('DOMContentLoaded')();
+  assert.equal(nodes.get('websiteTheme').value, 'SLEEK_DARK');
+  assert.equal(nodes.get('websiteTheme').disabled, false);
+  assert.equal(nodes.get('bingPhoto').checked, true);
+  assert.equal(nodes.get('bingPhoto').disabled, false);
+
+  nodes.get('bingPhoto').checked = false;
+  nodes.get('bingPhoto').onchange(); await tick(5);
+  assert.equal(current.cinematicBackground, 'NONE');
+  assert.equal(nodes.get('bingPhoto').checked, false);
+  nodes.get('websiteTheme').value = 'LIGHT_GLASS';
+  nodes.get('websiteTheme').onchange(); await tick(5);
+  assert.equal(current.websiteTheme, 'LIGHT_GLASS');
+  const commands = messages.filter(message => message.type === 'SC_COMPANION_SET_APPEARANCE');
+  assert.equal(JSON.stringify(commands.map(message => [message.patch, message.expectedPreferenceRevision])),
+    JSON.stringify([[{ cinematicBackground: 'NONE' }, 3], [{ websiteTheme: 'LIGHT_GLASS' }, 4]]));
+
+  nodes.get('panelVisible').checked = false;
+  nodes.get('panelVisible').onchange(); await tick(5);
+  assert.equal(JSON.stringify(writes), JSON.stringify([{ companionPanelVisible: false }]));
+  assert.equal(nodes.get('enabled').checked, true);
+  assert.equal(permissionRequests, 0);
+});
+
+test('UT-B5-POPUP-007 unsupported page leaves Appearance safely unavailable but panel visibility usable', async () => {
+  const listeners = new Map(); const nodes = new Map();
+  for (const id of ['classification', 'lifecycle', 'reason', 'runtimeId', 'retryCleanup', 'startFresh', 'enabled', 'refresh',
+    'version', 'stage', 'friendlyStatus', 'friendlyMessage', 'statusIcon', 'websiteTheme', 'bingPhoto',
+    'appearanceMessage', 'panelVisible', 'panelMessage']) {
+    nodes.set(id, { id, textContent: '', hidden: false, checked: true, disabled: false, value: '',
+      addEventListener(type, listener) { this[`on${type}`] = listener; } });
+  }
+  const document = { body: { dataset: {} }, getElementById: id => nodes.get(id) || null,
+    addEventListener: (type, listener) => listeners.set(type, listener) };
+  const writes = []; const contentMessages = [];
+  const chrome = {
+    tabs: { query: async () => [{ id: 4 }], sendMessage: async (_tabId, message) => {
+      contentMessages.push(message);
+      if (message.type === 'SC_COMPANION_GET_APPEARANCE') throw new Error('no receiver');
+      return { ok: false };
+    } },
+    storage: { local: { get: async () => ({ timerEnabled: true, companionPanelVisible: true }),
+      set: async value => { writes.push(value); } } },
+    runtime: { getManifest: () => ({ version: '0.7.1' }), sendMessage: async () => ({
+      ok: false, classification: 'NO_ACTIVE_TAB', health: { state: 'UNAVAILABLE' }
+    }) }
+  };
+  const source = fs.readFileSync(path.resolve(__dirname, '../../src/popup/popup.js'), 'utf8');
+  vm.runInNewContext(source, { chrome, document, console }, { filename: 'src/popup/popup.js' });
+  await listeners.get('DOMContentLoaded')();
+  assert.equal(nodes.get('websiteTheme').disabled, true);
+  assert.equal(nodes.get('bingPhoto').disabled, true);
+  assert.match(nodes.get('appearanceMessage').textContent, /unavailable.*Refresh/);
+  nodes.get('websiteTheme').value = 'LIGHT_GLASS';
+  nodes.get('websiteTheme').onchange(); await tick(4);
+  assert.equal(contentMessages.some(message => message.type === 'SC_COMPANION_SET_APPEARANCE'), false);
+
+  nodes.get('panelVisible').checked = false;
+  nodes.get('panelVisible').onchange(); await tick(4);
+  assert.equal(JSON.stringify(writes), JSON.stringify([{ companionPanelVisible: false }]));
 });

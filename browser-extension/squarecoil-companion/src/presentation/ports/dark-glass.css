@@ -7060,18 +7060,40 @@ html:is(.us-sign-v230,.us-sign-v240) body.sb-l-m #sidebar_left .sidebar-toggle-m
  * full-page blur surfaces are expensive over a large photograph and create the
  * unwanted blue box outlines. Keep the theme fills and typography, but let a
  * single static wallpaper sit behind flat, borderless page surfaces. */
-html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar,#topbar,.topbar,#sidebar_left,#pmlt),
-html:is(.us-sign-v230,.us-sign-v240) body :is(#customer-name,#customer-info,#showbtns,#mapcontainer,#filesbox,#descriptionbox,#projectbox,#designbox,#us-sign-design-project-header,#us-sign-design-actionbar,#us-sign-job-overview,#us-sign-design-summary,.us-sign-description-panel,.us-sign-designs-panel,.us-sign-files-panel),
-html:is(.us-sign-v230,.us-sign-v240) body #content :is(.panel,.panel-default,.well,.tab-content,.table-responsive,.panel-heading,.panel-footer,.nav-tabs,.alert,.notification,.notice,.dropdown-menu,.popover,.modal-content,.modal-header,.modal-footer),
-html:is(.us-sign-v230,.us-sign-v240) body :is(#pmlt,#sidebar_left,#content) :is(.panel,.panel-default,.well,.tab-content,.table-responsive,.panel-heading,.panel-footer,.nav-tabs,.alert,.notification,.notice,.sidebar-menu,.sidebar-left-content) {
+/* A root gradient must remain when the separate Bing photo preference is off.
+ * The shared cache owns the same fallbacks used by document-start prepaint. */
+html.us-sign-v230.us-sign-theme-dark-glass {
+  background-color: #090d12 !important;
+  background-image: radial-gradient(circle at 18% 10%,rgba(49,117,151,.92) 0,rgba(26,55,73,.76) 24%,transparent 47%),radial-gradient(circle at 82% 16%,rgba(76,56,123,.62) 0,transparent 38%),linear-gradient(145deg,#132531 0%,#0b141d 48%,#070b10 100%) !important;
+  background-position: center center !important;
+  background-size: cover !important;
+  background-repeat: no-repeat !important;
+  background-attachment: scroll !important;
+}
+html.us-sign-v240.us-sign-theme-light-glass {
+  background-color: #d9e9f2 !important;
+  background-image: radial-gradient(circle at 18% 10%,rgba(255,255,255,.98) 0,rgba(223,239,248,.86) 30%,transparent 55%),radial-gradient(circle at 78% 18%,rgba(163,205,226,.58) 0,transparent 43%),linear-gradient(145deg,#d9e9f2 0%,#bfd4e0 52%,#91adbd 100%) !important;
+  background-position: center center !important;
+  background-size: cover !important;
+  background-repeat: no-repeat !important;
+  background-attachment: scroll !important;
+}
+
+/* Match the terminal theme class pair; those earlier compatibility rules are
+ * important and otherwise outrank a later one-class quiet override. */
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass) body :is(header.navbar,.navbar,#topbar,.topbar,#sidebar_left,#pmlt),
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass) body :is(#customer-name,#customer-info,#showbtns,#mapcontainer,#filesbox,#descriptionbox,#projectbox,#designbox,#us-sign-design-project-header,#us-sign-design-actionbar,#us-sign-job-overview,#us-sign-design-summary,.us-sign-description-panel,.us-sign-designs-panel,.us-sign-files-panel),
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass) body #content :is(.panel,.panel-default,.well):not(.alert):not([data-us-state]),
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass) body #content :is(.tab-content,.table-responsive,.panel-heading,.panel-footer,.nav-tabs,.dropdown-menu,.popover,.modal-content,.modal-header,.modal-footer),
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass) body :is(#pmlt,#sidebar_left,#content) :is(.panel,.panel-default,.well,.tab-content,.table-responsive,.panel-heading,.panel-footer,.nav-tabs,.sidebar-menu,.sidebar-left-content) {
   border: 0 !important;
   box-shadow: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
 
-html:is(.us-sign-v230,.us-sign-v240) body #content :is(#projectbox,#designbox,#descriptionbox,#filesbox,#customer-info,#us-sign-design-right-stack) :is(table,thead,tbody,tr,th,td),
-html:is(.us-sign-v230,.us-sign-v240) body :is(#pmlt,#sidebar_left,#content) :is(.btn,button,.nav>li>a,.sidebar-menu a,.list-group-item):not(:focus-visible) {
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass) body #content :is(#projectbox,#designbox,#descriptionbox,#filesbox,#customer-info,#us-sign-design-right-stack) :is(table,thead,tbody,tr,th,td),
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass) body :is(#pmlt,#sidebar_left,#content) :is(.btn,button,.nav>li>a,.sidebar-menu a,.list-group-item):not(:focus-visible) {
   border: 0 !important;
   box-shadow: none !important;
 }
@@ -7079,17 +7101,33 @@ html:is(.us-sign-v230,.us-sign-v240) body :is(#pmlt,#sidebar_left,#content) :is(
 /* The prototype's Design page has more specific nested border rules than its
  * general card registry. Target those exact presentation wrappers so their
  * colored outlines cannot win the cascade on project navigation. */
-html:is(.us-sign-v230,.us-sign-v240).us-sign-design-page body #content :is(
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass).us-sign-design-page body #content :is(
   #us-sign-design-project-header,#us-sign-design-summary,#us-sign-job-overview,
   #us-sign-design-actionbar,#us-sign-design-bottom-grid,#us-sign-design-right-stack,
   .us-sign-designs-panel,.us-sign-files-panel,.us-sign-description-panel
 ),
-html:is(.us-sign-v230,.us-sign-v240).us-sign-design-page body #content :is(
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass).us-sign-design-page body #content :is(
   #us-sign-design-project-header,#us-sign-design-summary,#us-sign-job-overview,
   #us-sign-design-actionbar,#us-sign-design-bottom-grid,#us-sign-design-right-stack
 ) :is(.panel,.panel-heading,.panel-body,.us-sign-djt-summary-cell,.us-sign-design-project-name,.us-sign-design-project-info,.us-sign-design-project-status),
-html:is(.us-sign-v230,.us-sign-v240).us-sign-design-page body #content #us-sign-design-right-stack table :is(th,td) {
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass).us-sign-design-page body #content #us-sign-design-right-stack table :is(th,td),
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass).us-sign-design-page body #content .panel.panel-primary.panel-border.top,
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass).us-sign-design-page body #content .panel.panel-primary.panel-border.top :is(.panel,.panel-heading,.panel-body),
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass).us-sign-design-page body #customer-info.panel.col-xs-12.no-gutter,
+html:is(.us-sign-v230.us-sign-theme-dark-glass,.us-sign-v240.us-sign-theme-light-glass).us-sign-design-page body #pmlt {
   border: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Pending is a semantic state, not another decorative card outline. The old
+ * dark shared rule can leave Light Glass with pale text on a clear alert. */
+html.us-sign-v240.us-sign-theme-light-glass.us-sign-semantic-project-ux body .alert[data-us-state="pending"] {
+  color: #18405b !important;
+  background: rgba(221,241,251,.88) !important;
+  border: 0 !important;
+  border-left: 3px solid var(--usl-info) !important;
   box-shadow: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;

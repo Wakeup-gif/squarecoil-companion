@@ -22,14 +22,22 @@ function createPresentationMarkers(options = {}) {
 
   function ownAttribute(node, name, value) {
     if (!node?.getAttribute || !node?.setAttribute) return;
+    const nextValue = value === null || value === undefined || value === '' ? null : String(value);
+    if (node.getAttribute(name) === nextValue) return;
     let attributes = originals.get(node);
     if (!attributes) {
       attributes = new Map();
       originals.set(node, attributes);
     }
     if (!attributes.has(name)) attributes.set(name, node.hasAttribute?.(name) ? node.getAttribute(name) : null);
-    if (value === null || value === undefined || value === '') node.removeAttribute?.(name);
-    else node.setAttribute(name, String(value));
+    if (nextValue === null) node.removeAttribute?.(name);
+    else node.setAttribute(name, nextValue);
+  }
+
+  function setRootMarker(root, name, present) {
+    const hasMarker = root.classList?.contains?.(name) === true;
+    if (present && !hasMarker) root.classList?.add(name);
+    else if (!present && hasMarker) root.classList?.remove(name);
   }
 
   function semanticState(text) {
@@ -59,8 +67,7 @@ function createPresentationMarkers(options = {}) {
   function markSemanticProjectUx() {
     const summary = document.querySelector?.('#us-sign-design-summary');
     const actionbar = document.querySelector?.('#us-sign-design-actionbar');
-    if (!summary || !actionbar) return;
-    document.documentElement?.classList?.add('us-sign-semantic-project-ux');
+    if (!summary || !actionbar) return false;
     for (const cell of summary.querySelectorAll?.('.us-sign-djt-summary-cell') || []) {
       const label = String(cell.querySelector?.('.us-sign-djt-summary-label')?.textContent || '').trim().toLowerCase();
       const valueElement = cell.querySelector?.('.us-sign-djt-summary-value');
@@ -97,39 +104,33 @@ function createPresentationMarkers(options = {}) {
       const count = Number.parseInt(String(badge.textContent || '').trim(), 10);
       ownAttribute(badge, 'data-us-zero', Number.isFinite(count) && count === 0 ? 'true' : 'false');
     }
+    return true;
   }
 
   function pass() {
     if (disposed || !active) return;
     const root = document.documentElement;
     if (!root) return;
-    for (const className of ROOT_MARKER_CLASSES) root.classList?.remove(className);
     const pathname = String(window.location?.pathname || '').toLowerCase();
-    if (pathname === '/project_milestones.php') root.classList?.add('us-sign-project-status-page');
-    if (pathname === '/project_designs.php' || pathname === '/edit_design.php') {
-      root.classList?.add('us-sign-design-page');
-    }
-    if (pathname === '/search.php') root.classList?.add('us-sign-search-page');
+    setRootMarker(root, 'us-sign-project-status-page', pathname === '/project_milestones.php');
+    setRootMarker(root, 'us-sign-design-page', pathname === '/project_designs.php' || pathname === '/edit_design.php');
+    setRootMarker(root, 'us-sign-search-page', pathname === '/search.php');
     const headings = Array.from(document.querySelectorAll?.('.panel-heading, .panel-title, h1, h2, h3, h4') || []);
-    if (document.querySelector?.('input[placeholder*="Search Tasks" i]') &&
-        headings.some(element => /Selected\s+Task|^\s*Tasks\s*$/i.test(element.textContent || ''))) {
-      root.classList?.add('us-sign-task-page');
-    }
+    setRootMarker(root, 'us-sign-task-page', Boolean(document.querySelector?.('input[placeholder*="Search Tasks" i]') &&
+      headings.some(element => /Selected\s+Task|^\s*Tasks\s*$/i.test(element.textContent || ''))));
     const projectContext = document.querySelector?.(
       '#customer-info, #customer-name, #us-sign-design-actionbar, #us-sign-design-bottom-grid, #ps-select, .us-sign-scope-enhanced, .important-notes'
     );
     const hasDashboardWidgets = document.querySelector?.('#widget-tasks') &&
       document.querySelector?.('#widget-designs') && document.querySelector?.('#widget-estimates');
     const dashboardBreadcrumb = /^\s*Dashboard\s*$/i.test(document.querySelector?.('#bread-crumb')?.textContent || '');
-    if (!projectContext && pathname === '/dashboard.php' &&
-        (document.querySelector?.('#page-content') || hasDashboardWidgets || dashboardBreadcrumb)) {
-      root.classList?.add('us-sign-main-dashboard');
-    }
+    setRootMarker(root, 'us-sign-main-dashboard', Boolean(!projectContext && pathname === '/dashboard.php' &&
+      (document.querySelector?.('#page-content') || hasDashboardWidgets || dashboardBreadcrumb)));
     const isJobDashboard = pathname === '/project.php' && document.querySelector?.('#customer-info') && document.querySelector?.('.important-notes') &&
       !document.querySelector?.('#ps-select, .us-sign-scope-enhanced, #us-sign-design-actionbar, #us-sign-design-bottom-grid') &&
       !root.classList?.contains('us-sign-project-status-page');
-    if (isJobDashboard) root.classList?.add('us-sign-job-dashboard');
-    markSemanticProjectUx();
+    setRootMarker(root, 'us-sign-job-dashboard', Boolean(isJobDashboard));
+    setRootMarker(root, 'us-sign-semantic-project-ux', markSemanticProjectUx());
   }
 
   function clearTimers() {

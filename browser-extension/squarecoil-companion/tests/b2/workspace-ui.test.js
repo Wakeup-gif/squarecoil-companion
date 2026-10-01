@@ -81,6 +81,7 @@ async function createHarness(options = {}) {
   const preferenceWrites = [];
   let syncCount = 0;
   let intervalCallback = null;
+  let storageChangeListener = null;
 
   const root = {
     dataset: {},
@@ -104,7 +105,7 @@ async function createHarness(options = {}) {
     clearInterval() { intervalCallback = null; }
   };
 
-  const preferences = {};
+  const preferences = { ...(options.initialStorage || {}) };
   const storage = {
     async get(defaults) { return { ...defaults, ...preferences }; },
     async set(values) {
@@ -145,6 +146,10 @@ async function createHarness(options = {}) {
     document,
     window,
     storage,
+    storageChanges: {
+      addListener(listener) { storageChangeListener = listener; },
+      removeListener(listener) { if (storageChangeListener === listener) storageChangeListener = null; }
+    },
     getCoreHandle: () => handle
   });
   await ui.start();
@@ -178,7 +183,8 @@ async function createHarness(options = {}) {
     click,
     drain,
     getSyncCount: () => syncCount,
-    getIntervalCallback: () => intervalCallback
+    getIntervalCallback: () => intervalCallback,
+    storageChanged(changes) { storageChangeListener?.(changes, 'local'); }
   };
 }
 
@@ -257,6 +263,22 @@ test('UT-B2-PROTOUI-006 theme and finish commit through Preferences while collap
   assert.deepEqual(h.preferenceWrites.map(write => write.patch), [{ timerAppearance: 'DARK' }, { panelFinish: 'GLASS' }]);
   assert.equal(h.writes.some(write => Object.hasOwn(write, 'protoUiTheme') || Object.hasOwn(write, 'protoUiSurface')), false);
   assert.equal(h.writes.some(write => write.protoUiCollapsed === true), true);
+  h.ui.teardown();
+});
+
+test('UT-B2-PROTOUI-020 toolbar panel visibility hides only the rendered panel and follows storage changes', async () => {
+  const h = await createHarness({ initialStorage: { companionPanelVisible: false } });
+  const timerBefore = structuredClone(h.timer);
+  assert.equal(h.root.dataset.panelHidden, 'true');
+  assert.match(h.root.innerHTML, /SquareCoil Companion/);
+  h.storageChanged({ companionPanelVisible: { oldValue: false, newValue: true } });
+  assert.equal(h.root.dataset.panelHidden, 'false');
+  h.storageChanged({ companionPanelVisible: { oldValue: true, newValue: false } });
+  assert.equal(h.root.dataset.panelHidden, 'true');
+  assert.deepEqual(h.timer, timerBefore);
+  assert.deepEqual(h.timerActions, []);
+  assert.deepEqual(h.preferenceWrites, []);
+  assert.equal(h.writes.length, 0);
   h.ui.teardown();
 });
 

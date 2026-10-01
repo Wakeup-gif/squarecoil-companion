@@ -2,8 +2,8 @@
 
 const { DATA_SAFETY_SCHEMA_VERSION, deepClone, isRecord } = require('../data/model');
 
-const PREFERENCE_SCHEMA_VERSION = 2;
-const COMPATIBLE_PREFERENCE_SCHEMA_VERSIONS = new Set([1, PREFERENCE_SCHEMA_VERSION]);
+const PREFERENCE_SCHEMA_VERSION = 3;
+const COMPATIBLE_PREFERENCE_SCHEMA_VERSIONS = new Set([1, 2, PREFERENCE_SCHEMA_VERSION]);
 const DEFAULT_PREFERENCES = Object.freeze({
   timerAppearance: 'LIGHT',
   panelFinish: 'SOLID',
@@ -87,14 +87,18 @@ function normalizePreferenceSnapshot(raw, options = {}) {
   const candidates = preferenceCandidates(source);
   const limits = validLimits(candidates) ? candidates : fallback;
   const websiteTheme = candidates.websiteTheme || fallback.websiteTheme || DEFAULT_PREFERENCES.websiteTheme;
+  const glassTheme = ['SLEEK_DARK', 'LIGHT_GLASS'].includes(websiteTheme);
+  const storedVersion = source.preferencesSchemaVersion ?? source.schemaVersion;
+  // v1/v2 Glass stored a derived cinematic value. Preserve that existing
+  // behavior during migration, while v3 can remember a user's explicit Off.
+  const requestedBackground = storedVersion === PREFERENCE_SCHEMA_VERSION
+    ? (candidates.cinematicBackground || fallback.cinematicBackground || DEFAULT_PREFERENCES.cinematicBackground)
+    : cinematicBackgroundForTheme(websiteTheme);
   const values = {
     timerAppearance: candidates.timerAppearance || fallback.timerAppearance || DEFAULT_PREFERENCES.timerAppearance,
     panelFinish: candidates.panelFinish || fallback.panelFinish || DEFAULT_PREFERENCES.panelFinish,
     websiteTheme,
-    // Glass is one integrated presentation choice. Keep the compatibility
-    // field in the schema, but never let an older independent toggle split the
-    // translucent surfaces from their background again.
-    cinematicBackground: cinematicBackgroundForTheme(websiteTheme),
+    cinematicBackground: glassTheme ? requestedBackground : 'NONE',
     dashboardProfile: candidates.dashboardProfile || fallback.dashboardProfile || DEFAULT_PREFERENCES.dashboardProfile,
     dashboardEnabled: candidates.dashboardEnabled ?? fallback.dashboardEnabled ?? DEFAULT_PREFERENCES.dashboardEnabled,
     dashboardAppearance: candidates.dashboardAppearance || fallback.dashboardAppearance || DEFAULT_PREFERENCES.dashboardAppearance,
@@ -149,7 +153,8 @@ function mergeLegacyPreferences(current, legacy) {
 }
 
 function preferenceStorage(snapshot, revision = snapshot.preferenceRevision) {
-  const cinematicBackground = cinematicBackgroundForTheme(snapshot.websiteTheme);
+  const cinematicBackground = ['SLEEK_DARK', 'LIGHT_GLASS'].includes(snapshot.websiteTheme) &&
+    snapshot.cinematicBackground === 'CINEMATIC' ? 'CINEMATIC' : 'NONE';
   return {
     preferencesSchemaVersion: PREFERENCE_SCHEMA_VERSION,
     preferenceRevision: revision,
@@ -193,8 +198,23 @@ function applyPreferenceCommand(document, command, options = {}) {
     throw new Error('preferences-already-initialized');
   }
   let next = { ...current };
-  if (command.type === PREFERENCE_COMMANDS.INITIALIZE) next = mergeLegacyPreferences(next, command.legacyPreferences);
-  else Object.assign(next, validatePreferencePatch(command.patch));
+  if (command.type === PREFERENCE_COMMANDS.INITIALIZE) {
+    next = mergeLegacyPreferences(next, command.legacyPreferences);
+    // Older Glass choices always included the photo. Keep that behavior when
+    // their legacy settings first enter the canonical preference store.
+    next.cinematicBackground = cinematicBackgroundForTheme(next.websiteTheme);
+  }
+  else {
+    const patch = validatePreferencePatch(command.patch);
+    Object.assign(next, patch);
+    if (Object.hasOwn(patch, 'websiteTheme') && !Object.hasOwn(patch, 'cinematicBackground')) {
+      if (!['SLEEK_DARK', 'LIGHT_GLASS'].includes(next.websiteTheme)) next.cinematicBackground = 'NONE';
+      else if (!['SLEEK_DARK', 'LIGHT_GLASS'].includes(current.websiteTheme)) next.cinematicBackground = 'CINEMATIC';
+    }
+    if (next.cinematicBackground === 'CINEMATIC' && !['SLEEK_DARK', 'LIGHT_GLASS'].includes(next.websiteTheme)) {
+      throw new Error('cinematic-background-glass-required');
+    }
+  }
   const revision = current.preferenceRevision + 1;
   document.dataSafety.preferences = preferenceStorage(next, revision);
   return Object.freeze({

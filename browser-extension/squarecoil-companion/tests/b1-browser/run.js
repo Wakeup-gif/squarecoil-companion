@@ -2547,7 +2547,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             error.details = { popupTarget, popupUrl: popupPage.url(), lastPopupHealth };
             throw error;
           }
-          assert(popupHealth.stage === 'Companion workspace', 'Popup did not use the friendly Companion workspace identity', popupHealth);
+          assert(popupHealth.stage === 'Your work at a glance', 'Popup did not use the friendly Companion identity', popupHealth);
           assert(popupHealth.friendlyStatus === 'Ready' && popupHealth.friendlyMessage === 'Companion is connected and ready.' && popupHealth.statusTone === 'ready',
             'Popup did not render the friendly READY status', popupHealth);
           assert(popupHealth.classification === 'HEALTHY_SAME_BUILD', 'Popup did not display healthy same-build classification', popupHealth);

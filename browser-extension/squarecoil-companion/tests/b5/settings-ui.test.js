@@ -242,7 +242,7 @@ test('UT-B5-UI-009 Glass uses installed capability without runtime permission re
   assert.deepEqual(granted.permissionCalls, []);
   assert.deepEqual(granted.preferenceCommands[0], { patch: { websiteTheme: 'SLEEK_DARK' }, expectedPreferenceRevision: 1 });
   assert.equal(granted.core.preferences.cinematicBackground, 'CINEMATIC');
-  assert.match(granted.root.innerHTML, /rotating Bing photograph and translucent surfaces as one theme/i);
+  assert.match(granted.root.innerHTML, /open Companion from Chrome’s toolbar and use the switch beside the theme choice/i);
   assert.match(granted.root.innerHTML, /Image requests contain no job, timer, page, or account data/i);
   granted.ui.teardown();
 });

@@ -11,9 +11,8 @@
     <header class="topbar">
       <div class="brand-copy">
         <h1>SquareCoil Companion</h1>
-        <p id="stage">Companion workspace</p>
+        <p id="stage">Your work at a glance</p>
       </div>
-      <span id="version">v0.7.1</span>
       <button id="refresh" class="icon-button" type="button" aria-label="Refresh status">↻</button>
     </header>
 
@@ -25,25 +24,42 @@
       </div>
     </section>
 
+    <details class="appearance-card" open>
+      <summary>Appearance</summary>
+      <div class="appearance-body">
+        <label class="field-label" for="websiteTheme">SquareCoil theme</label>
+        <select id="websiteTheme" disabled>
+          <option value="ORIGINAL">SquareCoil original</option>
+          <option value="SLEEK_DARK">Dark Glass</option>
+          <option value="LIGHT_GLASS">Light Glass</option>
+          <option value="REFINED_LIGHT">Refined Light</option>
+        </select>
+        <div class="setting-row photo-row">
+          <div>
+            <label class="setting-label" for="bingPhoto">Bing photo background</label>
+            <small>Show a photo behind a Glass theme.</small>
+          </div>
+          <label class="switch">
+            <input id="bingPhoto" type="checkbox" disabled>
+            <span aria-hidden="true"></span>
+          </label>
+        </div>
+        <p id="appearanceMessage" class="setting-note" role="status">Open a SquareCoil page to change its look.</p>
+        <p class="permission-card"><span id="wallpaperPermission" class="permission-result" aria-live="polite">Checking photo availability…</span></p>
+      </div>
+    </details>
+
     <section class="control-row">
       <div>
-        <strong>Companion enabled</strong>
-        <small>Keep the page workspace and local tracking available.</small>
+        <label class="setting-label" for="panelVisible">Show Companion panel</label>
+        <small>Hide the on-page panel without stopping recorded time.</small>
       </div>
       <label class="switch">
-        <input id="enabled" type="checkbox" checked>
+        <input id="panelVisible" type="checkbox" checked>
         <span aria-hidden="true"></span>
-        <span class="sr-only">Enable SquareCoil Companion</span>
       </label>
     </section>
-
-    <section class="permission-card">
-      <div>
-        <strong>Bing glass backgrounds</strong>
-        <small>Photographs are included with Dark Glass and Light Glass.</small>
-      </div>
-      <span id="wallpaperPermission" class="permission-result" aria-live="polite">Checking…</span>
-    </section>
+    <p id="panelMessage" class="inline-message" role="status" hidden></p>
 
     <section id="summaryCard" class="work-card" hidden>
       <div class="work-heading">
@@ -58,15 +74,28 @@
     </section>
 
     <section id="emptySummary" class="empty-card">
-      <strong>Companion is available before you clock in.</strong>
-      <p id="emptySummaryText">Open a SquareCoil page to see current work. Settings remain available without clocking in.</p>
+      <strong>No job in progress</strong>
+      <p id="emptySummaryText">Open a SquareCoil page to see current work.</p>
     </section>
 
-    <p class="availability-note">Use the Companion panel on the SquareCoil page for Appearance, Time tracking, Jobs, Dashboard, Privacy, and Settings.</p>
+    <details class="advanced-card">
+      <summary>More controls</summary>
+      <div class="control-row">
+        <div>
+          <label class="setting-label" for="enabled">Companion active</label>
+          <small>Turning this off stops local tracking, themes, and the on-page panel.</small>
+        </div>
+        <label class="switch">
+          <input id="enabled" type="checkbox" checked>
+          <span aria-hidden="true"></span>
+        </label>
+      </div>
+    </details>
 
     <details class="technical-card">
       <summary>Technical details</summary>
       <p>Ready appears only after every required safety check passes.</p>
+      <p>Version <span id="version">v0.7.1</span></p>
       <dl>
         <div><dt>Probe</dt><dd id="classification">Checking…</dd></div>
         <div><dt>Lifecycle</dt><dd id="lifecycle">Checking…</dd></div>

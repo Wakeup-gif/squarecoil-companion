@@ -56,17 +56,21 @@ function harness(options = {}) {
   let markerSchedules = 0;
   let storageListener;
   let theme = 'SLEEK_DARK';
+  let releaseFetch;
   const rawCache = { schemaVersion: 1, fetchedAtMs: Date.now(), dataUrl: 'data:image/jpeg;base64,AQ==' };
+  const storedPreferences = () => ({ websiteTheme: theme,
+    ...(options.photoOff ? { preferencesSchemaVersion: 3, cinematicBackground: 'NONE' } : {}) });
   const storage = {
     local: { async get() { return { timerEnabled: true,
-      [AUTHORITY_KEY]: { document: { dataSafety: { preferences: { websiteTheme: theme } } } },
+      [AUTHORITY_KEY]: { document: { dataSafety: { preferences: storedPreferences() } } },
       [CACHE_KEY]: options.noCache ? null : rawCache }; } },
     onChanged: { addListener(listener) { storageListener = listener; }, removeListener() {} }
   };
   const context = { document, window,
     chrome: { storage, runtime: { getURL: value => value } },
-    fetch: async () => { fetches += 1; return { ok: true,
-      text: async () => '/* Presentation-only port of the pinned SquareCoil Tampermonkey source chain */' }; },
+    fetch: async () => { fetches += 1;
+      if (options.deferFetch) await new Promise(resolve => { releaseFetch = resolve; });
+      return { ok: true, text: async () => '/* Presentation-only port of the pinned SquareCoil Tampermonkey source chain */' }; },
     require(request) {
       if (request.includes('presentation-markers')) return { createPresentationMarkers: () => ({
         apply() { markerApplies += 1; }, schedule() { markerSchedules += 1; }, remove() {}, teardown() {}
@@ -90,6 +94,7 @@ function harness(options = {}) {
   vm.runInNewContext(source, context);
   const api = context.__squareCoilCompanionPresentationBootstrap;
   return { api, root, window, listeners, rawCache,
+    releaseFetch: () => releaseFetch?.(),
     changeTheme(value) { const previous = theme; theme = value; storageListener({ [AUTHORITY_KEY]: {
       oldValue: { document: { dataSafety: { preferences: { websiteTheme: previous } } } },
       newValue: { document: { dataSafety: { preferences: { websiteTheme: value } } } }
@@ -139,5 +144,26 @@ test('UT-B5-THEME-035 an offline page starts with the same dark fallback gradien
   assert.match(h.root.style.getPropertyValue('background-image'), /^radial-gradient/);
   h.api.releaseWarmWallpaper();
   assert.equal(h.root.style.getPropertyValue('background-image'), '');
+  h.api.teardown();
+});
+
+test('UT-B5-THEME-036 the cached wallpaper paints before a slow theme stylesheet resolves', async () => {
+  const h = harness({ deferFetch: true });
+  const pending = h.api.reconcile('SLEEK_DARK', 'early-paint', h.rawCache);
+  assert.equal(h.api.warmWallpaper().dataUrl, h.rawCache.dataUrl);
+  assert.match(h.root.style.getPropertyValue('background-image'), /^url\("data:image\/jpeg/);
+  assert.equal(h.api.snapshot().stylePresent, false);
+  await Promise.resolve();
+  h.releaseFetch();
+  await pending;
+  h.api.teardown();
+});
+
+test('UT-B5-THEME-037 turning Bing photos off never prepaints a retained cached photograph', async () => {
+  const h = harness({ photoOff: true });
+  await h.api.reconcileStored('settle');
+  assert.equal(h.api.warmWallpaper().source, 'FALLBACK');
+  assert.equal(h.api.warmWallpaper().dataUrl, null);
+  assert.match(h.root.style.getPropertyValue('background-image'), /^radial-gradient/);
   h.api.teardown();
 });

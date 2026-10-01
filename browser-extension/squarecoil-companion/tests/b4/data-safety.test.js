@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createEmptyDocument, validateDocument } = require('../../src/data/model');
 const { splitInterval } = require('../../src/data/ledger');
+const { DEFAULT_PREFERENCES, preferenceStorage } = require('../../src/preferences/preferences');
 const {
   BACKUP_FORMAT,
   BACKUP_SCHEMA_VERSION,
@@ -202,6 +203,20 @@ test('UT-B4-BACKUP-002 malformed, future, and count-mismatched backups are rejec
   assert.throws(() => normalizeBackup({ ...backup, recordCounts: { ...backup.recordCounts, contexts: 99 } }), /backup-record-count-mismatch/);
 });
 
+test('UT-B4-BACKUP-010 every offered backup fits the importer, and oversized backups fail before download', () => {
+  const small = createFullBackup(documentFixture(), { backupId: 'backup-size-small', exportedAtMs: NOW });
+  const downloadedText = `${JSON.stringify(small)}\n`;
+  assert.ok(Buffer.byteLength(downloadedText) <= MAX_INPUT_BYTES);
+  assert.equal(normalizeBackup(downloadedText).sourceId, 'backup-size-small');
+
+  const oversized = documentFixture();
+  const contextId = addContext(oversized, '260828');
+  oversized.contexts[contextId].aliases = Array.from({ length: Math.ceil(MAX_INPUT_BYTES / 6_000) + 1 },
+    (_, index) => `alias-${index}-${'x'.repeat(6_000)}`);
+  assert.throws(() => createFullBackup(oversized, { backupId: 'backup-size-oversized', exportedAtMs: NOW }),
+    /backup-export-size-limit-exceeded/);
+});
+
 test('UT-B4-BACKUP-003 supported schema zero adapts before validation', () => {
   const document = documentFixture();
   const contextId = addContext(document, '260812');
@@ -283,6 +298,29 @@ test('UT-B4-BACKUP-007 Replace requires quiescence, confirmation, and backup opp
   assert.equal(result.document.timer.active, null);
   assert.equal(result.document.timer.pending, null);
   assert.equal(result.document.timer.localPause, null);
+});
+
+test('UT-B4-BACKUP-011 Replace keeps local settings when selected and restores activity only by explicit choice', () => {
+  const source = documentFixture();
+  addContext(source, '260829');
+  source.dataSafety.preferences = preferenceStorage({ ...DEFAULT_PREFERENCES, timerAppearance: 'DARK' }, 1);
+  source.dataSafety.activityLog.push({ eventId: 'source-event', type: 'SOURCE', atMs: NOW - 1 });
+  const backup = createFullBackup(source, { backupId: 'backup-options', exportedAtMs: NOW });
+
+  const target = documentFixture();
+  target.dataSafety.preferences = preferenceStorage({ ...DEFAULT_PREFERENCES, timerAppearance: 'LIGHT' }, 2);
+  target.dataSafety.activityLog.push({ eventId: 'target-event', type: 'TARGET', atMs: NOW - 1 });
+  const keep = stageDataOperation(target, { type: DATA_COMMANDS.RESTORE_BACKUP, mode: 'REPLACE', input: backup,
+    importPreferences: false, restoreActivity: false }).candidate;
+  assert.equal(keep.dataSafety.preferences.timerAppearance, 'LIGHT');
+  assert.equal(keep.dataSafety.activityLog[0].eventId, 'target-event');
+  assert.equal(keep.timer.active, null);
+
+  const restore = stageDataOperation(target, { type: DATA_COMMANDS.RESTORE_BACKUP, mode: 'REPLACE', input: backup,
+    importPreferences: true, restoreActivity: true }).candidate;
+  assert.equal(restore.dataSafety.preferences.timerAppearance, 'DARK');
+  assert.equal(restore.dataSafety.activityLog[0].eventId, 'source-event');
+  assert.equal(restore.timer.active, null);
 });
 
 test('UT-B4-BACKUP-008 imported workspace cannot archive or hide a protected current Context', () => {
@@ -382,6 +420,21 @@ test('UT-B4-CSV-006 Time Report is reporting-only and cannot be imported as hist
 
 test('UT-B4-CSV-007 oversized untrusted inputs reject rather than truncate into success', () => {
   assert.throws(() => normalizeHistoryCsv('x'.repeat(MAX_INPUT_BYTES + 1)), /external-file-size-limit-exceeded/);
+});
+
+test('UT-B4-CSV-008 exported History CSV remains within its import limit', () => {
+  const small = documentFixture();
+  const contextId = addContext(small, '260830');
+  addSegment(small, contextId);
+  const text = createHistoryCsv(small).text;
+  assert.ok(Buffer.byteLength(text) <= MAX_INPUT_BYTES);
+  assert.equal(normalizeHistoryCsv(text).segments.length, 1);
+
+  const oversized = documentFixture();
+  for (let index = 0; index < Math.ceil(MAX_INPUT_BYTES / 7_900) + 1; index += 1) {
+    addContext(oversized, String(260831 + index), { label: 'x'.repeat(7_900), legacyUnattributedMs: 1 });
+  }
+  assert.throws(() => createHistoryCsv(oversized), /history-csv-export-size-limit-exceeded/);
 });
 
 test('UT-B4-DATA-007 stale plan fingerprints and missing destructive confirmations cannot commit', () => {

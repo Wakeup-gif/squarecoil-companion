@@ -227,9 +227,9 @@ for (const reference of manifestReferences) {
 }
 
 const popupHtml = fs.readFileSync(path.join(root, 'popup/popup.html'), 'utf8');
-assert(popupHtml.includes('Companion workspace'), 'Popup must use the friendly Companion workspace identity');
+assert(popupHtml.includes('SquareCoil Companion') && popupHtml.includes('Your work at a glance'), 'Popup must use the friendly Companion identity');
 assert(popupHtml.includes('Ready appears only after every required safety check passes.'), 'Popup Technical details must preserve the fail-closed READY boundary');
-assert(popupHtml.includes('Companion is available before you clock in.'), 'Popup must expose the zero-history settings entry point');
+assert(popupHtml.includes('Open a SquareCoil page to see current work.') && popupHtml.includes('SquareCoil theme'), 'Popup must expose zero-history status and appearance');
 assert(popupHtml.includes('Technical details'), 'Popup must retain secondary access to technical diagnostics');
 assert(!popupHtml.includes('B6 · Release candidate'), 'Popup primary copy must not expose an internal stage label');
 assert(!popupHtml.includes('B1 intentionally stays degraded'), 'Popup must not retain the obsolete pre-B2 degraded explanation');

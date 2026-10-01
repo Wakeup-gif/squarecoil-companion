@@ -22,7 +22,7 @@ function documentFixture() {
 
 test('UT-B5-PREF-001 first-install snapshot resolves the settled Light Solid Original and 60 120 240 defaults', () => {
   assert.deepEqual(normalizePreferenceSnapshot({}), {
-    schemaVersion: 2,
+    schemaVersion: 3,
     initialized: false,
     preferenceRevision: 0,
     ...DEFAULT_PREFERENCES
@@ -47,6 +47,7 @@ test('UT-B5-PREF-002 initialization preserves valid v0.7 appearance and Timer Li
   assert.equal(result.preferences.timerAppearance, 'AUTO');
   assert.equal(result.preferences.panelFinish, 'GLASS');
   assert.equal(result.preferences.websiteTheme, 'SLEEK_DARK');
+  assert.equal(result.preferences.cinematicBackground, 'CINEMATIC');
   assert.deepEqual([result.preferences.yellowMinutes, result.preferences.orangeMinutes, result.preferences.redMinutes], [15, 45, 90]);
   assert.deepEqual(document.timer, timerBefore);
   assert.deepEqual(document.ledger, ledgerBefore);
@@ -67,7 +68,7 @@ test('UT-B5-PREF-012 page-local v0.7 Glass settings preserve appearance and limi
   const captured = legacyPreferencesFromSources({ 'ussign-squarecoil-job-timer-v1': raw });
   const normalized = normalizePreferenceSnapshot(captured);
   assert.deepEqual(normalized, {
-    schemaVersion: 2,
+    schemaVersion: 3,
     initialized: false,
     preferenceRevision: 0,
     timerAppearance: 'AUTO',
@@ -135,7 +136,7 @@ test('UT-B5-PREF-007 invalid restored values fall back to the current compatible
     websiteTheme: 'REFINED_LIGHT', yellowMinutes: 20, orangeMinutes: 40, redMinutes: 80 };
   const restored = restoredPreferenceStorage(current, { timerAppearance: 'invalid', yellowMinutes: 100, orangeMinutes: 10, redMinutes: 5 });
   assert.equal(restored.preferenceRevision, 4);
-  assert.deepEqual(restored, { ...current, preferencesSchemaVersion: 2, preferenceRevision: 4,
+  assert.deepEqual(restored, { ...current, preferencesSchemaVersion: 3, preferenceRevision: 4,
     cinematicBackground: 'NONE', dashboardProfile: 'OFF', dashboardEnabled: false, dashboardAppearance: 'SITE' });
 });
 
@@ -160,7 +161,7 @@ test('UT-B5-PREF-009 unsupported preference fields and duplicate initialization 
   assert.throws(() => validatePreferencePatch({ secretFeature: true }), /preference-patch-field-unsupported/);
 });
 
-test('UT-B5-PREF-010 v1 preference storage migrates to v2 with Glass background integrated', () => {
+test('UT-B5-PREF-010 v1 preference storage migrates to v3 with its Glass photo retained', () => {
   const legacy = { preferencesSchemaVersion: 1, preferenceRevision: 7, timerAppearance: 'DARK', panelFinish: 'GLASS',
     websiteTheme: 'SLEEK_DARK', yellowMinutes: 15, orangeMinutes: 30, redMinutes: 60 };
   const normalized = normalizePreferenceSnapshot(legacy);
@@ -168,7 +169,7 @@ test('UT-B5-PREF-010 v1 preference storage migrates to v2 with Glass background 
   assert.equal(normalized.preferenceRevision, 7);
   assert.equal(normalized.cinematicBackground, 'CINEMATIC');
   const restored = restoredPreferenceStorage(legacy, legacy);
-  assert.equal(restored.preferencesSchemaVersion, 2);
+  assert.equal(restored.preferencesSchemaVersion, 3);
   assert.equal(restored.preferenceRevision, 8);
 });
 
@@ -191,6 +192,32 @@ test('UT-B5-PREF-013 Light Glass is durable while the Dark Glass name preserves 
   assert.equal(normalizePreferenceSnapshot({ websiteTheme: 'LIGHT_GLASS' }).websiteTheme, 'LIGHT_GLASS');
   assert.equal(normalizePreferenceSnapshot({ websiteTheme: 'LIGHT_GLASS', cinematicBackground: 'NONE' }).cinematicBackground, 'CINEMATIC');
   assert.equal(normalizePreferenceSnapshot({ websiteTheme: 'REFINED_LIGHT', cinematicBackground: 'CINEMATIC' }).cinematicBackground, 'NONE');
+});
+
+test('UT-B5-PREF-014 v3 Glass photo choice is independent, revisioned, and leaves Timer and Ledger unchanged', () => {
+  const document = documentFixture();
+  const before = { timer: structuredClone(document.timer), ledger: structuredClone(document.ledger) };
+  const glass = applyPreferenceCommand(document, { type: PREFERENCE_COMMANDS.COMMIT, expectedPreferenceRevision: 0,
+    patch: { websiteTheme: 'SLEEK_DARK' } });
+  assert.equal(glass.preferences.cinematicBackground, 'CINEMATIC');
+  const off = applyPreferenceCommand(document, { type: PREFERENCE_COMMANDS.COMMIT, expectedPreferenceRevision: 1,
+    patch: { cinematicBackground: 'NONE' } });
+  assert.equal(off.preferences.websiteTheme, 'SLEEK_DARK');
+  assert.equal(off.preferences.cinematicBackground, 'NONE');
+  assert.equal(document.dataSafety.preferences.cinematicBackground, 'NONE');
+  const light = applyPreferenceCommand(document, { type: PREFERENCE_COMMANDS.COMMIT, expectedPreferenceRevision: 2,
+    patch: { websiteTheme: 'LIGHT_GLASS' } });
+  assert.equal(light.preferences.cinematicBackground, 'NONE');
+  assert.throws(() => applyPreferenceCommand(document, { type: PREFERENCE_COMMANDS.COMMIT, expectedPreferenceRevision: 2,
+    patch: { cinematicBackground: 'CINEMATIC' } }), /preference-revision-conflict/);
+  const native = applyPreferenceCommand(document, { type: PREFERENCE_COMMANDS.COMMIT, expectedPreferenceRevision: 3,
+    patch: { websiteTheme: 'ORIGINAL' } });
+  assert.equal(native.preferences.cinematicBackground, 'NONE');
+  assert.throws(() => applyPreferenceCommand(document, { type: PREFERENCE_COMMANDS.COMMIT, expectedPreferenceRevision: 4,
+    patch: { cinematicBackground: 'CINEMATIC' } }), /cinematic-background-glass-required/);
+  assert.deepEqual(document.timer, before.timer);
+  assert.deepEqual(document.ledger, before.ledger);
+  assert.equal(validateDocument(document), true);
 });
 
 test('UT-B5-DASH-PREF-001 dashboard opt-in persists and restores through fenced preferences without timer changes', () => {

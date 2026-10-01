@@ -4,7 +4,7 @@ body{margin:0;width:390px;min-width:390px;max-width:390px;background:#091016;col
 main{padding:10px}
 .topbar{display:flex;align-items:center;gap:9px;padding:3px 2px 11px}.brand-copy{min-width:0;flex:1}.brand-copy h1{margin:0;font-size:14px;line-height:1.15;font-weight:730;letter-spacing:-.01em}.brand-copy p{margin:2px 0 0;color:var(--muted);font-size:10px}.topbar>span#version{color:var(--muted);font-size:10px}.icon-button{width:32px;height:32px;padding:0!important;display:grid;place-items:center}
 button{border:0;border-radius:8px;padding:7px 10px;background:var(--panel-2);color:var(--text);font:inherit;font-weight:650;cursor:pointer;transition:background-color .14s ease,transform .14s ease}button:hover{background:color-mix(in srgb,var(--panel-2) 78%,var(--accent) 22%)}button:active{transform:translateY(1px)}button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}button[hidden],[hidden]{display:none!important}
-.status-card,.control-row,.permission-card,.work-card,.empty-card,.technical-card{border:0;border-radius:11px;background:var(--panel);box-shadow:none}
+.status-card,.control-row,.permission-card,.work-card,.empty-card,.technical-card,.appearance-card,.advanced-card{border:0;border-radius:11px;background:var(--panel);box-shadow:none}
 .status-card{display:flex;align-items:center;gap:11px;padding:11px;margin-bottom:8px}.status-icon{display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;border-radius:50%;background:var(--positive-soft);color:var(--positive);font-size:17px;font-weight:800}.status-card strong{display:block;font-size:13px}.status-card p{margin:2px 0 0;color:var(--muted);font-size:10.5px}
 body[data-status="working"] .status-icon,body[data-status="limited"] .status-icon,body[data-status="setup"] .status-icon{background:var(--warning-soft);color:var(--warning)}body[data-status="attention"] .status-icon{background:var(--danger-soft);color:var(--danger)}body[data-status="offline"] .status-icon{background:var(--panel-2);color:var(--muted)}
 .control-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 11px;margin-bottom:8px}.control-row strong,.control-row small{display:block}.control-row small{margin-top:2px;color:var(--muted);font-size:10px}.switch{position:relative;display:inline-flex}.switch input{position:absolute;opacity:0;pointer-events:none}.switch>span[aria-hidden]{display:block;width:38px;height:22px;background:#52616e;border-radius:999px;position:relative;transition:.15s}.switch>span[aria-hidden]:after{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.25)}.switch input:checked+span{background:var(--accent-strong)}.switch input:checked+span:after{transform:translateX(16px)}.switch input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
@@ -14,4 +14,46 @@ body[data-status="working"] .status-icon,body[data-status="limited"] .status-ico
 .technical-card{padding:9px 10px}.technical-card summary{cursor:pointer;font-weight:650;font-size:11px}.technical-card>p{margin:8px 0;color:var(--muted);font-size:10px}.technical-card dl{margin:0}.technical-card dl>div{display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;padding:5px 0;border-bottom:1px solid color-mix(in srgb,var(--border) 48%,transparent)}.technical-card dt{color:var(--muted);font-size:10px}.technical-card dd{margin:0;overflow-wrap:anywhere;font-size:10px;font-weight:650}.technical-card code{font:9.5px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}.technical-card button{width:100%;margin-top:8px}.copy-result{display:block;margin-top:5px;color:var(--muted);font-size:9px;text-align:center}.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 @media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#f5f8fb;--panel:rgba(255,255,255,.90);--panel-2:#edf3f7;--text:#17212c;--muted:#65717d;--border:#d2dbe4;--accent:#347fbd;--accent-strong:#347fbd;--positive:#26734d;--positive-soft:#e4f3eb;--warning:#8b5a12;--warning-soft:#fff1d7;--danger:#a13a3a;--danger-soft:#fae6e6;--shadow:0 18px 42px rgba(17,30,42,.16)}body{background:#eef3f7}}
 @media(prefers-reduced-motion:reduce){button,.switch>span[aria-hidden],.switch>span[aria-hidden]:after{transition:none}}
-@media(forced-colors:active){button,.status-card,.control-row,.permission-card,.work-card,.empty-card,.technical-card,.metrics>div{border:1px solid ButtonText;box-shadow:none}}
+@media(forced-colors:active){button,.status-card,.control-row,.permission-card,.work-card,.empty-card,.technical-card,.appearance-card,.advanced-card,.metrics>div{border:1px solid ButtonText;box-shadow:none}}
+
+/* Keep the controls used most often together and leave recovery details secondary. */
+body{width:368px;min-width:368px;max-width:368px}
+main{padding:12px}
+.topbar{padding:2px 2px 13px}
+.topbar .brand-copy h1{font-size:15px}
+.topbar .brand-copy p{font-size:11px}
+.status-card{padding:13px;margin-bottom:9px}
+.status-card strong{font-size:14px}
+.status-card p{font-size:11px}
+.appearance-card,.advanced-card{margin-bottom:9px;overflow:hidden}
+.appearance-card>summary,.advanced-card>summary,.technical-card>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;cursor:pointer;font-weight:700;font-size:12px}
+.appearance-card>summary::-webkit-details-marker,.advanced-card>summary::-webkit-details-marker,.technical-card>summary::-webkit-details-marker{display:none}
+.appearance-card>summary::after,.advanced-card>summary::after,.technical-card>summary::after{content:"⌄";color:var(--muted);font-size:17px;line-height:1;transition:transform .15s ease}
+.appearance-card[open]>summary::after,.advanced-card[open]>summary::after,.technical-card[open]>summary::after{transform:rotate(180deg)}
+.appearance-card>summary{padding:12px 13px;border-bottom:1px solid transparent}
+.appearance-card[open]>summary{border-bottom-color:var(--border)}
+.appearance-body{padding:11px 13px 12px}
+.field-label,.setting-label{display:block;color:var(--text);font-size:12px;font-weight:700}
+.appearance-body select{display:block;width:100%;margin-top:7px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);color:var(--text);font:inherit;font-size:12px}
+.appearance-body select:disabled,.switch input:disabled+span{opacity:.5;cursor:not-allowed}
+.setting-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.setting-row>div{min-width:0}
+.setting-row small{display:block;margin-top:3px;color:var(--muted);font-size:10.5px}
+.photo-row{margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
+.setting-note{min-height:14px;margin:10px 0 0;color:var(--muted);font-size:10.5px}
+.appearance-card .permission-card{display:block;margin:8px 0 0;padding:0;background:transparent}
+.appearance-card .permission-result{display:block;color:var(--muted);font-size:10px}
+.appearance-card .permission-card[data-granted="true"]{box-shadow:none}
+.appearance-card .permission-card[data-granted="true"] .permission-result{color:var(--positive)}
+.control-row{min-height:64px;padding:11px 13px}
+.control-row small{font-size:10.5px}
+.inline-message{margin:-2px 4px 9px;color:var(--muted);font-size:10.5px}
+.advanced-card>summary{padding:11px 13px}
+.advanced-card .control-row{margin:0;border-radius:0;background:var(--panel-2)}
+.technical-card{padding:0;margin-bottom:2px}
+.technical-card>summary{padding:11px 13px}
+.technical-card>p,.technical-card>dl,.technical-card>button,.technical-card>.copy-result{margin-left:13px;margin-right:13px}
+.technical-card>button{width:calc(100% - 26px)}
+.technical-card>.copy-result{margin-bottom:10px}
+@media(prefers-reduced-motion:reduce){.appearance-card>summary::after,.advanced-card>summary::after,.technical-card>summary::after{transition:none}}
+@media(forced-colors:active){.appearance-body select,.photo-row{border-color:ButtonText}.appearance-card .permission-card{border:0}.appearance-card[open]>summary{border-bottom-color:ButtonText}}

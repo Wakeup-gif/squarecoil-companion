@@ -5,6 +5,7 @@
 function prototypeDockStyle(rootId) {
   return `
 #${rootId}.sc-proto-root{width:min(680px,calc(100vw - 32px))!important;padding-top:48px!important;--sc-shadow:0 26px 42px rgba(0,0,0,.32);--sc-dock-accent:#82b7ef;--sc-dock-control:color-mix(in srgb,var(--sc-panel-2) 76%,transparent)}
+#${rootId}.sc-proto-root[data-panel-hidden="true"]{display:none!important}
 #${rootId}.sc-proto-root[data-has-tabs="false"]{padding-top:0!important}
 #${rootId}.sc-proto-root[data-proto-theme="dark"]{--sc-bg:#111b2b;--sc-panel:#1b2a3c;--sc-panel-2:#243549;--sc-text:#f4f7fb;--sc-muted:#c1cddd;--sc-border:rgba(231,239,250,.14);--sc-accent:#80bbfa;--sc-accent-soft:#244b6c;--sc-dock-accent:#c1d8f4}
 #${rootId}.sc-proto-root[data-proto-surface="glass"]{--sc-shadow:0 26px 48px rgba(0,0,0,.42)}

@@ -29,6 +29,8 @@ const B5B_PERMISSION_CHANGED_MESSAGE = 'SC_COMPANION_B5B_PERMISSION_CHANGED';
 const B5B_WALLPAPER_MESSAGE = 'SC_COMPANION_B5B_GET_WALLPAPER';
 const B5B_ACK_MESSAGE = 'SC_COMPANION_B5B_ACK';
 const POPUP_SUMMARY_MESSAGE = 'SC_COMPANION_GET_POPUP_SUMMARY';
+const POPUP_GET_APPEARANCE_MESSAGE = 'SC_COMPANION_GET_APPEARANCE';
+const POPUP_SET_APPEARANCE_MESSAGE = 'SC_COMPANION_SET_APPEARANCE';
 const TRANSPORT_RETRY_DELAYS_MS = Object.freeze([250, 1000, 3000]);
 const B2_SETTLEMENT_REFRESH_RESPONSE_BUDGET_MS = 15_000;
 const PACKAGE_VERSION = String(chrome.runtime.getManifest().version || '0.0.0');
@@ -723,6 +725,33 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
   }
 
   function onAuthorityControl(message, sender, sendResponse) {
+    if ([POPUP_GET_APPEARANCE_MESSAGE, POPUP_SET_APPEARANCE_MESSAGE].includes(message?.type)) {
+      if (sender?.id !== chrome.runtime.id) {
+        sendResponse({ ok: false, reason: 'extension-sender-required' });
+        return false;
+      }
+      const appearance = async () => {
+        if (!trustedCore) return { ok: false, reason: 'companion-not-ready' };
+        if (message.type === POPUP_SET_APPEARANCE_MESSAGE) {
+          const patch = message.patch;
+          const keys = patch && typeof patch === 'object' && !Array.isArray(patch) ? Object.keys(patch) : [];
+          if (keys.length !== 1 || !['websiteTheme', 'cinematicBackground'].includes(keys[0]) ||
+              !Number.isSafeInteger(message.expectedPreferenceRevision)) {
+            return { ok: false, reason: 'appearance-command-invalid' };
+          }
+          await trustedCore.preferenceCommand(patch, message.expectedPreferenceRevision);
+        }
+        const current = trustedCore.snapshot();
+        const stored = await chrome.storage.local.get({ companionPanelVisible: true });
+        return { ok: true, preferences: {
+          websiteTheme: current.preferences?.websiteTheme || 'ORIGINAL',
+          cinematicBackground: current.preferences?.cinematicBackground || 'NONE',
+          preferenceRevision: current.preferences?.preferenceRevision ?? 0
+        }, panelVisible: stored.companionPanelVisible !== false };
+      };
+      appearance().then(sendResponse, error => sendResponse({ ok: false, reason: String(error?.message || error) }));
+      return true;
+    }
     if (message?.type === B5B_PERMISSION_CHANGED_MESSAGE) {
       if (sender?.id && sender.id !== chrome.runtime.id) {
         sendResponse({ ok: false, reason: 'extension-sender-required' });

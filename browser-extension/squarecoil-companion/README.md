@@ -13,7 +13,7 @@ This is one Manifest V3 codebase for installed Google Chrome and Microsoft Edge.
 - canonical Timer, Ledger, Today/Week/Context/History views, archives, backup/restore, and CSV tools;
 - revisioned Settings, Timer Limits, Light/Dark/Auto, Solid/Glass, and bounded website themes;
 - privacy-safe Support/Feedback and fail-closed unavailable Developer Support;
-- Dark Glass and Light Glass each include a rotating Bing background with a bundled gradient fallback. The analytics dashboard and Design Dashboard Enhancements remain separate, off-by-default choices.
+- Dark Glass and Light Glass keep a steady gradient; a separate Bing photo switch in the Chrome toolbar popup adds the rotating image when wanted. The toolbar can also hide the on-page Companion panel while local time tracking continues. The analytics dashboard and Design Dashboard Enhancements remain separate, off-by-default choices.
 
 The rebuild does not issue SquareCoil native clock mutations. Duplicate, stale-generation, retired-runtime, and superseded evidence fails closed.
 
@@ -54,7 +54,7 @@ The B6 candidate package contains exactly:
 
 `dist/build-info.json` binds the package to the source commit, clean/dirty state, build ID, stage, version, and candidate fingerprint. The fingerprint is embedded into all four page/worker runtime bundles.
 
-Rotating Bing images use the declared exact Bing origin. When a Glass theme is selected, the extension may retrieve a public Bing image without SquareCoil data or credentials. If it is unavailable, the theme uses its bundled readable gradient. **Native / Off** removes cached wallpaper and Companion-owned presentation layers.
+Rotating Bing images use the declared exact Bing origin when the Bing photo switch is on with a Glass theme. Requests contain no SquareCoil data or credentials. If an image is unavailable or the switch is off, Glass uses its built-in gradient. **SquareCoil original** removes Companion-owned site presentation layers. Full Backup JSON restores Companion jobs, finalized time history, settings, and optional activity data; History CSV imports finalized time records. Time Report CSV is for spreadsheets and cannot be imported.
 
 Chrome Web Store artwork, listing copy, privacy policy, and submission notes are in [store-assets](store-assets/CHROME-WEB-STORE-LISTING.md). These files stay outside the 15-file extension ZIP.
 

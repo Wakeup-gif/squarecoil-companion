@@ -30,7 +30,8 @@ const UI_STORAGE_DEFAULTS = Object.freeze({
   protoUiHiddenTabs: [],
   b3WorkspaceOrder: [],
   b3LastSelectedContextId: null,
-  b3WorkspaceRevision: 0
+  b3WorkspaceRevision: 0,
+  companionPanelVisible: true
 });
 const WORKSPACE_STORAGE_KEYS = new Set(['protoUiHiddenTabs', 'b3WorkspaceOrder', 'b3WorkspaceRevision']);
 const VIEW_IDS = new Set([
@@ -236,6 +237,7 @@ function createWorkspaceUi(options = {}) {
   let preferenceInitialized = false;
   let presentation = null;
   let collapsed = false;
+  let panelVisible = true;
   let hiddenTabs = new Set();
   let durableOrder = [];
   let workspaceRevision = 0;
@@ -260,6 +262,15 @@ function createWorkspaceUi(options = {}) {
   let pendingFileMode = null;
   let advancedDiagnosticsOpen = false;
   let pendingImport = null;
+  let invalidCsvRows = null;
+  const backupRestoreOptions = {
+    mergeWorkspace: false,
+    mergePreferences: false,
+    replaceWorkspace: true,
+    replacePreferences: true,
+    replaceActivity: false,
+    keepCurrentZone: false
+  };
   let dataMessage = null;
   let legacyPreferenceCandidates = {};
   let preferenceInitializationInFlight = false;
@@ -342,6 +353,7 @@ function createWorkspaceUi(options = {}) {
     }
     root = candidate;
     root.classList.add('sc-proto-root');
+    root.dataset.panelHidden = panelVisible ? 'false' : 'true';
     root.addEventListener('click', onClick);
     root.addEventListener('dblclick', onDoubleClick);
     root.addEventListener('submit', onSubmit);
@@ -362,6 +374,8 @@ function createWorkspaceUi(options = {}) {
     try {
       const value = await storage.get(UI_STORAGE_DEFAULTS);
       collapsed = value.protoUiCollapsed === true;
+      panelVisible = value.companionPanelVisible !== false;
+      if (root) root.dataset.panelHidden = panelVisible ? 'false' : 'true';
       hiddenTabs = new Set(Array.isArray(value.protoUiHiddenTabs) ? value.protoUiHiddenTabs.map(String) : []);
       durableOrder = Array.isArray(value.b3WorkspaceOrder) ? value.b3WorkspaceOrder.map(String) : [];
       selectedContextId = value.b3LastSelectedContextId ? String(value.b3LastSelectedContextId) : null;
@@ -432,6 +446,11 @@ function createWorkspaceUi(options = {}) {
   function onStorageChanged(changes, areaName) {
     if (disposed) return;
     if (areaName && areaName !== 'local') return;
+    if (changes?.companionPanelVisible) {
+      panelVisible = changes.companionPanelVisible.newValue !== false;
+      const target = mountRoot();
+      if (target) target.dataset.panelHidden = panelVisible ? 'false' : 'true';
+    }
     if (!Object.keys(changes || {}).some(key => WORKSPACE_STORAGE_KEYS.has(key))) return;
     const incomingRevision = changes.b3WorkspaceRevision?.newValue;
     if (Number.isSafeInteger(incomingRevision) && incomingRevision < workspaceRevision) return;
@@ -736,10 +755,10 @@ ${prototypeDockStyle(ROOT_ID)}
     const cinematic = presentation?.optional?.cinematic || {};
     return `<div class="sc-view">${viewHeader('SquareCoil theme', 'settings')}<div class="sc-theme-list">${[
       ['ORIGINAL', 'Native / Off', 'Use SquareCoil as provided.'],
-      ['SLEEK_DARK', 'Dark Glass', 'v2.3.4 · cinematic night scene + glass'],
-      ['LIGHT_GLASS', 'Light Glass', 'v1.0.0 · cinematic daylight scene + glass'],
+      ['SLEEK_DARK', 'Dark Glass', 'A darker, softer SquareCoil workspace'],
+      ['LIGHT_GLASS', 'Light Glass', 'A brighter, softer SquareCoil workspace'],
       ['REFINED_LIGHT', 'Refined Light', 'v1.0.1 · bright, high-clarity workspace']
-    ].map(([value, label, detail]) => `<button class="sc-theme-choice" data-action="preference-site" data-value="${value}" data-active="${websiteTheme === value}"${busyAction ? ' disabled aria-disabled="true"' : ''}><span class="sc-theme-swatch" data-theme-swatch="${value}" aria-hidden="true"></span><span><strong>${label}</strong><small>${detail}</small></span><span class="sc-radio" aria-hidden="true"></span></button>`).join('')}</div><div class="sc-note"><strong>Background status:</strong> ${escapeHtml(cinematicStateLabel(cinematic))}.</div><div class="sc-note">Dark Glass and Light Glass include the rotating Bing photograph and translucent surfaces as one theme. Choosing either theme starts the background automatically. If an image is unavailable or your browser restricts access, Companion uses its built-in gradient. Image requests contain no job, timer, page, or account data.</div></div>`;
+    ].map(([value, label, detail]) => `<button class="sc-theme-choice" data-action="preference-site" data-value="${value}" data-active="${websiteTheme === value}"${busyAction ? ' disabled aria-disabled="true"' : ''}><span class="sc-theme-swatch" data-theme-swatch="${value}" aria-hidden="true"></span><span><strong>${label}</strong><small>${detail}</small></span><span class="sc-radio" aria-hidden="true"></span></button>`).join('')}</div><div class="sc-note"><strong>Background status:</strong> ${escapeHtml(cinematicStateLabel(cinematic))}.</div><div class="sc-note">To turn Bing photos on or off, open Companion from Chrome’s toolbar and use the switch beside the theme choice. Glass keeps a built-in background when photos are off or unavailable. Image requests contain no job, timer, page, or account data.</div></div>`;
   }
 
   function timerLimitsView() {
@@ -770,15 +789,24 @@ ${prototypeDockStyle(ROOT_ID)}
   }
 
   function conflictMarkup() {
+    if (invalidCsvRows) {
+      const shown = invalidCsvRows.rows.map(item => `<div class="sc-row"><div><div class="sc-row-title">Row ${escapeHtml(item.row)}</div><div class="sc-row-meta">${escapeHtml(item.code)}</div></div></div>`).join('');
+      return `<div class="sc-note"><strong>History CSV needs correction.</strong> ${invalidCsvRows.count} invalid row${invalidCsvRows.count === 1 ? '' : 's'} found. Nothing was imported. Fix the file and try again.</div>${shown}${invalidCsvRows.count > invalidCsvRows.rows.length ? `<div class="sc-note">Showing the first ${invalidCsvRows.rows.length} rows.</div>` : ''}`;
+    }
     if (!pendingImport?.plan?.conflicts?.length) return '';
     return `<div class="sc-note"><strong>Import needs review.</strong> Nothing has been written.</div>${pendingImport.plan.conflicts.map(conflict => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(conflict.code)}</div><div class="sc-row-meta">${escapeHtml(conflict.contextId || '')}${conflict.incomingSegmentId ? ` · incoming ${escapeHtml(conflict.incomingSegmentId)}` : ''}</div></div>${conflict.resolvable ? `<div class="sc-row-actions"><button data-action="resolve-conflict" data-conflict="${escapeHtml(conflict.id)}" data-resolution="KEEP_CURRENT">Keep Current</button><button data-action="resolve-conflict" data-conflict="${escapeHtml(conflict.id)}" data-resolution="USE_INCOMING">Use Incoming</button></div>` : '<span class="sc-status" data-tone="danger">Must fix file</span>'}</div>`).join('')}`;
+  }
+
+  function restoreOptionsMarkup() {
+    const choice = (key, label) => `<label class="sc-check"><input type="checkbox" data-restore-option="${key}" ${backupRestoreOptions[key] ? 'checked' : ''}>${label}</label>`;
+    return `<div class="sc-note"><strong>Merge backup options</strong>${choice('mergeWorkspace', 'Also restore saved job tabs and archive organization')}${choice('mergePreferences', 'Also restore saved settings')}</div><div class="sc-note"><strong>Replace backup options</strong>${choice('replaceWorkspace', 'Restore saved job tabs and archive organization')}${choice('replacePreferences', 'Restore saved settings')}${choice('replaceActivity', 'Restore saved activity log')}${choice('keepCurrentZone', 'Keep this device’s current time zone for future time')}</div>`;
   }
 
   function dataToolsView(core) {
     const data = core?.data;
     const archived = data?.archivedRows || [];
     const readiness = data ? (data.quiescent ? 'Idle · global destructive operations available' : 'Timer/recovery state is not quiescent · Replace and Wipe are blocked') : 'Data safety read model unavailable';
-    return `<div class="sc-view">${viewHeader('Archives & Backup', 'settings')}${dataMessage ? `<div class="sc-note">${escapeHtml(dataMessage)}</div>` : ''}<div class="sc-eyebrow">Portable files</div><div class="sc-actions"><button data-action="data-export" data-export="FULL_BACKUP">Full Backup JSON</button><button data-action="data-export" data-export="HISTORY_CSV">History CSV</button><button data-action="data-export" data-export="TIME_REPORT_CSV">Time Report CSV</button></div><div class="sc-actions"><button data-action="pick-file" data-file-mode="BACKUP_MERGE">Restore Backup · Merge</button><button data-action="pick-file" data-file-mode="BACKUP_REPLACE" ${data?.quiescent ? '' : 'disabled'}>Restore Backup · Replace</button><button data-action="pick-file" data-file-mode="HISTORY_CSV">Import History CSV</button></div><input data-sc-data-file type="file" accept=".json,.csv,application/json,text/csv" hidden><div class="sc-note">Full Backup is disaster recovery. History CSV is portable finalized history. Time Report CSV is reporting-only and cannot be imported.</div>${conflictMarkup()}<div class="sc-eyebrow" style="margin-top:12px">Archived contexts</div>${archived.length ? archived.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">Total ${formatDuration(row.totalMs, { compact: true })} · archived ${escapeHtml(formatDateTime(row.archivedAtMs))}</div></div><div class="sc-row-actions"><button data-action="data-context" data-data-type="${DATA_COMMANDS.RESTORE_ARCHIVED}" data-context="${escapeHtml(row.contextId)}">Restore</button><button data-action="data-context" data-data-type="${DATA_COMMANDS.DELETE_CONTEXT}" data-context="${escapeHtml(row.contextId)}" data-label="${escapeHtml(row.label)}" ${row.protected ? 'disabled' : ''}>Delete Data</button></div></div>`).join('') : '<div class="sc-empty">No archived Contexts.</div>'}<div class="sc-eyebrow" style="margin-top:12px">High-impact cleanup</div><div class="sc-actions"><button data-action="data-simple" data-data-type="${DATA_COMMANDS.DELETE_ALL_ARCHIVED}" ${archived.length ? '' : 'disabled'}>Delete All Archived Data</button><button data-action="data-simple" data-data-type="${DATA_COMMANDS.WIPE_HISTORY}" ${data?.quiescent ? '' : 'disabled'}>Wipe All Time History</button></div><div class="sc-note">${escapeHtml(readiness)}. These tools only affect Companion data; SquareCoil official time is never changed.</div></div>`;
+    return `<div class="sc-view">${viewHeader('Archives & Backup', 'settings')}${dataMessage ? `<div class="sc-note">${escapeHtml(dataMessage)}</div>` : ''}<div class="sc-eyebrow">Portable files</div><div class="sc-actions"><button data-action="data-export" data-export="FULL_BACKUP">Download Full Backup JSON</button><button data-action="data-export" data-export="HISTORY_CSV">Download History CSV</button><button data-action="data-export" data-export="TIME_REPORT_CSV">Download Time Report CSV</button></div><div class="sc-actions"><button data-action="pick-file" data-file-mode="BACKUP_MERGE">Add from Backup JSON</button><button data-action="pick-file" data-file-mode="BACKUP_REPLACE" ${data?.quiescent ? '' : 'disabled'}>Replace from Backup JSON</button><button data-action="pick-file" data-file-mode="HISTORY_CSV">Import History CSV</button></div>${restoreOptionsMarkup()}<input data-sc-data-file type="file" accept=".json,.csv,application/json,text/csv" hidden><div class="sc-note">Full Backup JSON saves Companion jobs, time history, settings, and the activity log without a live clock state. History CSV is importable finalized time. Time Report CSV is for spreadsheets only and cannot be imported.</div>${conflictMarkup()}<div class="sc-eyebrow" style="margin-top:12px">Archived contexts</div>${archived.length ? archived.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">Total ${formatDuration(row.totalMs, { compact: true })} · archived ${escapeHtml(formatDateTime(row.archivedAtMs))}</div></div><div class="sc-row-actions"><button data-action="data-context" data-data-type="${DATA_COMMANDS.RESTORE_ARCHIVED}" data-context="${escapeHtml(row.contextId)}">Restore</button><button data-action="data-context" data-data-type="${DATA_COMMANDS.DELETE_CONTEXT}" data-context="${escapeHtml(row.contextId)}" data-label="${escapeHtml(row.label)}" ${row.protected ? 'disabled' : ''}>Delete Data</button></div></div>`).join('') : '<div class="sc-empty">No archived Contexts.</div>'}<div class="sc-eyebrow" style="margin-top:12px">High-impact cleanup</div><div class="sc-actions"><button data-action="data-simple" data-data-type="${DATA_COMMANDS.DELETE_ALL_ARCHIVED}" ${archived.length ? '' : 'disabled'}>Delete All Archived Data</button><button data-action="data-simple" data-data-type="${DATA_COMMANDS.WIPE_HISTORY}" ${data?.quiescent ? '' : 'disabled'}>Wipe All Time History</button></div><div class="sc-note">${escapeHtml(readiness)}. These tools only affect Companion data; SquareCoil official time is never changed.</div></div>`;
   }
 
   function unavailableMainView(core) {
@@ -945,7 +973,7 @@ ${prototypeDockStyle(ROOT_ID)}
       sourcePlatform: navigator.userAgent || 'browser-extension'
     });
     const isBackup = kind === 'FULL_BACKUP';
-    const text = isBackup ? `${JSON.stringify(result, null, 2)}\n` : result.text;
+    const text = isBackup ? `${JSON.stringify(result)}\n` : result.text;
     const filename = isBackup
       ? `squarecoil-companion-backup-${new Date(exportedAtMs).toISOString().slice(0, 10)}.json`
       : result.filename;
@@ -1016,7 +1044,20 @@ ${prototypeDockStyle(ROOT_ID)}
     const handle = coreHandle();
     if (!handle || typeof handle.stageDataAction !== 'function') throw new Error('This data tool is not available yet.');
     const request = { ...workspaceData(), ...values };
-    const plan = await handle.stageDataAction(type, request);
+    invalidCsvRows = null;
+    pendingImport = null;
+    let plan;
+    try { plan = await handle.stageDataAction(type, request); }
+    catch (error) {
+      if (type !== DATA_COMMANDS.IMPORT_HISTORY_CSV || error?.message !== 'history-csv-review-required' || !Array.isArray(error.invalidRows)) throw error;
+      invalidCsvRows = {
+        count: error.invalidRows.length,
+        rows: error.invalidRows.slice(0, 20).map(item => ({ row: Number(item.row), code: String(item.code || 'invalid-row').slice(0, 160) }))
+      };
+      dataMessage = `The History CSV has ${invalidCsvRows.count} invalid row${invalidCsvRows.count === 1 ? '' : 's'}. Nothing was imported.`;
+      render();
+      return;
+    }
     pendingImport = { type, values: request, plan, resolutions: { ...(request.resolutions || {}) } };
     if (plan.blocked) {
       dataMessage = 'Import is staged only. Resolve every listed conflict before any write can occur.';
@@ -1038,7 +1079,11 @@ ${prototypeDockStyle(ROOT_ID)}
     try { await task(); }
     catch (error) {
       const reason = String(error?.message || error || '');
-      const friendly = /Bing access was not granted|permission/i.test(reason)
+      const friendly = reason === 'backup-export-size-limit-exceeded'
+        ? 'This backup is larger than the 5 MB file limit for this version. Nothing was downloaded or changed.'
+        : reason === 'history-csv-export-size-limit-exceeded'
+        ? 'This history file is larger than the 5 MB import limit for this version. Nothing was downloaded or changed.'
+        : /Bing access was not granted|permission/i.test(reason)
         ? 'The selected theme keeps its readable background while Bing images are unavailable.'
         : 'That change could not be completed. No SquareCoil data was changed. Open Technical details for more information.';
       recordTechnicalError(error, friendly);
@@ -1327,6 +1372,12 @@ ${prototypeDockStyle(ROOT_ID)}
   }
 
   function onChange(event) {
+    const restoreOption = event.target?.closest?.('[data-restore-option]');
+    if (restoreOption && root?.contains(restoreOption)) {
+      const key = restoreOption.dataset.restoreOption;
+      if (Object.prototype.hasOwnProperty.call(backupRestoreOptions, key)) backupRestoreOptions[key] = restoreOption.checked === true;
+      return;
+    }
     const supportField = event.target?.closest?.('[data-support-field]');
     if (supportField && root?.contains(supportField)) {
       const form = supportField.closest?.('[data-sc-support-form]');
@@ -1356,10 +1407,19 @@ ${prototypeDockStyle(ROOT_ID)}
     const mode = pendingFileMode;
     pendingFileMode = null;
     withBusy('data-import', async () => {
-      const text = await file.text();
-      if (mode === 'HISTORY_CSV') await stageImport(DATA_COMMANDS.IMPORT_HISTORY_CSV, { input: text });
-      else await stageImport(DATA_COMMANDS.RESTORE_BACKUP, { input: text, mode: mode === 'BACKUP_REPLACE' ? 'REPLACE' : 'MERGE', importWorkspace: true, importPreferences: true });
-      input.value = '';
+      try {
+        const text = await file.text();
+        if (mode === 'HISTORY_CSV') await stageImport(DATA_COMMANDS.IMPORT_HISTORY_CSV, { input: text });
+        else if (mode === 'BACKUP_REPLACE') await stageImport(DATA_COMMANDS.RESTORE_BACKUP, {
+          input: text, mode: 'REPLACE', importWorkspace: backupRestoreOptions.replaceWorkspace,
+          importPreferences: backupRestoreOptions.replacePreferences, restoreActivity: backupRestoreOptions.replaceActivity,
+          keepCurrentZone: backupRestoreOptions.keepCurrentZone
+        });
+        else await stageImport(DATA_COMMANDS.RESTORE_BACKUP, {
+          input: text, mode: 'MERGE', importWorkspace: backupRestoreOptions.mergeWorkspace,
+          importPreferences: backupRestoreOptions.mergePreferences
+        });
+      } finally { input.value = ''; }
     });
   }
 

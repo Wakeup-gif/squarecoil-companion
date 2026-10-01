@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { FALLBACK_BACKGROUNDS } = require('../../src/presentation/wallpaper-cache');
 
 const root = path.resolve(__dirname, '..', '..');
 const read = relative => fs.readFileSync(path.join(root, ...relative.split('/')), 'utf8');
@@ -68,6 +69,24 @@ test('UT-B5-THEME-029 terminal Dark compatibility replaces old graphite generic 
   assert.match(generic, /background-color:\s*var\(--v230-surface\)\s*!important/);
   assert.doesNotMatch(generic, /rgba\(11,\s*11,\s*14/);
   assert.match(dark, /body #content :is\([\s\S]*?#customer-name,#customer-info[\s\S]*?\) :is\(\.panel,\.well,\.panel-body,\.panel-footer,\.table-responsive\) \{[\s\S]*?background-color:\s*transparent\s*!important[\s\S]*?backdrop-filter:\s*none\s*!important/);
+});
+
+test('UT-B5-THEME-038 both Glass ports keep shared gradients and target live generic Design panels', () => {
+  for (const [file, fallback] of [
+    ['src/presentation/ports/dark-glass.css', FALLBACK_BACKGROUNDS.SLEEK_DARK],
+    ['src/presentation/ports/light-glass.css', FALLBACK_BACKGROUNDS.LIGHT_GLASS]
+  ]) {
+    const css = read(file);
+    const quiet = css.slice(css.indexOf('Companion navigation/performance delta'));
+    assert.ok(quiet.length > 0);
+    assert.ok(quiet.includes(`background-image: ${fallback} !important`));
+    assert.match(quiet, /html:is\(\.us-sign-v230\.us-sign-theme-dark-glass,\.us-sign-v240\.us-sign-theme-light-glass\) body #content :is\(\.panel,\.panel-default,\.well\):not\(\.alert\):not\(\[data-us-state\]\)/);
+    assert.match(quiet, /body #content \.panel\.panel-primary\.panel-border\.top/);
+    assert.match(quiet, /body #customer-info\.panel\.col-xs-12\.no-gutter/);
+    assert.match(quiet, /body #pmlt/);
+    assert.match(quiet, /box-shadow: none !important;[\s\S]*?backdrop-filter: none !important/);
+    assert.match(quiet, /\.alert\[data-us-state="pending"\][\s\S]*?background: rgba\(221,241,251,\.88\) !important/);
+  }
 });
 
 test('UT-B5-THEME-031 final Glass integration gives the collapsed restore control the hidden logo lane', () => {

@@ -452,7 +452,7 @@ function validateDataSafety(dataSafety, contexts) {
   if (!isRecord(dataSafety.preferences)) throw new Error('data-safety-preferences-invalid');
   if (dataSafety.preferences.preferencesSchemaVersion !== undefined) {
     const preferences = dataSafety.preferences;
-    if (![1, 2].includes(preferences.preferencesSchemaVersion) || !isNonNegativeInteger(preferences.preferenceRevision)) {
+    if (![1, 2, 3].includes(preferences.preferencesSchemaVersion) || !isNonNegativeInteger(preferences.preferenceRevision)) {
       throw new Error('preferences-schema-invalid');
     }
     if (!['LIGHT', 'DARK', 'AUTO'].includes(preferences.timerAppearance) ||

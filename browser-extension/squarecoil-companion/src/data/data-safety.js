@@ -408,6 +408,11 @@ function createFullBackup(document, options = {}) {
     recoveryEvidence
   };
   assertResourceShape(envelope);
+  // The downloaded JSON uses this exact compact encoding. Reject before offering
+  // a file that the bounded importer cannot read back in this version.
+  if (byteLength(`${JSON.stringify(envelope)}\n`) > MAX_INPUT_BYTES) {
+    throw new Error('backup-export-size-limit-exceeded');
+  }
   return deepFreeze(envelope);
 }
 
@@ -442,12 +447,14 @@ function createHistoryCsv(document) {
       'history-csv', '', '', context.legacyUnattributedMs, lineage?.lineageId || `dataset:${snapshot.dataSafety.datasetId}:context:${context.contextId}`
     ].map((value, index) => index === 5 ? String(value) : csvCell(value)));
   }
+  const text = rows.map(row => row.join(',')).join('\r\n');
+  if (byteLength(text) > MAX_INPUT_BYTES) throw new Error('history-csv-export-size-limit-exceeded');
   return deepFreeze({
     filename: `squarecoil-companion-history-${new Date(snapshot.updatedAtMs).toISOString().slice(0, 10)}.csv`,
     mimeType: 'text/csv;charset=utf-8',
     snapshotRevision: snapshot.revision,
     recordCount: rows.length - 1,
-    text: rows.map(row => row.join(',')).join('\r\n')
+    text
   });
 }
 
@@ -956,7 +963,7 @@ function replaceIncoming(document, incoming, request, summary) {
     lastMutation: null
   };
   const merged = mergeIncoming(candidate, { ...incoming, workspace: request.importWorkspace === false ? null : incoming.workspace },
-    { ...request, importWorkspace: request.importWorkspace !== false, importPreferences: true }, summary);
+    { ...request, importWorkspace: request.importWorkspace !== false, importPreferences: request.importPreferences !== false }, summary);
   if (merged.conflicts.length) return merged;
   const currentMarkers = document.migration?.completedSources || {};
   if (Object.keys(currentMarkers).length) {

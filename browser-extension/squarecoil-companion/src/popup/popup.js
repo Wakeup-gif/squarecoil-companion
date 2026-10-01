@@ -4,10 +4,19 @@ const HEALTH_MESSAGE = 'SC_COMPANION_GET_HEALTH';
 const ENABLE_MESSAGE = 'SC_COMPANION_SET_ENABLED';
 const RETRY_TEARDOWN_MESSAGE = 'SC_COMPANION_RETRY_TEARDOWN';
 const POPUP_SUMMARY_MESSAGE = 'SC_COMPANION_GET_POPUP_SUMMARY';
+const GET_APPEARANCE_MESSAGE = 'SC_COMPANION_GET_APPEARANCE';
+const SET_APPEARANCE_MESSAGE = 'SC_COMPANION_SET_APPEARANCE';
 const BING_ORIGIN_PATTERN = 'https://www.bing.com/*';
 const SETTLEMENT_RETRY_DELAYS_MS = Object.freeze([50, 150, 450]);
+const WEBSITE_THEMES = new Set(['ORIGINAL', 'SLEEK_DARK', 'LIGHT_GLASS', 'REFINED_LIGHT']);
+const GLASS_THEMES = new Set(['SLEEK_DARK', 'LIGHT_GLASS']);
 let operationEpoch = 0;
 let settingQueue = Promise.resolve();
+let appearanceEpoch = 0;
+let appearanceQueue = Promise.resolve();
+let appearanceSnapshot = null;
+let panelQueue = Promise.resolve();
+let panelVisible = true;
 
 async function activeTabId() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -93,8 +102,8 @@ function renderSummary(summary) {
   setHidden('emptySummary', Boolean(current));
   if (!current) {
     setText('emptySummaryText', summary?.ok === true
-      ? 'No job is running. Settings and history are still available in Companion on the page.'
-      : 'Open a SquareCoil page to see current work. Settings remain available without clocking in.');
+      ? 'Your saved work is still available in Companion.'
+      : 'Open a SquareCoil page to see current work.');
     return;
   }
   setText('summaryLabel', current.label || 'Current work');
@@ -109,9 +118,112 @@ async function renderWallpaperPermission() {
   try { granted = await chrome.permissions?.contains?.({ origins: [BING_ORIGIN_PATTERN] }) === true; } catch (_) {}
   if (card) card.dataset.granted = granted ? 'true' : 'false';
   setText('wallpaperPermission', granted
-    ? 'Bing backgrounds are included. Choose Dark Glass or Light Glass in Appearance.'
-    : 'Bing access is restricted by the browser. Glass keeps a safe cached image or its built-in gradient.');
+    ? 'Bing photos are available when the switch is on.'
+    : 'Bing photos are unavailable in this browser. Glass uses a built-in background.');
   return granted;
+}
+
+function showAppearanceUnavailable(message = 'Open a SquareCoil page to change its look.') {
+  appearanceSnapshot = null;
+  const theme = document.getElementById('websiteTheme');
+  const photo = document.getElementById('bingPhoto');
+  if (theme) theme.disabled = true;
+  if (photo) photo.disabled = true;
+  setText('appearanceMessage', message);
+}
+
+function renderAppearance(result) {
+  const preferences = result?.preferences;
+  if (result?.ok !== true || !WEBSITE_THEMES.has(preferences?.websiteTheme) ||
+      !['NONE', 'CINEMATIC'].includes(preferences?.cinematicBackground) ||
+      !Number.isSafeInteger(preferences?.preferenceRevision) || preferences.preferenceRevision < 0) {
+    showAppearanceUnavailable('Theme settings are unavailable on this page. Try Refresh.');
+    return false;
+  }
+  appearanceSnapshot = {
+    websiteTheme: preferences.websiteTheme,
+    cinematicBackground: preferences.cinematicBackground,
+    preferenceRevision: preferences.preferenceRevision
+  };
+  const theme = document.getElementById('websiteTheme');
+  const photo = document.getElementById('bingPhoto');
+  if (theme) {
+    theme.value = preferences.websiteTheme;
+    theme.disabled = false;
+  }
+  if (photo) {
+    photo.checked = preferences.cinematicBackground === 'CINEMATIC';
+    photo.disabled = !GLASS_THEMES.has(preferences.websiteTheme);
+  }
+  setText('appearanceMessage', GLASS_THEMES.has(preferences.websiteTheme)
+    ? 'Turn the photo off to keep the Glass look with a simple background.'
+    : 'Choose Dark Glass or Light Glass to use a photo background.');
+  return true;
+}
+
+async function refreshAppearance() {
+  if (!document.getElementById('websiteTheme')) return;
+  const epoch = ++appearanceEpoch;
+  await appearanceQueue;
+  if (epoch !== appearanceEpoch) return;
+  const tabId = await activeTabId();
+  if (!Number.isInteger(tabId) || typeof chrome.tabs?.sendMessage !== 'function') {
+    showAppearanceUnavailable();
+    return;
+  }
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { type: GET_APPEARANCE_MESSAGE });
+    if (epoch === appearanceEpoch) renderAppearance(response);
+  } catch (_) {
+    if (epoch === appearanceEpoch) showAppearanceUnavailable('Theme settings are unavailable on this page. Try Refresh.');
+  }
+}
+
+function setAppearance(patch) {
+  const epoch = ++appearanceEpoch;
+  const task = appearanceQueue.then(async () => {
+    if (!appearanceSnapshot) return showAppearanceUnavailable('Theme settings are unavailable. Try Refresh.');
+    const tabId = await activeTabId();
+    if (!Number.isInteger(tabId) || typeof chrome.tabs?.sendMessage !== 'function') return showAppearanceUnavailable();
+    const theme = document.getElementById('websiteTheme');
+    const photo = document.getElementById('bingPhoto');
+    if (theme) theme.disabled = true;
+    if (photo) photo.disabled = true;
+    setText('appearanceMessage', 'Saving your choice…');
+    try {
+      const response = await chrome.tabs.sendMessage(tabId, {
+        type: SET_APPEARANCE_MESSAGE,
+        patch,
+        expectedPreferenceRevision: appearanceSnapshot.preferenceRevision
+      });
+      if (epoch === appearanceEpoch) renderAppearance(response);
+      else if (response?.ok === true && response?.preferences) appearanceSnapshot = response.preferences;
+    } catch (_) {
+      if (epoch === appearanceEpoch) showAppearanceUnavailable('Could not save your choice. Try Refresh.');
+    }
+  });
+  appearanceQueue = task.catch(() => {});
+  return task;
+}
+
+function setPanelVisible(visible) {
+  const requested = visible === true;
+  const task = panelQueue.then(async () => {
+    const previous = panelVisible;
+    try {
+      await chrome.storage.local.set({ companionPanelVisible: requested });
+      panelVisible = requested;
+      setHidden('panelMessage', true);
+    } catch (_) {
+      panelVisible = previous;
+      const toggle = document.getElementById('panelVisible');
+      if (toggle) toggle.checked = previous;
+      setText('panelMessage', 'Could not change the panel. Please try again.');
+      setHidden('panelMessage', false);
+    }
+  });
+  panelQueue = task.catch(() => {});
+  return task;
 }
 
 async function loadSummary(tabId, epoch) {
@@ -229,16 +341,32 @@ function sendToActiveTab(type) {
 document.addEventListener('DOMContentLoaded', async () => {
   const manifest = chrome.runtime.getManifest();
   setText('version', `v${manifest.version}`);
-  setText('stage', 'Companion workspace');
+  setText('stage', 'Your work at a glance');
 
-  const settings = await chrome.storage.local.get({ timerEnabled: true });
+  const settings = await chrome.storage.local.get({ timerEnabled: true, companionPanelVisible: true });
   const toggle = document.getElementById('enabled');
   if (toggle) {
     toggle.checked = settings.timerEnabled !== false;
     toggle.addEventListener('change', () => setEnabled(toggle.checked));
   }
 
-  document.getElementById('refresh')?.addEventListener('click', refreshHealth);
+  panelVisible = settings.companionPanelVisible !== false;
+  const panelToggle = document.getElementById('panelVisible');
+  if (panelToggle) {
+    panelToggle.checked = panelVisible;
+    panelToggle.addEventListener('change', () => setPanelVisible(panelToggle.checked));
+  }
+  const theme = document.getElementById('websiteTheme');
+  if (theme) theme.addEventListener('change', () => {
+    if (WEBSITE_THEMES.has(theme.value)) void setAppearance({ websiteTheme: theme.value });
+  });
+  const photo = document.getElementById('bingPhoto');
+  if (photo) photo.addEventListener('change', () => {
+    if (!appearanceSnapshot || !GLASS_THEMES.has(appearanceSnapshot.websiteTheme)) return;
+    void setAppearance({ cinematicBackground: photo.checked ? 'CINEMATIC' : 'NONE' });
+  });
+
+  document.getElementById('refresh')?.addEventListener('click', () => Promise.all([refreshHealth(), refreshAppearance(), renderWallpaperPermission()]));
   document.getElementById('retryCleanup')?.addEventListener('click', () => sendToActiveTab(RETRY_TEARDOWN_MESSAGE));
   document.getElementById('startFresh')?.addEventListener('click', () => {
     const currentToggle = document.getElementById('enabled');
@@ -260,5 +388,5 @@ document.addEventListener('DOMContentLoaded', async () => {
       setText('copyResult', 'Copied');
     } catch (_) { setText('copyResult', 'Copy unavailable'); }
   });
-  await Promise.all([refreshHealth(), renderWallpaperPermission()]);
+  await Promise.all([refreshHealth(), refreshAppearance(), renderWallpaperPermission()]);
 });

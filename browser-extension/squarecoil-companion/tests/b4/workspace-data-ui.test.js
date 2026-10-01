@@ -37,7 +37,7 @@ function timer() {
 }
 
 async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSeed = {}, includeSecondRecent = false,
-  deferArchiveCommit = false, initialRevisionMismatch = false } = {}) {
+  deferArchiveCommit = false, initialRevisionMismatch = false, stageError = null } = {}) {
   const listeners = {};
   const documentListeners = {};
   const staged = [];
@@ -49,6 +49,8 @@ async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSee
   let resolveArchiveCommit = null;
   const archiveCommitGate = deferArchiveCommit ? new Promise(resolve => { resolveArchiveCommit = resolve; }) : null;
   let coreSnapshotReads = 0;
+  const fileInput = { insideRoot: true, files: null, value: '', click() {},
+    closest(selector) { return selector === '[data-sc-data-file]' ? this : null; } };
   const root = { dataset: {}, attributes: {}, innerHTML: '', isConnected: true, classList: { add() {} }, contains(node) { return node?.insideRoot === true; }, querySelector() { return null; }, querySelectorAll() { return []; },
     setAttribute(name, value) { this.attributes[name] = String(value); },
     addEventListener(type, listener) { listeners[type] = listener; }, removeEventListener(type, listener) { if (listeners[type] === listener) delete listeners[type]; } };
@@ -76,6 +78,8 @@ async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSee
     async syncBridge() {},
     async stageDataAction(type, values) {
       staged.push({ type, values: structuredClone(values) });
+      const failure = typeof stageError === 'function' ? stageError(type, values) : stageError;
+      if (failure) throw failure;
       const requiredConfirmations = type === DATA_COMMANDS.DELETE_CONTEXT ? [`DELETE:${values.contextId}`]
         : type === DATA_COMMANDS.WIPE_HISTORY ? ['WIPE_ALL_TIME_HISTORY'] : [];
       return { operation: type, planId: `plan-${staged.length}`, stagedRevision: 7, blocked: false,
@@ -154,8 +158,20 @@ async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSee
     listeners.drop({ target: slot, isTrusted: true, dataTransfer: drag.dataTransfer, preventDefault() {} });
   }
   async function drain() { await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)); }
+  root.querySelector = selector => selector === '[data-sc-data-file]' ? fileInput : null;
+  function changeRestoreOption(key, checked) {
+    const target = { insideRoot: true, dataset: { restoreOption: key }, checked,
+      closest(selector) { return selector === '[data-restore-option]' ? this : null; } };
+    listeners.change({ target });
+  }
+  function importFile(mode, text) {
+    click({ action: 'pick-file', fileMode: mode }, true);
+    fileInput.files = [{ text: async () => text }];
+    fileInput.value = 'selected';
+    listeners.change({ target: fileInput });
+  }
   return { get ui() { return ui; }, get coreSnapshotReads() { return coreSnapshotReads; }, root, core, staged, committed, confirms, timerActions,
-    storageState, storageSetCalls, timeoutCalls, click, beginDrag, dragOverOutside, dropOutside, dragOutside, reorder,
+    storageState, storageSetCalls, timeoutCalls, click, changeRestoreOption, importFile, beginDrag, dragOverOutside, dropOutside, dragOutside, reorder,
     dropExternal(event) { documentListeners.drop(event); },
     storageChange(changes, areaName = 'local') {
       for (const [key, change] of Object.entries(changes)) {
@@ -181,6 +197,52 @@ test('UT-B4-UI-001 Archives and Backup names the three file products and destruc
   assert.match(h.root.innerHTML, /History CSV/);
   assert.match(h.root.innerHTML, /Time Report CSV/);
   assert.match(h.root.innerHTML, /SquareCoil official time is never changed/);
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-018 backup import uses the selected workspace, settings, activity, and zone choices', async () => {
+  const h = await harness();
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'view', view: 'data-tools' });
+  assert.match(h.root.innerHTML, /Merge backup options/);
+  assert.match(h.root.innerHTML, /Replace backup options/);
+  h.importFile('BACKUP_MERGE', '{}');
+  await h.drain();
+  assert.equal(h.staged[0].values.importWorkspace, false);
+  assert.equal(h.staged[0].values.importPreferences, false);
+  assert.equal(h.committed.length, 1);
+
+  h.changeRestoreOption('replaceWorkspace', false);
+  h.changeRestoreOption('replacePreferences', false);
+  h.changeRestoreOption('replaceActivity', true);
+  h.changeRestoreOption('keepCurrentZone', true);
+  h.importFile('BACKUP_REPLACE', '{}');
+  await h.drain();
+  assert.equal(h.staged[1].values.mode, 'REPLACE');
+  assert.deepEqual({
+    importWorkspace: h.staged[1].values.importWorkspace,
+    importPreferences: h.staged[1].values.importPreferences,
+    restoreActivity: h.staged[1].values.restoreActivity,
+    keepCurrentZone: h.staged[1].values.keepCurrentZone
+  }, { importWorkspace: false, importPreferences: false, restoreActivity: true, keepCurrentZone: true });
+  assert.equal(h.timerActions.length, 0);
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-019 malformed CSV rows are shown without committing a partial import', async () => {
+  const failure = Object.assign(new Error('history-csv-review-required'), {
+    invalidRows: [{ row: 3, code: 'csv-timestamp-ambiguous' }, { row: 9, code: 'csv-duration-timestamp-mismatch' }]
+  });
+  const h = await harness({ stageError: type => type === DATA_COMMANDS.IMPORT_HISTORY_CSV ? failure : null });
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'view', view: 'data-tools' });
+  h.importFile('HISTORY_CSV', 'bad csv');
+  await h.drain();
+  assert.match(h.root.innerHTML, /Row 3/);
+  assert.match(h.root.innerHTML, /Row 9/);
+  assert.match(h.root.innerHTML, /Nothing was imported/);
+  assert.equal(h.committed.length, 0);
+  assert.equal(h.timerActions.length, 0);
   h.ui.teardown();
 });
 
