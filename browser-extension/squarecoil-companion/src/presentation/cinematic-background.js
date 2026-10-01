@@ -1,5 +1,7 @@
 'use strict';
 
+const { FALLBACK_BACKGROUNDS } = require('./wallpaper-cache');
+
 const { normalizePreferenceSnapshot } = require('../preferences/preferences');
 const { OPTIONAL_PRESENTATION_FEATURES } = require('./optional-feature-registry');
 
@@ -24,16 +26,14 @@ const CINEMATIC_CSS = `
 html[${CINEMATIC_ATTRIBUTE}="active"]{min-height:100%;background:#090d12!important}
 html[${CINEMATIC_ATTRIBUTE}="active"] body{min-height:100%;isolation:isolate;background-color:transparent!important;background-image:none!important}
 #${CINEMATIC_HOST_ID}{position:fixed;inset:-4%;z-index:-1;overflow:hidden;pointer-events:none;background:#090d12}
-#${CINEMATIC_HOST_ID}[data-theme="SLEEK_DARK"]{background:radial-gradient(circle at 18% 10%,rgba(49,117,151,.92) 0,rgba(26,55,73,.76) 24%,transparent 47%),radial-gradient(circle at 82% 16%,rgba(76,56,123,.62) 0,transparent 38%),linear-gradient(145deg,#132531 0%,#0b141d 48%,#070b10 100%)}
-#${CINEMATIC_HOST_ID}[data-theme="LIGHT_GLASS"]{background:radial-gradient(circle at 18% 10%,rgba(255,255,255,.98) 0,rgba(223,239,248,.86) 30%,transparent 55%),radial-gradient(circle at 78% 18%,rgba(163,205,226,.58) 0,transparent 43%),linear-gradient(145deg,#d9e9f2 0%,#bfd4e0 52%,#91adbd 100%)}
-#${CINEMATIC_HOST_ID} .sc-cinematic-layer{--us-squarecoil-cine-image:none;position:absolute;inset:0;opacity:0;background-image:var(--us-squarecoil-cine-image,none);background-position:center;background-size:cover;background-repeat:no-repeat;transform:scale(1.08);transition:opacity 1200ms ease;will-change:transform,opacity}
-#${CINEMATIC_HOST_ID} .sc-cinematic-layer[data-active="true"]{opacity:1;animation:sc-companion-cinematic-drift 42s linear infinite alternate}
+#${CINEMATIC_HOST_ID}[data-theme="SLEEK_DARK"]{background:${FALLBACK_BACKGROUNDS.SLEEK_DARK}}
+#${CINEMATIC_HOST_ID}[data-theme="LIGHT_GLASS"]{background:${FALLBACK_BACKGROUNDS.LIGHT_GLASS}}
+#${CINEMATIC_HOST_ID} .sc-cinematic-layer{--us-squarecoil-cine-image:none;position:absolute;inset:0;opacity:0;background-image:var(--us-squarecoil-cine-image,none);background-position:center;background-size:cover;background-repeat:no-repeat}
+#${CINEMATIC_HOST_ID} .sc-cinematic-layer[data-active="true"]{opacity:1}
 #${CINEMATIC_HOST_ID}::after{content:"";position:absolute;inset:0;pointer-events:none}
 #${CINEMATIC_HOST_ID}[data-theme="SLEEK_DARK"]::after{background:linear-gradient(180deg,rgba(3,8,12,.30),rgba(3,8,12,.58))}
 #${CINEMATIC_HOST_ID}[data-theme="LIGHT_GLASS"]::after{background:linear-gradient(180deg,rgba(241,247,251,.16),rgba(225,236,243,.28))}
-@keyframes sc-companion-cinematic-drift{from{transform:translate3d(-1.2%,-.7%,0) scale(1.08)}to{transform:translate3d(1.2%,.7%,0) scale(1.13)}}
-#${CINEMATIC_HOST_ID}[data-reduced-motion="true"] .sc-cinematic-layer{transition:none!important;animation:none!important;transform:scale(1.08)!important}
-@media (prefers-reduced-motion:reduce){#${CINEMATIC_HOST_ID} .sc-cinematic-layer{transition:none!important;animation:none!important;transform:scale(1.08)!important}}
+#${CINEMATIC_HOST_ID} .sc-cinematic-layer{transition:none!important;animation:none!important;transform:none!important;filter:none!important;will-change:auto!important}
 `;
 
 function mediaListener(media, listener, enabled) {
@@ -81,8 +81,12 @@ function createCinematicBackground(options = {}) {
   let state = 'DISABLED';
   let reason = 'preference-none';
   let source = null;
-  let currentImage = null;
-  let currentImageSource = null;
+  const initialWallpaper = options.initialWallpaper;
+  let currentImage = safeImageDataUrl(initialWallpaper?.dataUrl);
+  let currentImageSource = currentImage && ['CACHE_FRESH', 'CACHE_RETAINED'].includes(initialWallpaper?.source)
+    ? initialWallpaper.source : null;
+  if (!currentImageSource) currentImage = null;
+  let warmPending = Boolean(initialWallpaper);
   let fallbackVisible = false;
   let fallbackReason = null;
   let failureCode = null;
@@ -90,6 +94,12 @@ function createCinematicBackground(options = {}) {
   let inFlight = null;
   let refreshTimer = null;
   let nextRefreshAtMs = null;
+
+  function settleWarmWallpaper() {
+    if (!warmPending) return;
+    warmPending = false;
+    try { options.onWarmSettled?.(); } catch (_) {}
+  }
 
   function reasonStatus(value) {
     if (value === 'bing-origin-access-restricted') return CINEMATIC_STATUS.ACCESS_RESTRICTED;
@@ -226,6 +236,10 @@ function createCinematicBackground(options = {}) {
   function showImage(dataUrl, imageSource) {
     const host = ensureOwned();
     if (!host) return false;
+    if (currentImage === dataUrl && currentImageIsPainted(host)) {
+      currentImageSource = imageSource;
+      return true;
+    }
     const incoming = activeLayer === 'a' ? 'b' : 'a';
     const incomingNode = host.querySelector?.(`[data-layer="${incoming}"]`);
     const outgoingNode = host.querySelector?.(`[data-layer="${activeLayer}"]`);
@@ -236,12 +250,20 @@ function createCinematicBackground(options = {}) {
     incomingNode.style?.setProperty?.('--us-squarecoil-cine-image', cssUrl(dataUrl), 'important');
     incomingNode.setAttribute?.('data-active', 'true');
     outgoingNode.setAttribute?.('data-active', 'false');
+    outgoingNode.style?.removeProperty?.('--us-squarecoil-cine-image');
     activeLayer = incoming;
     currentImage = dataUrl;
     currentImageSource = imageSource;
     fallbackVisible = false;
     fallbackReason = null;
+    settleWarmWallpaper();
     return true;
+  }
+
+  function currentImageIsPainted(host = document.getElementById?.(CINEMATIC_HOST_ID)) {
+    const active = host?.querySelector?.(`[data-layer="${activeLayer}"]`);
+    return active?.getAttribute?.('data-active') === 'true' &&
+      Boolean(active.style?.getPropertyValue?.('--us-squarecoil-cine-image'));
   }
 
   function showFallback(nextReason = fallbackReason) {
@@ -256,6 +278,7 @@ function createCinematicBackground(options = {}) {
     currentImageSource = null;
     fallbackVisible = true;
     fallbackReason = typeof nextReason === 'string' && nextReason ? nextReason : 'fallback-used';
+    settleWarmWallpaper();
     return true;
   }
 
@@ -288,11 +311,18 @@ function createCinematicBackground(options = {}) {
       const candidate = result?.ok === true ? safeImageDataUrl(result.dataUrl) : null;
       const candidateSource = result?.source || null;
       if (candidate) {
+        const acceptedSource = candidateSource === 'CACHE_RETAINED' || candidateSource === 'CACHE' ? 'CACHE_RETAINED' :
+          candidateSource === 'CACHE_FRESH' ? 'CACHE_FRESH' : 'REMOTE';
+        if (candidate === currentImage && currentImageIsPainted()) {
+          currentImageSource = acceptedSource;
+          failureCode = result?.failureCode || null;
+          scheduleRefresh();
+          if (acceptedSource === 'CACHE_RETAINED') return publish('DEGRADED_CACHE', result?.reason || 'remote-failed-cache-used', 'CACHE_RETAINED');
+          return publish('SHOWING', result?.reason || 'same-image-reused', acceptedSource);
+        }
         let ready = false;
         try { ready = await loadImage(candidate); } catch (_) { ready = false; }
         if (disposed || requestGeneration !== generation || eligible()) return snapshot();
-        const acceptedSource = candidateSource === 'CACHE_RETAINED' || candidateSource === 'CACHE' ? 'CACHE_RETAINED' :
-          candidateSource === 'CACHE_FRESH' ? 'CACHE_FRESH' : 'REMOTE';
         if (ready && showImage(candidate, acceptedSource)) {
           failureCode = result?.failureCode || null;
           scheduleRefresh();
@@ -319,16 +349,23 @@ function createCinematicBackground(options = {}) {
       generation += 1;
       inFlight = null;
       removeOwned({ retainImage: disposition.state === 'SUSPENDED_THEME' });
+      settleWarmWallpaper();
       if (disposition.state === 'SUSPENDED_ACCESSIBILITY') failureCode = null;
       return publish(disposition.state, disposition.reason, null);
     }
     const host = ensureOwned();
-    if (!host) return publish('DEGRADED_NONE', 'owned-host-unavailable', null);
+    if (!host) { settleWarmWallpaper(); return publish('DEGRADED_NONE', 'owned-host-unavailable', null); }
+    // The host already paints the same built-in gradient. Release the temporary
+    // document-start copy now instead of retaining two layers during a timeout.
+    if (warmPending && initialWallpaper?.source === 'FALLBACK') settleWarmWallpaper();
     if (currentImage) {
       const layer = host.querySelector?.(`[data-layer="${activeLayer}"]`);
       layer?.style?.setProperty?.('--us-squarecoil-cine-image', cssUrl(currentImage), 'important');
       layer?.setAttribute?.('data-active', 'true');
+      const wasWarm = warmPending;
+      settleWarmWallpaper();
       scheduleRefresh();
+      if (wasWarm && currentImageSource === 'CACHE_RETAINED' && document.hidden !== true) void refresh('warm-cache-stale');
       return publish(currentImageSource === 'CACHE_RETAINED' || currentImageSource === 'CACHE' ? 'DEGRADED_CACHE' : 'SHOWING',
         'eligible-current-restored', currentImageSource);
     }
@@ -387,6 +424,7 @@ function createCinematicBackground(options = {}) {
     for (const media of [forcedMedia, transparencyMedia, motionMedia]) mediaListener(media, onMediaChange, false);
     document.removeEventListener?.('visibilitychange', onVisibilityChange);
     removeOwned({ retainImage: false });
+    settleWarmWallpaper();
   }
 
   return Object.freeze({ apply, refresh, snapshot, teardown });

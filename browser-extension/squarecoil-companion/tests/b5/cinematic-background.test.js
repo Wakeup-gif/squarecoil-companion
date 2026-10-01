@@ -63,12 +63,16 @@ function harness(options = {}) {
     Image: class {}
   };
   let calls = 0;
+  let imageLoads = 0;
+  let warmSettles = 0;
   const provider = options.provider || (async () => ({ ok: true, source: 'REMOTE', dataUrl: 'data:image/png;base64,AAAA' }));
   const service = createCinematicBackground({ document, window, refreshIntervalMs: 1000, now: options.now,
+    initialWallpaper: options.initialWallpaper, onWarmSettled: () => { warmSettles += 1; },
     fetchWallpaper: request => { calls += 1; return provider(request, calls); },
-    loadImage: options.loadImage || (() => true) });
+    loadImage: dataUrl => { imageLoads += 1; return options.loadImage ? options.loadImage(dataUrl) : true; } });
   return { service, document, window, root, head, body, forced, transparency, motion, listeners, timers,
-    calls: () => calls, fireVisibility() { listeners.get('visibilitychange')?.(); } };
+    calls: () => calls, imageLoads: () => imageLoads, warmSettles: () => warmSettles,
+    fireVisibility() { listeners.get('visibilitychange')?.(); } };
 }
 
 function prefs(values = {}) {
@@ -307,6 +311,66 @@ test('UT-B5-CINE-025 a retained cache image restores as degraded cache instead o
   assert.equal(restored.source, 'CACHE_RETAINED');
   assert.equal(restored.imageDisplayed, true);
   assert.equal(h.calls(), 1);
+});
+
+test('UT-B5-CINE-045 a warm page paints the cached image immediately and reuses it without decoding', async () => {
+  const dataUrl = 'data:image/jpeg;base64,AQ==';
+  const h = harness({ initialWallpaper: { dataUrl, source: 'CACHE_FRESH' },
+    provider: async () => ({ ok: true, source: 'CACHE_FRESH', reason: 'fresh-cache-reused', dataUrl }) });
+  const initial = h.service.apply(prefs(), sleek);
+  assert.equal(initial.state, 'SHOWING');
+  assert.equal(initial.imageDisplayed, true);
+  assert.equal(h.warmSettles(), 1);
+  assert.equal(h.calls(), 0);
+  assert.equal(h.imageLoads(), 0);
+  const active = h.document.getElementById(CINEMATIC_HOST_ID).children.find(child => child.getAttribute('data-active') === 'true');
+  assert.match(active.style.getPropertyValue('--us-squarecoil-cine-image'), /^url\("data:image\/jpeg/);
+  await h.service.refresh('manual');
+  assert.equal(h.calls(), 1);
+  assert.equal(h.imageLoads(), 0);
+  assert.equal(h.warmSettles(), 1);
+});
+
+test('UT-B5-CINE-046 an old warm cache stays visible while one update is requested', async () => {
+  let resolveProvider;
+  const h = harness({ initialWallpaper: { dataUrl: 'data:image/jpeg;base64,AQ==', source: 'CACHE_RETAINED' },
+    provider: () => new Promise(resolve => { resolveProvider = resolve; }) });
+  const initial = h.service.apply(prefs(), sleek);
+  assert.equal(initial.imageDisplayed, true);
+  assert.equal(h.calls(), 1);
+  assert.equal(h.imageLoads(), 0);
+  assert.equal(h.warmSettles(), 1);
+  resolveProvider({ ok: false, reason: 'network-unavailable' });
+  await h.service.refresh();
+  assert.equal(h.service.snapshot().imageDisplayed, true);
+  assert.equal(h.calls(), 1);
+});
+
+test('UT-B5-CINE-047 a warm gradient stays until the offline fallback host is ready', async () => {
+  const h = harness({ initialWallpaper: { dataUrl: null, source: 'FALLBACK' },
+    provider: async () => ({ ok: false, reason: 'network-unavailable' }) });
+  h.service.apply(prefs(), sleek);
+  assert.ok(h.document.getElementById(CINEMATIC_HOST_ID));
+  assert.equal(h.warmSettles(), 1);
+  await h.service.refresh();
+  assert.equal(h.service.snapshot().state, 'DEGRADED_FALLBACK');
+  assert.equal(h.warmSettles(), 1);
+  assert.equal(h.imageLoads(), 0);
+});
+
+test('UT-B5-CINE-048 a missing painted layer is repaired even when cache returns the same image', async () => {
+  const dataUrl = 'data:image/jpeg;base64,AQ==';
+  const h = harness({ initialWallpaper: { dataUrl, source: 'CACHE_FRESH' },
+    provider: async () => ({ ok: true, source: 'CACHE_FRESH', dataUrl }) });
+  h.service.apply(prefs(), sleek);
+  const host = h.document.getElementById(CINEMATIC_HOST_ID);
+  const active = host.children.find(child => child.getAttribute('data-active') === 'true');
+  active.style.removeProperty('--us-squarecoil-cine-image');
+  await h.service.refresh('manual');
+  assert.equal(h.service.snapshot().imageDisplayed, true);
+  assert.equal(h.imageLoads(), 1);
+  assert.equal(host.children.filter(child => child.getAttribute('data-active') === 'true').length, 1);
+  assert.equal(host.children.filter(child => child.style.getPropertyValue('--us-squarecoil-cine-image')).length, 1);
 });
 
 test('UT-B5-CINE-039 the active layer owns an important authoritative image property under both Glass themes', async () => {

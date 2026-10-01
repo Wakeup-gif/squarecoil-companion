@@ -56,7 +56,7 @@ npm run lab:evidence -- --evidence-dir "C:\path\to\empty-evidence-folder"
 npm run lab:evidence:edge -- --evidence-dir "C:\path\to\separate-empty-edge-evidence-folder"
 ```
 
-Each command creates `01-tabs-short-viewport.png`, `02-archive-veil-preview.png`, `03-dark-glass-fallback.png`, `04-light-glass-fallback.png`, `05-refined-light.png`, `06-settings-nested.png`, `07-selected-vs-operational.png`, `08-dashboard-canonical-history.png`, `09-dashboard-narrow.png`, `10-dashboard-sidebar-width.png`, and `visual-evidence.json`. Use separate empty directories because the deterministic filenames intentionally refuse overwrite. The manifest binds browser version, package candidate fingerprint, source SHA/dirty state, screenshot digests, and the explicit non-acceptance lab scope. The screenshots contain only fictional lab data and built-in gradients—not generated wallpaper art; no real SquareCoil page or account is opened.
+Each command creates the existing workspace, theme, and dashboard captures plus `16-design-page-quiet-glass.png` and `visual-evidence.json`. The new Design-page check navigates with Dark Glass active and verifies borderless project surfaces, no nested backdrop blur, and a static background layer in computed browser styles. Use separate empty directories because the deterministic filenames intentionally refuse overwrite. The manifest binds browser version, package candidate fingerprint, source SHA/dirty state, screenshot digests, and the explicit non-acceptance lab scope. The screenshots contain only fictional lab data and built-in gradients—not generated wallpaper art; no real SquareCoil page or account is opened.
 
 ## Prototype integration checks
 

@@ -131,6 +131,8 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
     if (!cinematicService) cinematicService = createCinematicBackground({
       document,
       window,
+      initialWallpaper: globalThis.__squareCoilCompanionPresentationBootstrap?.warmWallpaper?.(),
+      onWarmSettled: () => globalThis.__squareCoilCompanionPresentationBootstrap?.releaseWarmWallpaper?.(),
       fetchWallpaper: request => sendB5B(B5B_WALLPAPER_MESSAGE, { websiteTheme: request?.websiteTheme }),
       onChange: value => setDataset('squarecoilCompanionCinematic', value.state)
     });

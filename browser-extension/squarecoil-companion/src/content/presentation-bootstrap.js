@@ -2,6 +2,7 @@
 
 const { createPresentationMarkers } = require('../presentation/presentation-markers');
 const { CANDIDATE_FINGERPRINT } = require('../core/build-identity');
+const { CACHE_KEY, FRESH_CACHE_MAX_AGE_MS, FALLBACK_BACKGROUNDS, cachedWallpaper } = require('../presentation/wallpaper-cache');
 
 // Keep the authoritative storage-key literal owned exclusively by authority-kernel.js.
 // This early, read-only presentation consumer derives the same key without becoming
@@ -13,6 +14,8 @@ const GUARD_ATTRIBUTE = 'data-squarecoil-companion-prepaint';
 const ROOT_THEME_ATTRIBUTE = 'data-squarecoil-companion-site-theme';
 const ROOT_ROUTE_ATTRIBUTE = 'data-squarecoil-companion-site-route';
 const API_KEY = '__squareCoilCompanionPresentationBootstrap';
+const WARM_ATTRIBUTE = 'data-squarecoil-companion-warm-wallpaper';
+const CINEMATIC_HOST_ID = 'squarecoil-companion-cinematic-host';
 const GUARD_BUDGET_MS = 1400;
 const GLASS_THEMES = new Set(['SLEEK_DARK', 'LIGHT_GLASS']);
 const THEME_FILES = Object.freeze({
@@ -80,6 +83,51 @@ const ROUTES = Object.freeze([
   let activeTheme = 'ORIGINAL';
   let lastReason = 'initializing';
   let disposed = false;
+  let warmWallpaper = null;
+  let previousBackground = null;
+
+  function releaseWarmWallpaper() {
+    if (!previousBackground) return;
+    for (const [property, previous] of Object.entries(previousBackground)) {
+      if (root.style?.getPropertyValue?.(property) !== previous.applied) continue;
+      if (previous.value) root.style?.setProperty?.(property, previous.value, previous.priority);
+      else root.style?.removeProperty?.(property);
+    }
+    previousBackground = null;
+    warmWallpaper = null;
+    root.removeAttribute?.(WARM_ATTRIBUTE);
+  }
+
+  function primeWarmWallpaper(theme, rawCache) {
+    if (!GLASS_THEMES.has(theme) || window.matchMedia?.('(forced-colors: active)')?.matches === true ||
+        window.matchMedia?.('(prefers-reduced-transparency: reduce)')?.matches === true) {
+      releaseWarmWallpaper();
+      return;
+    }
+    const cache = cachedWallpaper({ [CACHE_KEY]: rawCache }, Date.now());
+    // The full Companion owns this host after startup. Never repaint its image
+    // from a later storage event or preference reconciliation.
+    if (document.getElementById?.(CINEMATIC_HOST_ID)) {
+      releaseWarmWallpaper();
+      return;
+    }
+    if (warmWallpaper?.dataUrl === (cache?.dataUrl || null) && warmWallpaper.theme === theme) return;
+    if (!root.style?.setProperty || !root.style?.getPropertyValue) return;
+    releaseWarmWallpaper();
+    const properties = {
+      'background-image': cache ? `url("${cache.dataUrl}")` : FALLBACK_BACKGROUNDS[theme],
+      'background-position': 'center center',
+      'background-repeat': 'no-repeat',
+      'background-size': 'cover'
+    };
+    previousBackground = Object.fromEntries(Object.entries(properties).map(([property, applied]) => [property, {
+      value: root.style.getPropertyValue(property), priority: root.style.getPropertyPriority(property), applied
+    }]));
+    for (const [property, value] of Object.entries(properties)) root.style.setProperty(property, value, 'important');
+    warmWallpaper = Object.freeze({ dataUrl: cache?.dataUrl || null, theme,
+      source: cache ? (Date.now() - cache.fetchedAtMs <= FRESH_CACHE_MAX_AGE_MS ? 'CACHE_FRESH' : 'CACHE_RETAINED') : 'FALLBACK' });
+    root.setAttribute(WARM_ATTRIBUTE, 'active');
+  }
 
   function routeName() {
     const path = String(window.location?.pathname || '').toLowerCase();
@@ -130,7 +178,10 @@ const ROUTES = Object.freeze([
   function syncRoute() {
     if (!GLASS_THEMES.has(activeTheme)) return;
     const route = routeName();
-    root.setAttribute(ROOT_ROUTE_ATTRIBUTE, route.toUpperCase().replace(/-/g, '_'));
+    const routeAttribute = route.toUpperCase().replace(/-/g, '_');
+    const sourceAttribute = activeTheme === 'SLEEK_DARK' ? 'data-us-sign-v230-route' : 'data-us-sign-v240-route';
+    if (root.getAttribute(ROOT_ROUTE_ATTRIBUTE) === routeAttribute && root.getAttribute(sourceAttribute) === route) return;
+    root.setAttribute(ROOT_ROUTE_ATTRIBUTE, routeAttribute);
     if (activeTheme === 'SLEEK_DARK') root.setAttribute('data-us-sign-v230-route', route);
     if (activeTheme === 'LIGHT_GLASS') root.setAttribute('data-us-sign-v240-route', route);
     markers.schedule();
@@ -168,18 +219,23 @@ const ROUTES = Object.freeze([
   async function cssFor(theme) {
     if (cssCache.has(theme)) return cssCache.get(theme);
     const url = chrome.runtime.getURL(THEME_FILES[theme]);
-    const response = await fetch(url, { cache: 'no-store', credentials: 'omit' });
-    if (!response.ok) throw new Error(`theme-css-load-${response.status}`);
-    const css = await response.text();
-    if (!css.includes('Presentation-only port of the pinned SquareCoil Tampermonkey source chain')) {
-      throw new Error('theme-css-identity-invalid');
-    }
-    cssCache.set(theme, css);
-    return css;
+    const pending = (async () => {
+      const response = await fetch(url, { credentials: 'omit' });
+      if (!response.ok) throw new Error(`theme-css-load-${response.status}`);
+      const css = await response.text();
+      if (!css.includes('Presentation-only port of the pinned SquareCoil Tampermonkey source chain')) {
+        throw new Error('theme-css-identity-invalid');
+      }
+      return css;
+    })();
+    cssCache.set(theme, pending);
+    try { return await pending; }
+    catch (error) { if (cssCache.get(theme) === pending) cssCache.delete(theme); throw error; }
   }
 
   function removeTheme(reason = 'native') {
     generation += 1;
+    releaseWarmWallpaper();
     const style = document.getElementById?.(STYLE_ID);
     if (style?.getAttribute?.('data-squarecoil-companion-theme-port') === 'authoritative') style.remove?.();
     clearSourceMarkers();
@@ -190,11 +246,19 @@ const ROUTES = Object.freeze([
     return snapshot();
   }
 
-  async function reconcile(rawTheme, reason = 'reconcile') {
+  async function reconcile(rawTheme, reason = 'reconcile', rawCache) {
     if (disposed) return snapshot();
     const theme = normalizeTheme(rawTheme);
     if (!GLASS_THEMES.has(theme) || window.matchMedia?.('(forced-colors: active)')?.matches === true) {
       return removeTheme(theme === 'ORIGINAL' ? reason : 'accessibility-native');
+    }
+    const existing = document.getElementById?.(STYLE_ID);
+    if (activeTheme === theme && existing?.getAttribute?.('data-squarecoil-companion-theme-port') === 'authoritative' &&
+        root.getAttribute(ROOT_THEME_ATTRIBUTE) === theme) {
+      if (rawCache !== undefined) primeWarmWallpaper(theme, rawCache);
+      syncRoute();
+      releaseGuard('theme-unchanged');
+      return snapshot();
     }
     const requestGeneration = ++generation;
     try {
@@ -212,6 +276,7 @@ const ROUTES = Object.freeze([
       installSourceMarkers(theme);
       activeTheme = theme;
       lastReason = reason;
+      if (rawCache !== undefined) primeWarmWallpaper(theme, rawCache);
       markers.apply();
       releaseGuard('theme-applied');
       return snapshot();
@@ -234,10 +299,10 @@ const ROUTES = Object.freeze([
 
   async function reconcileStored(reason) {
     try {
-      const values = await chrome.storage.local.get({ timerEnabled: true, [AUTHORITY_STORAGE_KEY]: null });
+      const values = await chrome.storage.local.get({ timerEnabled: true, [AUTHORITY_STORAGE_KEY]: null, [CACHE_KEY]: null });
       if (values.timerEnabled === false) return removeTheme('companion-disabled');
       const preference = values[AUTHORITY_STORAGE_KEY]?.document?.dataSafety?.preferences?.websiteTheme;
-      return reconcile(preference, reason);
+      return reconcile(preference, reason, values[CACHE_KEY]);
     } catch (error) {
       return removeTheme(String(error?.message || error || 'storage-read-failed'));
     }
@@ -245,6 +310,14 @@ const ROUTES = Object.freeze([
 
   function onStorageChanged(changes, area) {
     if (area !== 'local' || (!changes?.timerEnabled && !changes?.[AUTHORITY_STORAGE_KEY])) return;
+    if (!changes.timerEnabled && changes[AUTHORITY_STORAGE_KEY]) {
+      const before = normalizeTheme(changes[AUTHORITY_STORAGE_KEY].oldValue?.document?.dataSafety?.preferences?.websiteTheme);
+      const after = normalizeTheme(changes[AUTHORITY_STORAGE_KEY].newValue?.document?.dataSafety?.preferences?.websiteTheme);
+      const alreadySettled = GLASS_THEMES.has(after)
+        ? activeTheme === after && document.getElementById?.(STYLE_ID)?.getAttribute?.('data-squarecoil-companion-theme-port') === 'authoritative'
+        : activeTheme === 'ORIGINAL';
+      if (before === after && alreadySettled) return;
+    }
     void reconcileStored('storage-change');
   }
 
@@ -264,7 +337,8 @@ const ROUTES = Object.freeze([
   }
 
   Object.defineProperty(globalThis, API_KEY, {
-    value: Object.freeze({ reconcile, reconcileStored, removeTheme, syncRoute, snapshot, teardown }),
+    value: Object.freeze({ reconcile, reconcileStored, removeTheme, syncRoute, snapshot, teardown,
+      warmWallpaper: () => warmWallpaper, releaseWarmWallpaper }),
     configurable: true
   });
   installGuard();

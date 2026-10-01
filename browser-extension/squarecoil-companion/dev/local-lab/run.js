@@ -43,6 +43,7 @@ const EVIDENCE_FILES = Object.freeze({
   designProfile: '13-design-dashboard-profile.png',
   storeWorkspace: '14-store-workspace-1280x800.png',
   storeSettings: '15-store-settings-1280x800.png',
+  quietDesign: '16-design-page-quiet-glass.png',
   manifest: 'visual-evidence.json'
 });
 
@@ -144,6 +145,16 @@ function loadLabAsset(filename) {
 
 function labPageHtml(url) {
   const source = loadLabAsset('index.html');
+  if (url.pathname === '/project_designs.php') {
+    const design = `<section id="lab-native-design" class="lab-section panel" aria-label="Fictional Design page fixture">
+      <div id="us-sign-design-project-header"><div class="us-sign-design-project-name">910001 — Northstar Museum Wayfinding</div><div class="us-sign-design-project-status">In progress</div></div>
+      <div id="us-sign-design-summary"><div class="us-sign-djt-summary-cell"><span>Status</span><strong>In progress</strong></div></div>
+      <div id="us-sign-job-overview">Design overview</div>
+      <div id="us-sign-design-actionbar"><button type="button" disabled>Native Design action</button></div>
+      <div id="us-sign-design-right-stack"><section class="us-sign-designs-panel panel"><header class="panel-heading">Designs</header><div class="panel-body">910001-01</div></section></div>
+    </section>`;
+    return source.replace('<main id="content">', `<main id="content">${design}`);
+  }
   if (url.pathname !== '/dashboard.php') return source;
   // These native widgets are the audited dashboard mount anchors. The same
   // source is served for near-miss queries so route gating cannot pass merely
@@ -701,6 +712,59 @@ async function verifyThemeEvidence(page, evidence, bingPermissionGranted, timeou
   await closeSettings(page, timeout);
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   return { darkGlass, lightGlass, refinedLight, settings, sidebar: { dark: darkSidebar, light: lightSidebar, refined: refinedSidebar }, restored: { ...restored, appearance: restoredAppearance }, appearance: { dark: darkAppearance, light: lightAppearance } };
+}
+
+async function verifyQuietGlassNavigation(page, evidence, timeout) {
+  await openSettings(page, timeout);
+  await openSettingsDestination(page, 'appearance', 'website-theme', timeout);
+  await page.locator('#ussign-job-timer .sc-theme-choice[data-value="SLEEK_DARK"]').click();
+  await page.waitForFunction(() => document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === 'SLEEK_DARK', null, { timeout });
+  await closeSettings(page, timeout);
+  await page.goto(`${ORIGIN}/project_designs.php`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.documentElement.classList.contains('us-sign-design-page') &&
+    document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === 'SLEEK_DARK' &&
+    Boolean(document.querySelector('#squarecoil-companion-cinematic-host')), null, { timeout });
+  const proof = await page.evaluate(() => {
+    const selectors = [
+      '#us-sign-design-project-header', '#us-sign-design-summary', '#us-sign-job-overview',
+      '#us-sign-design-actionbar', '#us-sign-design-right-stack .us-sign-designs-panel',
+      '#us-sign-design-right-stack .panel-heading', '#projectbox', '#descriptionbox', '#filesbox'
+    ];
+    const surfaces = selectors.map(selector => {
+      const node = document.querySelector(selector);
+      const css = node ? getComputedStyle(node) : null;
+      return { selector, present: Boolean(node), border: css?.borderTopWidth || null,
+        outlineWidth: css?.outlineWidth || null, outlineStyle: css?.outlineStyle || null,
+        blur: css?.backdropFilter || css?.webkitBackdropFilter || null };
+    });
+    const layer = document.querySelector('#squarecoil-companion-cinematic-host .sc-cinematic-layer');
+    const layerCss = layer ? getComputedStyle(layer) : null;
+    return { route: location.pathname,
+      theme: document.documentElement.getAttribute('data-squarecoil-companion-site-theme'),
+      styleCount: document.querySelectorAll('#squarecoil-companion-site-theme').length,
+      hostCount: document.querySelectorAll('#squarecoil-companion-cinematic-host').length,
+      warmAttribute: document.documentElement.getAttribute('data-squarecoil-companion-warm-wallpaper'),
+      surfaces, layer: layerCss ? { animation: layerCss.animationName,
+        transition: layerCss.transitionDuration, transform: layerCss.transform, filter: layerCss.filter } : null };
+  });
+  assertVisualCondition(proof.route === '/project_designs.php' && proof.theme === 'SLEEK_DARK' &&
+    proof.styleCount === 1 && proof.hostCount === 1 && proof.warmAttribute === null &&
+    proof.surfaces.every(surface => surface.present && surface.border === '0px' &&
+      (surface.outlineStyle === 'none' || surface.outlineWidth === '0px') && surface.blur === 'none') &&
+    proof.layer?.animation === 'none' && proof.layer.transition === '0s' &&
+    proof.layer.transform === 'none' && proof.layer.filter === 'none',
+  'Design navigation retained outlines, blur, or animated wallpaper', proof);
+  if (evidence) await page.screenshot({ path: evidence.files.quietDesign, fullPage: false, animations: 'disabled', caret: 'hide' });
+  await page.goto(`${ORIGIN}${LAB_ROOT}/index.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.documentElement.getAttribute('data-squarecoil-companion-site-theme') === 'SLEEK_DARK' &&
+    Boolean(document.querySelector('#ussign-job-timer')), null, { timeout });
+  await openSettings(page, timeout);
+  await openSettingsDestination(page, 'appearance', 'website-theme', timeout);
+  await page.locator('#ussign-job-timer .sc-theme-choice[data-value="ORIGINAL"]').click();
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-squarecoil-companion-site-theme') &&
+    !document.querySelector('#squarecoil-companion-cinematic-host'), null, { timeout });
+  await closeSettings(page, timeout);
+  return proof;
 }
 
 async function verifyVisualContract(page, evidence, timeout, options = {}) {
@@ -1333,6 +1397,7 @@ async function main() {
         expectedLabels: ['910001', '910002', '910003'] });
       const designProfile = await verifyDesignProfileJourney({ page, origin: ORIGIN, timeout, readBoundary,
         screenshot: evidence?.files.designProfile });
+      const quietNavigation = await verifyQuietGlassNavigation(page, evidence, timeout);
       const identity = { url: page.url(), title: await page.title() };
       const pageContent = await page.locator('body').innerText();
       const nonblank = pageContent.includes('LOCAL SIMULATOR') && pageContent.includes('SquareCoil Companion');
@@ -1373,10 +1438,12 @@ async function main() {
             dashboardNarrowRow: EVIDENCE_FILES.dashboardNarrowRow,
             designProfile: EVIDENCE_FILES.designProfile,
             storeWorkspace: EVIDENCE_FILES.storeWorkspace,
-            storeSettings: EVIDENCE_FILES.storeSettings
+            storeSettings: EVIDENCE_FILES.storeSettings,
+            quietDesign: EVIDENCE_FILES.quietDesign
           },
           screenshotDigests,
           visualProof,
+          quietNavigation,
           selectedContext,
           dashboard,
           designProfile,

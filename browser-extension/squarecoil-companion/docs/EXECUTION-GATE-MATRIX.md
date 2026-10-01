@@ -5,6 +5,27 @@
 
 Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.
 
+## Active Glass navigation and performance stabilization — September 30
+
+```text
+Intent: remove page-navigation theme/background flashes, unnecessary theme reapplication, heavy wallpaper animation/blur, and pervasive decorative outlines reported with a real SquareCoil screenshot.
+Behavior changed or restored: keep a valid cached wallpaper visible from document start and through the trusted presentation handoff; avoid reloading/reparsing the same theme on unrelated storage writes; make the wallpaper static; flatten decorative page frames while retaining keyboard focus and state distinctions.
+Files expected: presentation bootstrap, cinematic background, generated theme-port delta, focused tests and sealed lab evidence.
+Impact tags: PRESENTATION, LIFECYCLE, WORKSPACE_SETTINGS, PACKAGE_ARTIFACT.
+Contracts touched: L7 theme/Glass and accessibility fallback, L8 F4 failure isolation and P4 performance; no Timer/Ledger/Bridge ownership or native SquareCoil mutation.
+Targeted gates: bootstrap idempotence, cached-background handoff, theme-port freshness, focus/forced-colors, cinematic fallback and teardown, page-frame style checks.
+Composed journeys: Glass navigation across fictional SquareCoil routes in Chrome and Edge, stable cached image without extra fetch or visible native flash, UI contrast/focus, installed clean and v0.7 upgrade profiles.
+Full candidate gate required at completion: yes, because runtime and generated CSS bytes change.
+Explicit exclusions: no live SquareCoil clock action, no new host permissions/network destinations, no release or Store submission, and no edit to legacy Tampermonkey sources.
+```
+
+| ID | Requirement | Impact tag | Targeted proof | Composed/candidate proof | Current state |
+|---|---|---|---|---|
+| `PERF-001` | A stable Glass theme is applied once per document; unrelated Timer/Ledger storage writes do not re-fetch or replace its stylesheet. | `PRESENTATION`, `LIFECYCLE` | `UT-B5-THEME-033` and theme-port freshness | Chrome/Edge sealed navigation passed; exact clean-source installed matrix pending | `MAPPED` |
+| `PERF-002` | A validated cached wallpaper is painted before the page is revealed and adopted without clearing or decoding it a second time; disabled/Original/accessibility removes it. | `PRESENTATION`, `LIFECYCLE` | `UT-B5-THEME-034/035`, `UT-B5-CINE-045/046/047/048`, existing cache/teardown fixtures | Chrome/Edge sealed fallback navigation passed; exact clean-source installed matrix pending | `MAPPED` |
+| `PERF-003` | Glass avoids continuous large-image movement and nested page blur, while native controls and keyboard focus remain usable. | `PRESENTATION`, `WORKSPACE_SETTINGS` | generated CSS, `UT-B5-CINE-009/045/047`, computed-style lab proof | Chrome/Edge sealed Design navigation passed; exact clean-source installed matrix pending | `MAPPED` |
+| `VIS-001` | Decorative outlines on project/page surfaces are removed without erasing status meaning, form boundaries, or keyboard focus. | `PRESENTATION`, `WORKSPACE_SETTINGS` | computed borders/outlines for nine Design/project surfaces, existing focus/forced-colors tests | Chrome/Edge sealed Design screenshots passed; actual account page remains untested | `MAPPED` |
+
 ## Active Chrome Web Store preparation — September 30
 
 ```text

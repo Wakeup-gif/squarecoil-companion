@@ -7052,3 +7052,61 @@ html:is(.us-sign-v230,.us-sign-v240) body.sb-l-m #sidebar_left .sidebar-toggle-m
     display: none !important;
   }
 }
+
+
+
+/* Companion navigation/performance delta. The pinned prototypes decorated most
+ * nested containers with a border and a live backdrop blur. Those repeated
+ * full-page blur surfaces are expensive over a large photograph and create the
+ * unwanted blue box outlines. Keep the theme fills and typography, but let a
+ * single static wallpaper sit behind flat, borderless page surfaces. */
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar,#topbar,.topbar,#sidebar_left,#pmlt),
+html:is(.us-sign-v230,.us-sign-v240) body :is(#customer-name,#customer-info,#showbtns,#mapcontainer,#filesbox,#descriptionbox,#projectbox,#designbox,#us-sign-design-project-header,#us-sign-design-actionbar,#us-sign-job-overview,#us-sign-design-summary,.us-sign-description-panel,.us-sign-designs-panel,.us-sign-files-panel),
+html:is(.us-sign-v230,.us-sign-v240) body #content :is(.panel,.panel-default,.well,.tab-content,.table-responsive,.panel-heading,.panel-footer,.nav-tabs,.alert,.notification,.notice,.dropdown-menu,.popover,.modal-content,.modal-header,.modal-footer),
+html:is(.us-sign-v230,.us-sign-v240) body :is(#pmlt,#sidebar_left,#content) :is(.panel,.panel-default,.well,.tab-content,.table-responsive,.panel-heading,.panel-footer,.nav-tabs,.alert,.notification,.notice,.sidebar-menu,.sidebar-left-content) {
+  border: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html:is(.us-sign-v230,.us-sign-v240) body #content :is(#projectbox,#designbox,#descriptionbox,#filesbox,#customer-info,#us-sign-design-right-stack) :is(table,thead,tbody,tr,th,td),
+html:is(.us-sign-v230,.us-sign-v240) body :is(#pmlt,#sidebar_left,#content) :is(.btn,button,.nav>li>a,.sidebar-menu a,.list-group-item):not(:focus-visible) {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* The prototype's Design page has more specific nested border rules than its
+ * general card registry. Target those exact presentation wrappers so their
+ * colored outlines cannot win the cascade on project navigation. */
+html:is(.us-sign-v230,.us-sign-v240).us-sign-design-page body #content :is(
+  #us-sign-design-project-header,#us-sign-design-summary,#us-sign-job-overview,
+  #us-sign-design-actionbar,#us-sign-design-bottom-grid,#us-sign-design-right-stack,
+  .us-sign-designs-panel,.us-sign-files-panel,.us-sign-description-panel
+),
+html:is(.us-sign-v230,.us-sign-v240).us-sign-design-page body #content :is(
+  #us-sign-design-project-header,#us-sign-design-summary,#us-sign-job-overview,
+  #us-sign-design-actionbar,#us-sign-design-bottom-grid,#us-sign-design-right-stack
+) :is(.panel,.panel-heading,.panel-body,.us-sign-djt-summary-cell,.us-sign-design-project-name,.us-sign-design-project-info,.us-sign-design-project-status),
+html:is(.us-sign-v230,.us-sign-v240).us-sign-design-page body #content #us-sign-design-right-stack table :is(th,td) {
+  border: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Inputs still have a filled field. A visible ring appears only when keyboard
+ * focus needs it; native forced-colors mode does not run this Glass port. */
+html:is(.us-sign-v230,.us-sign-v240) body :is(input:not([type="checkbox"]):not([type="radio"]),textarea,select,.form-control,.btn,button,a):focus-visible {
+  outline: 2px solid currentColor !important;
+  outline-offset: 2px !important;
+}
+
+html:is(.us-sign-v230,.us-sign-v240) body #squarecoil-companion-cinematic-host .sc-cinematic-layer {
+  inset: 0 !important;
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  filter: none !important;
+  will-change: auto !important;
+}

@@ -1,11 +1,10 @@
 'use strict';
 
+const { CACHE_KEY, CACHE_MAX_AGE_MS, FRESH_CACHE_MAX_AGE_MS, cachedWallpaper } = require('../presentation/wallpaper-cache');
+
 const BING_ORIGIN_PATTERN = 'https://www.bing.com/*';
 const BING_ORIGIN = 'https://www.bing.com';
-const CACHE_KEY = 'squarecoilCompanionB5BWallpaperCacheV1';
-const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const ROTATION_INTERVAL_MS = 30 * 60 * 1000;
-const FRESH_CACHE_MAX_AGE_MS = ROTATION_INTERVAL_MS;
 const MAX_MARKET_DATE_LAG_DAYS = 1;
 const MAX_METADATA_BYTES = 256_000;
 const MAX_IMAGE_BYTES = 4_000_000;
@@ -62,14 +61,6 @@ function failureClassification(error) {
     statusCode: responseRejected ? WALLPAPER_STATUS.RESPONSE_REJECTED : WALLPAPER_STATUS.NETWORK_UNAVAILABLE,
     detail: /^[A-Za-z0-9_.:+-]{1,120}$/.test(detail) ? detail : 'request-failed'
   });
-}
-
-function cachedWallpaper(raw, nowMs) {
-  const item = raw?.[CACHE_KEY];
-  if (!item || item.schemaVersion !== 1 || !Number.isSafeInteger(item.fetchedAtMs) ||
-      item.fetchedAtMs > nowMs || nowMs - item.fetchedAtMs > CACHE_MAX_AGE_MS) return null;
-  if (!/^data:image\/(?:jpeg|png|webp);base64,/i.test(String(item.dataUrl || '')) || String(item.dataUrl).length > 6_000_000) return null;
-  return item;
 }
 
 function bytesToDataUrl(bytes, contentType) {
