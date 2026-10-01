@@ -7,15 +7,20 @@ function check(condition, message, proof) {
   if (!condition) throw new Error(`${message}: ${JSON.stringify(proof)}`);
 }
 
-async function settled(page, timeout) {
-  await page.waitForFunction(() => {
+async function settled(page, timeout, diagnostic) {
+  const predicate = () => {
     const root = document.querySelector('#ussign-job-timer');
     return root?.dataset.workspaceState === 'loaded' && root.dataset.busy === 'false';
-  }, null, { timeout });
+  };
+  if (diagnostic) {
+    await waitForDashboardStage(page, predicate, diagnostic.stage, timeout, diagnostic.readDiagnosticState);
+  } else {
+    await page.waitForFunction(predicate, null, { timeout });
+  }
 }
 
-async function home(page, timeout) {
-  await settled(page, timeout);
+async function home(page, timeout, diagnostic) {
+  await settled(page, timeout, diagnostic && { ...diagnostic, stage: `${diagnostic.stage}: opening` });
   const expand = page.locator(`${ROOT} [data-action="expand"]`);
   if (await expand.count()) await expand.click();
   if (await page.locator(ROOT).getAttribute('data-proto-collapsed') === 'true') {
@@ -25,17 +30,17 @@ async function home(page, timeout) {
   if (await close.count()) await close.click();
   const main = page.locator(`${ROOT} [data-action="view"][data-view="main"]`);
   if (await main.count()) await main.first().click();
-  await settled(page, timeout);
+  await settled(page, timeout, diagnostic && { ...diagnostic, stage: `${diagnostic.stage}: ready` });
 }
 
-async function settingsRoute(page, group, view, timeout) {
-  await home(page, timeout);
+async function settingsRoute(page, group, view, timeout, diagnostic) {
+  await home(page, timeout, diagnostic && { ...diagnostic, stage: `${diagnostic.stage}: home` });
   await page.locator(`${ROOT} .sc-proto-topbar [data-action="view"][data-view="settings"]`).click();
   const toggle = page.locator(`${ROOT} [data-action="settings-toggle-group"][data-group="${group}"]`);
   await toggle.waitFor({ state: 'visible', timeout });
   if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
   await page.locator(`${ROOT} [data-action="settings-route"][data-view="${view}"]`).click();
-  await settled(page, timeout);
+  await settled(page, timeout, diagnostic && { ...diagnostic, stage: `${diagnostic.stage}: destination ready` });
 }
 
 async function nativeDashboardSnapshot(page) {
@@ -72,6 +77,45 @@ async function dashboardSnapshot(page) {
       pageOverflow: document.documentElement.scrollWidth > innerWidth + 1
     };
   });
+}
+
+async function waitForDashboardStage(page, predicate, stage, timeout, readDiagnosticState) {
+  try {
+    await page.waitForFunction(predicate, null, { timeout });
+  } catch (error) {
+    const dom = await page.evaluate(() => {
+      const root = document.querySelector('#ussign-job-timer');
+      const dashboard = document.querySelector('#squarecoil-companion-analytics');
+      const choice = action => Array.from(root?.querySelectorAll(`[data-action="${action}"]`) || [])
+        .map(node => ({ value: node.dataset.value, active: node.dataset.active, disabled: node.disabled }));
+      return {
+        url: location.href,
+        readyState: document.readyState,
+        companion: root ? {
+          workspaceState: root.dataset.workspaceState,
+          busy: root.dataset.busy,
+          collapsed: root.dataset.protoCollapsed,
+          dashboardChoices: choice('preference-dashboard'),
+          appearanceChoices: choice('preference-dashboard-appearance')
+        } : null,
+        nativeAnchors: ['#content', '#widget-tasks', '#widget-designs', '#widget-estimates']
+          .map(selector => ({ selector, present: Boolean(document.querySelector(selector)) })),
+        analytics: dashboard ? {
+          count: document.querySelectorAll('#squarecoil-companion-analytics').length,
+          theme: dashboard.dataset.theme,
+          owned: dashboard.dataset.squarecoilCompanionOwned,
+          shadow: Boolean(dashboard.shadowRoot),
+          periodControl: Boolean(dashboard.shadowRoot?.querySelector('[data-action="period"]'))
+        } : null
+      };
+    }).catch(snapshotError => ({ error: String(snapshotError?.message || snapshotError) }));
+    const core = readDiagnosticState
+      ? await Promise.resolve().then(readDiagnosticState).catch(snapshotError => ({ error: String(snapshotError?.message || snapshotError) }))
+      : null;
+    const failure = new Error(`Dashboard ${stage}: ${error.message}`, { cause: error });
+    failure.details = { stage, dom, core };
+    throw failure;
+  }
 }
 
 async function verifySelectedContext({ page, timeout, readBoundary, screenshot }) {
@@ -131,21 +175,23 @@ async function captureDashboardRow(page, screenshot) {
 }
 
 async function verifyDashboardJourney({ page, origin, timeout, readBoundary, screenshot, narrowScreenshot, sidebarScreenshot,
-  sidebarRowScreenshot, narrowRowScreenshot, expectedLabels = [], beforeNavigate, afterNavigate }) {
+  sidebarRowScreenshot, narrowRowScreenshot, expectedLabels = [], beforeNavigate, afterNavigate, readDiagnosticState }) {
+  const diagnostic = stage => ({ stage, readDiagnosticState });
   const boundaryBefore = await readBoundary();
   const startUrl = page.url();
   if (beforeNavigate) await beforeNavigate();
   await page.goto(`${origin}/dashboard.php?show=2`, { waitUntil: 'domcontentloaded' });
   if (afterNavigate) await afterNavigate();
-  await settled(page, timeout);
+  await settled(page, timeout, diagnostic('initial dashboard page settlement'));
   const nativeBefore = await nativeDashboardSnapshot(page);
   check(nativeBefore.every(item => item.html && item.visible), 'Dashboard fixture omitted native mount/cleanup anchors', nativeBefore);
   check(await page.locator(DASHBOARD).count() === 0, 'Dashboard is not off by default');
-  await settingsRoute(page, 'appearance', 'dashboard', timeout);
+  await settingsRoute(page, 'appearance', 'dashboard', timeout, diagnostic('open analytics settings to enable'));
   await page.locator(`${ROOT} [data-action="preference-dashboard"][data-value="true"]`).click();
-  await page.waitForFunction(() => Boolean(document.querySelector('#squarecoil-companion-analytics')?.shadowRoot?.querySelector('[data-action="period"]')), null, { timeout });
-  await settled(page, timeout);
-  await home(page, timeout);
+  await waitForDashboardStage(page, () => Boolean(document.querySelector('#squarecoil-companion-analytics')?.shadowRoot?.querySelector('[data-action="period"]')),
+    'initial analytics mount', timeout, readDiagnosticState);
+  await settled(page, timeout, diagnostic('analytics enabled preference settlement'));
+  await home(page, timeout, diagnostic('return home after enabling analytics'));
   const enabled = await dashboardSnapshot(page);
   check(enabled.count === 1 && enabled.owned === 'analytics-dashboard' && enabled.shadow,
     'Dashboard did not mount as one owned isolated surface', enabled);
@@ -153,14 +199,15 @@ async function verifyDashboardJourney({ page, origin, timeout, readBoundary, scr
   check(JSON.stringify(await nativeDashboardSnapshot(page)) === JSON.stringify(nativeBefore), 'Enabling dashboard changed native content or controls');
 
   const host = page.locator(DASHBOARD);
-  await settingsRoute(page, 'appearance', 'dashboard', timeout);
+  await settingsRoute(page, 'appearance', 'dashboard', timeout, diagnostic('open analytics appearance settings'));
   const appearanceBefore = await page.evaluate(() => ({
     website: document.documentElement.getAttribute('data-squarecoil-companion-site-theme'),
     companion: document.querySelector('#ussign-job-timer')?.dataset.protoTheme,
     finish: document.querySelector('#ussign-job-timer')?.dataset.protoSurface
   }));
   await page.locator(`${ROOT} [data-action="preference-dashboard-appearance"][data-value="DARK"]`).click();
-  await page.waitForFunction(() => document.querySelector('#squarecoil-companion-analytics')?.dataset.theme === 'dark', null, { timeout });
+  await waitForDashboardStage(page, () => document.querySelector('#squarecoil-companion-analytics')?.dataset.theme === 'dark',
+    'dark appearance', timeout, readDiagnosticState);
   const appearanceAfter = await page.evaluate(() => ({
     website: document.documentElement.getAttribute('data-squarecoil-companion-site-theme'),
     companion: document.querySelector('#ussign-job-timer')?.dataset.protoTheme,
@@ -168,14 +215,16 @@ async function verifyDashboardJourney({ page, origin, timeout, readBoundary, scr
   }));
   check(JSON.stringify(appearanceBefore) === JSON.stringify(appearanceAfter), 'Dashboard appearance changed Companion or website preferences', { appearanceBefore, appearanceAfter });
   await page.locator(`${ROOT} [data-action="preference-dashboard-appearance"][data-value="LIGHT"]`).click();
-  await page.waitForFunction(() => document.querySelector('#squarecoil-companion-analytics')?.dataset.theme === 'light', null, { timeout });
+  await waitForDashboardStage(page, () => document.querySelector('#squarecoil-companion-analytics')?.dataset.theme === 'light',
+    'light appearance', timeout, readDiagnosticState);
   await page.locator(`${ROOT} [data-action="preference-dashboard-appearance"][data-value="SITE"]`).click();
-  await settled(page, timeout);
-  await home(page, timeout);
+  await settled(page, timeout, diagnostic('website appearance reset settlement'));
+  await home(page, timeout, diagnostic('return home before analytics interaction'));
   // The floating Companion is deliberately collapsible so website controls
   // remain reachable. Use that real control before testing the dashboard.
   await page.locator(`${ROOT} [data-action="collapse"]`).click();
-  await page.waitForFunction(() => document.querySelector('#ussign-job-timer')?.dataset.protoCollapsed === 'true', null, { timeout });
+  await waitForDashboardStage(page, () => document.querySelector('#ussign-job-timer')?.dataset.protoCollapsed === 'true',
+    'Companion collapse before dashboard interaction', timeout, readDiagnosticState);
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   await host.locator('[data-action="period"][data-period="week"]').click();
   await host.locator('[data-action="chart-mode"][data-value="line"]').click();

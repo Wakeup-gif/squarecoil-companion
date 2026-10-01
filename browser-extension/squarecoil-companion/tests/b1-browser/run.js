@@ -2686,17 +2686,6 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           await waitFor(async () => (await pageState(observerPage)).documentToken, 'B2.2 observer document identity', options.timeoutMs);
           observerBridge = new ContentBridge(context, observerPage, extensionId, options.timeoutMs, candidateIdentity);
           await observerBridge.initialize();
-          const before = await waitFor(async () => {
-            const ownerCore = await bridge.coreSnapshot();
-            const observerCore = await observerBridge.coreSnapshot();
-            return ownerCore?.authorityOwner === true && observerCore?.authorityOwner === false &&
-              ownerCore.bridge?.initialized === true && observerCore.bridge?.initialized === true &&
-              ownerCore.revision === observerCore.revision && ownerCore.timer?.currentContextId === 'job:260701' &&
-              observerCore.timer?.currentContextId === 'job:260701'
-              ? { ownerCore, observerCore }
-              : null;
-          }, 'synchronized B2.2 OWNER and OBSERVER read models', options.timeoutMs);
-          assert(before.observerCore.bridge.requestCount === 0, 'OBSERVER issued a server verification request', before.observerCore.bridge);
           await waitFor(async () => {
             const ownerSelected = await page.locator(`#${ROOT_ID} .sc-tab[data-selected="true"]`).getAttribute('data-context').catch(() => null);
             const observerSelected = await observerPage.locator(`#${ROOT_ID} .sc-tab[data-selected="true"]`).getAttribute('data-context').catch(() => null);
@@ -2704,6 +2693,24 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           }, 'B3 OWNER and OBSERVER baseline Context render', options.timeoutMs);
 
           await page.waitForTimeout(25);
+
+          // A pending same-context Bridge verification can commit its own
+          // revision between the baseline and the deliberate Job switch.
+          // Start the one-revision assertion from a fully settled baseline.
+          const before = await waitFor(async () => {
+            const ownerCore = await bridge.coreSnapshot();
+            const observerCore = await observerBridge.coreSnapshot();
+            return ownerCore?.authorityOwner === true && observerCore?.authorityOwner === false &&
+              ownerCore.bridge?.initialized === true && observerCore.bridge?.initialized === true &&
+              ownerCore.bridge.pendingEventCount === 0 && ownerCore.bridge.verificationInFlight === false &&
+              ownerCore.timer?.lastObservation?.bridgeSeq === ownerCore.bridge.bridgeSeq &&
+              ownerCore.revision === observerCore.revision && ownerCore.timer?.currentContextId === 'job:260701' &&
+              observerCore.timer?.currentContextId === 'job:260701'
+              ? { ownerCore, observerCore }
+              : null;
+          }, 'settled B2.2 OWNER and OBSERVER switch baseline', options.timeoutMs);
+          assert(before.observerCore.bridge.requestCount === 0, 'OBSERVER issued a server verification request', before.observerCore.bridge);
+
           transitionFixture.clockContext = { projectId: '260702', label: '260702 - Fabrication' };
           await page.evaluate(contextValue => {
             for (const selector of ['#clockin-remaining-time', '#clockin-debug']) {
@@ -2740,6 +2747,11 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             throw error;
           }
           assert(after.ownerCore.revision === before.ownerCore.revision + 1, 'Job switch did not commit as one authoritative revision', { before, after });
+          assert(after.ownerCore.timer.lastObservation?.type === 'CONTEXT_CHANGED' &&
+            after.ownerCore.timer.focusIntent?.sourceStateRevision === after.ownerCore.revision,
+          'Job switch did not own the committed revision', { before, after });
+          assert(after.ownerCore.authorityTenure?.coordinationEpoch === before.ownerCore.authorityTenure?.coordinationEpoch,
+          'Job switch crossed an authority tenure', { before, after });
           assert(after.ownerCore.timer.todayTotalMs > 0, 'Closed Job A interval was not reflected in today total', after.ownerCore.timer);
           assert(after.ownerCore.timer.currentContextTotalMs >= 0, 'Job B total was unavailable', after.ownerCore.timer);
           assert(after.observerCore.bridge.requestCount === 0, 'OBSERVER became a duplicate Bridge writer during the switch', after.observerCore.bridge);
@@ -3414,6 +3426,10 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           fs.mkdirSync(screenshots, { recursive: true });
           const proof = await verifyDashboardJourney({ page: dashboardPage, origin: FIXTURE_ORIGIN, timeout: options.timeoutMs,
             readBoundary: async () => timerLedgerBoundaryIdentity(await bridge.coreSnapshot()),
+            readDiagnosticState: async () => {
+              const snapshot = await dashboardBridge.coreSnapshot();
+              return { preferences: snapshot.preferences, analytics: snapshot.presentation?.optional?.analytics };
+            },
             screenshot: path.join(screenshots, `${family}-analytics-canonical.png`),
             narrowScreenshot: path.join(screenshots, `${family}-analytics-narrow.png`),
             sidebarScreenshot: path.join(screenshots, `${family}-analytics-sidebar.png`),
