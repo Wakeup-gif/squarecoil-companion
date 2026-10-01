@@ -25,7 +25,9 @@ Common base: `99879446352364035904af640845ba6c5a43a570`.
 - Focused source tests: 264/264 passed; combined preference/backup tests: 3/3 passed; diagnostic worker suite: 33/33 passed.
 - Sealed Chrome and Edge lab smoke passed against pre-final development bytes. These are diagnostic results, not exact-package certification.
 - One stale documentation oracle failed the initial aggregate before any B2-B5 suite ran. Checkpoint documents and that oracle now agree on the combined branch; the focused document suite passes.
-- Full aggregate, clean source/package identity and installed Chrome/Edge clean/upgrade results will be recorded below after they complete.
+- Aggregate unit/integration suites passed 685/685; prototype suite passed 16/16. Static validation initially rejected the new fixture names; three literal `IT-B5-MERGE-PREF-*` IDs now pass their focused suite and the full static validator. Theme ports are fresh and whitespace checks pass.
+- Repository main `30bacd6f4262623ff9fff363e6d2ea516d02c2d1` is included; its README conflict retained modern candidate behavior and the legacy-runtime warning. Main's changed historical script is not an input to the authoritative theme generator or compiled extension.
+- Clean source/package identity and installed Chrome/Edge clean/upgrade results will be recorded below after they complete.
 
 Evidence directory: `C:/Users/iamva/Documents/SquareCoil Companion Evidence/combined-2026-10-01/`.
 

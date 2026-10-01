@@ -12,7 +12,7 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 **Active branch:** `codex/squarecoil-combined-2026-10-01`
 
-**Production baseline:** `main` at `9378da24f393b40066816133e7fa0f48063115f0` (`v0.7.1 Chrome Interaction Recovery`)
+**Repository main baseline:** `30bacd6f4262623ff9fff363e6d2ea516d02c2d1`; stable extension lineage is `9378da24f393b40066816133e7fa0f48063115f0` (`v0.7.1 Chrome Interaction Recovery`). Main's documentation and legacy workflow changes are included in the review branch.
 
 **Production main changed by prototype work:** No
 

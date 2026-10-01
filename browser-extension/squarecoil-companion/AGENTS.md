@@ -143,4 +143,4 @@ Do not finish with unrelated changes.
 
 ## Stage boundary
 
-B6 and B5-D remain complete. The current authorization covers only the UI/theme/lab/Figma stabilization batch described above, its exact-package acceptance evidence, and pushing the existing branch. It does not authorize production promotion, publication/store submission, merge to `main`, rollout, a B7 stage, or any live SquareCoil mutation.
+B6 and B5-D historical acceptance remains source-bound. The current authorization covers combining the two completed branches, resolving overlap, testing the combined candidate, committing/pushing the review branch and creating a PR. Production promotion, Store submission, merge to `main`, rollout, a B7 stage and live SquareCoil mutation require separate authorization.
