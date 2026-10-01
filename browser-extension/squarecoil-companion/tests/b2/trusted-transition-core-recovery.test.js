@@ -302,3 +302,112 @@ test('UT-B2-MIG-031 fresh runtime rederives retained preferences without re-runn
 
   await retryCore.teardown();
 });
+
+function preferenceRaceHarness(options = {}) {
+  const retainedRaw = JSON.stringify({ contexts: {} });
+  let document = migratedDocument(retainedRaw);
+  applyPreferenceCommand(document, {
+    type: PREFERENCE_COMMANDS.INITIALIZE,
+    expectedPreferenceRevision: 0,
+    legacyPreferences: {}
+  });
+  document.revision += 1;
+  const commands = [];
+  const errorFor = detail => {
+    const error = new Error('authority-command-failed');
+    error.response = { reason: 'authority-command-failed', detail };
+    return error;
+  };
+  const authorityClient = {
+    async ensure() { return { initialRead: { document: structuredClone(document) } }; },
+    async read() { return { document: structuredClone(document) }; },
+    snapshot() {
+      return { healthy: true, disposition: 'OWNER', coordinationEpoch: 1,
+        workerInstanceId: 'worker-preference-race-001', runtimeInstanceId: 'runtime-preference-race-001',
+        documentToken: 'document-preference-race-001', nativeObservationAvailable: true };
+    },
+    subscribe() { return () => {}; },
+    async command(command) {
+      commands.push(structuredClone(command));
+      if (commands.length === 1) {
+        if (options.firstFailure === 'transport') throw new Error('authority-transport-timeout');
+        if (options.firstFailure === 'preference-conflict') throw errorFor('preference-revision-conflict');
+        if (options.firstFailure === 'stale') {
+          const next = structuredClone(document);
+          if (options.concurrentPreferenceChange) {
+            applyPreferenceCommand(next, { type: PREFERENCE_COMMANDS.COMMIT,
+              patch: { dashboardAppearance: 'DARK' }, expectedPreferenceRevision: 1 });
+          }
+          next.revision += 1;
+          document = next;
+          throw errorFor('stale-revision');
+        }
+      }
+      if (options.secondStale && commands.length === 2) {
+        document = { ...document, revision: document.revision + 1 };
+        throw errorFor('stale-revision');
+      }
+      if (command.expectedRevision !== document.revision) throw errorFor('stale-revision');
+      const next = structuredClone(document);
+      const result = applyPreferenceCommand(next, command);
+      next.revision += 1;
+      document = next;
+      return result;
+    }
+  };
+  const core = createTrustedTransitionCore({
+    authorityClient,
+    legacyStorage: legacyStorage(retainedRaw).storage,
+    now: () => NOW_MS,
+    randomId: ids('preference-race'),
+    createBridge: bridgeFactory()
+  });
+  return { core, commands, document: () => structuredClone(document) };
+}
+
+test('UT-B2-AUTH-010 preference write rebases once after a concurrent Timer document revision', async () => {
+  const h = preferenceRaceHarness({ firstFailure: 'stale' });
+  await h.core.ensure();
+  const before = h.core.snapshot();
+  assert.equal(before.preferences.preferenceRevision, 1);
+  const result = await h.core.preferenceCommand({ dashboardEnabled: true }, 1);
+  assert.equal(result.preferences.dashboardEnabled, true);
+  assert.equal(h.commands.length, 2);
+  assert.deepEqual(h.commands.map(command => command.expectedRevision), [2, 3]);
+  assert.notEqual(h.commands[0].commandId, h.commands[1].commandId);
+  assert.equal(h.core.snapshot().preferences.preferenceRevision, 2);
+  assert.equal(h.document().ledger.length, before.ledgerSegmentCount);
+  await h.core.teardown();
+});
+
+test('UT-B2-AUTH-011 preference write does not rebase over a newer settings revision', async () => {
+  const h = preferenceRaceHarness({ firstFailure: 'stale', concurrentPreferenceChange: true });
+  await h.core.ensure();
+  await assert.rejects(h.core.preferenceCommand({ dashboardEnabled: true }, 1), /authority-command-failed/);
+  assert.equal(h.commands.length, 1);
+  assert.equal(h.core.snapshot().preferences.preferenceRevision, 2);
+  assert.equal(h.core.snapshot().preferences.dashboardEnabled, false);
+  assert.equal(h.core.snapshot().preferences.dashboardAppearance, 'DARK');
+  await h.core.teardown();
+});
+
+test('UT-B2-AUTH-012 preference write never retries an uncertain transport or preference conflict', async () => {
+  for (const firstFailure of ['transport', 'preference-conflict']) {
+    const h = preferenceRaceHarness({ firstFailure });
+    await h.core.ensure();
+    await assert.rejects(h.core.preferenceCommand({ dashboardEnabled: true }, 1),
+      firstFailure === 'transport' ? /authority-transport-timeout/ : /authority-command-failed/);
+    assert.equal(h.commands.length, 1);
+    assert.equal(h.core.snapshot().preferences.dashboardEnabled, false);
+    await h.core.teardown();
+  }
+});
+
+test('UT-B2-AUTH-013 a second stale document revision still fails after one bounded retry', async () => {
+  const h = preferenceRaceHarness({ firstFailure: 'stale', secondStale: true });
+  await h.core.ensure();
+  await assert.rejects(h.core.preferenceCommand({ dashboardEnabled: true }, 1), /authority-command-failed/);
+  assert.equal(h.commands.length, 2);
+  assert.equal(h.core.snapshot().preferences.dashboardEnabled, false);
+  await h.core.teardown();
+});

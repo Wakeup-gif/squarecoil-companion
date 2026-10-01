@@ -3428,7 +3428,9 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             readBoundary: async () => timerLedgerBoundaryIdentity(await bridge.coreSnapshot()),
             readDiagnosticState: async () => {
               const snapshot = await dashboardBridge.coreSnapshot();
-              return { preferences: snapshot.preferences, analytics: snapshot.presentation?.optional?.analytics };
+              return { revision: snapshot.revision, status: snapshot.status, lastError: snapshot.lastError,
+                authorityOwner: snapshot.authorityOwner, authorityTenure: snapshot.authorityTenure,
+                preferences: snapshot.preferences, analytics: snapshot.presentation?.optional?.analytics };
             },
             screenshot: path.join(screenshots, `${family}-analytics-canonical.png`),
             narrowScreenshot: path.join(screenshots, `${family}-analytics-narrow.png`),

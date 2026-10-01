@@ -95,6 +95,7 @@ async function waitForDashboardStage(page, predicate, stage, timeout, readDiagno
           workspaceState: root.dataset.workspaceState,
           busy: root.dataset.busy,
           collapsed: root.dataset.protoCollapsed,
+          visibleError: root.querySelector('.sc-error')?.textContent?.trim() || null,
           dashboardChoices: choice('preference-dashboard'),
           appearanceChoices: choice('preference-dashboard-appearance')
         } : null,
@@ -109,6 +110,15 @@ async function waitForDashboardStage(page, predicate, stage, timeout, readDiagno
         } : null
       };
     }).catch(snapshotError => ({ error: String(snapshotError?.message || snapshotError) }));
+    if (dom?.companion?.visibleError) {
+      try {
+        await page.locator('#ussign-job-timer [data-action="open-diagnostics"]').first().click({ timeout: 2000 });
+        const raw = await page.locator('#ussign-job-timer [data-sc-advanced-diagnostics]').textContent({ timeout: 2000 });
+        dom.lastTechnicalError = JSON.parse(raw || '{}').lastTechnicalError || null;
+      } catch (diagnosticError) {
+        dom.technicalErrorCapture = String(diagnosticError?.message || diagnosticError);
+      }
+    }
     const core = readDiagnosticState
       ? await Promise.resolve().then(readDiagnosticState).catch(snapshotError => ({ error: String(snapshotError?.message || snapshotError) }))
       : null;

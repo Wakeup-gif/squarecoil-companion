@@ -537,7 +537,22 @@ function createTrustedTransitionCore(options = {}) {
   async function preferenceCommand(patch, expectedPreferenceRevision) {
     return serialize(async () => {
       if (!authorityDocument) await refreshDocument();
-      const result = await commit(PREFERENCE_COMMANDS.COMMIT, { patch, expectedPreferenceRevision });
+      const values = { patch, expectedPreferenceRevision };
+      let result;
+      try {
+        result = await commit(PREFERENCE_COMMANDS.COMMIT, values);
+      } catch (error) {
+        // Timer/Bridge writes share the document revision with Preferences. A
+        // rejected stale document revision is safe to rebase only while the
+        // requested Preferences revision is still current. Never replay a
+        // transport failure or a command with an uncertain outcome.
+        if (error?.response?.reason !== 'authority-command-failed' ||
+            error.response.detail !== 'stale-revision') throw error;
+        await refreshDocument();
+        if (normalizePreferenceSnapshot(authorityDocument?.dataSafety?.preferences).preferenceRevision !==
+            expectedPreferenceRevision) throw error;
+        result = await commit(PREFERENCE_COMMANDS.COMMIT, values);
+      }
       publishStatus('preferences-committed');
       return result;
     });
