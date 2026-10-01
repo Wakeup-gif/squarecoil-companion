@@ -301,10 +301,16 @@ function createThemeService(options = {}) {
         (editorDocument.head || editorDocument.documentElement).appendChild?.(style);
       }
       const activeTheme = document.documentElement?.getAttribute?.(ROOT_THEME_ATTRIBUTE);
-      style.textContent = activeTheme === 'SLEEK_DARK' ? DARK_EDITOR_DOCUMENT_CSS : LIGHT_EDITOR_DOCUMENT_CSS;
-      style.setAttribute?.('data-squarecoil-companion-editor-theme', activeTheme);
-      frame.setAttribute?.(EDITOR_FRAME_ATTRIBUTE, activeTheme === 'SLEEK_DARK' ? 'dark' :
-        activeTheme === 'LIGHT_GLASS' ? 'light-glass' : 'refined-light');
+      const css = activeTheme === 'SLEEK_DARK' ? DARK_EDITOR_DOCUMENT_CSS : LIGHT_EDITOR_DOCUMENT_CSS;
+      if (style.textContent !== css) style.textContent = css;
+      if (style.getAttribute?.('data-squarecoil-companion-editor-theme') !== activeTheme) {
+        style.setAttribute?.('data-squarecoil-companion-editor-theme', activeTheme);
+      }
+      const frameTheme = activeTheme === 'SLEEK_DARK' ? 'dark' :
+        activeTheme === 'LIGHT_GLASS' ? 'light-glass' : 'refined-light';
+      if (frame.getAttribute?.(EDITOR_FRAME_ATTRIBUTE) !== frameTheme) {
+        frame.setAttribute?.(EDITOR_FRAME_ATTRIBUTE, frameTheme);
+      }
       return true;
     } catch (_) {
       return false;
@@ -424,13 +430,28 @@ function createThemeService(options = {}) {
         status: current.activeTheme === websiteTheme && current.stylePresent === true ? 'applied-authoritative' : 'loading-authoritative'
       };
     }
+    const css = websiteTheme === 'SLEEK_DARK' ? SLEEK_DARK_CSS :
+      websiteTheme === 'LIGHT_GLASS' ? LIGHT_GLASS_CSS : REFINED_LIGHT_CSS;
+    const layers = Array.from(document.querySelectorAll?.(`#${STYLE_ID}`) || []);
+    const current = layers[0];
+    if (current?.getAttribute?.('data-squarecoil-companion-owned') === 'website-theme' &&
+        current.getAttribute?.('data-squarecoil-companion-theme-port') !== 'authoritative' &&
+        document.documentElement?.getAttribute?.(ROOT_THEME_ATTRIBUTE) === websiteTheme &&
+        current.textContent === css) {
+      for (const duplicate of layers.slice(1)) duplicate.remove?.();
+      const route = classifyWebsiteRoute(window.location);
+      if (document.documentElement?.getAttribute?.(ROOT_ROUTE_ATTRIBUTE) !== route) {
+        document.documentElement?.setAttribute?.(ROOT_ROUTE_ATTRIBUTE, route);
+      }
+      scheduleEditorScans();
+      return { layerCount: 1, status: 'applied-local-fallback' };
+    }
     removeOwnedTheme({ reason: 'theme-local-fallback' });
     const style = document.createElement?.('style');
     if (!style) return { layerCount: 0, status: 'style-element-unavailable' };
     style.id = STYLE_ID;
     style.setAttribute('data-squarecoil-companion-owned', 'website-theme');
-    style.textContent = websiteTheme === 'SLEEK_DARK' ? SLEEK_DARK_CSS :
-      websiteTheme === 'LIGHT_GLASS' ? LIGHT_GLASS_CSS : REFINED_LIGHT_CSS;
+    style.textContent = css;
     (document.head || document.documentElement)?.appendChild?.(style);
     document.documentElement?.setAttribute?.(ROOT_THEME_ATTRIBUTE, websiteTheme);
     document.documentElement?.setAttribute?.(ROOT_ROUTE_ATTRIBUTE, classifyWebsiteRoute(window.location));

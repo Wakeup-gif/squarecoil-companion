@@ -73,6 +73,20 @@ Explicit exclusions: no store submission or release-branch promotion now, no liv
 
 ## Active Chrome auto-update delivery integration — September 30
 
+### October 1 first-item and release preflight refinement
+
+```text
+Intent: make the one-time Store item setup and later Chrome-managed updates concrete without publishing from this branch.
+Behavior changed or restored: reject release submissions whose declared Store URL and configured item ID disagree, whose displayed version is stale, or whose release branch was force-replaced; document the first dashboard upload and the subsequent reviewed update path.
+Files expected: release-version gate and tests, release workflow, auto-update delivery guide, execution gate matrix.
+Impact tags: PACKAGE_ARTIFACT, DOCS_ONLY.
+Contracts touched: L8 A1 package identity and release boundary; no extension runtime contract.
+Targeted gates: release-version gate tests, workflow inspection, branch-ancestry check, documentation consistency, git diff --check.
+Composed journeys: missing/mismatched Store identity or unchanged version stops before upload; the first item is created manually from a validated ZIP, and later release-branch pushes submit a newer exact ZIP to that same item for review.
+Full candidate gate required at completion: yes for the final committed release package; installed-browser behavior is unchanged by this delivery-only refinement.
+Explicit exclusions: no Store submission, Git push, merge, live SquareCoil mutation, manifest update_url, or in-extension remote code updater.
+```
+
 ```text
 Intent: connect a future Git release-branch version bump to Chrome's supported Web Store update channel.
 Behavior changed or restored: validate a clean, strictly newer canonical package; submit its exact ZIP to an existing Chrome Web Store item only from the dedicated release branch after the candidate gate succeeds.
@@ -87,9 +101,9 @@ Explicit exclusions: no GitHub-hosted executable update path, manifest update_ur
 
 | ID | Requirement | Impact tag | Targeted proof | Composed/candidate proof | Current state |
 |---|---|---|---|---|
-| `UPD-001` | Only a strictly newer, internally consistent package version from the current release-branch head may enter store submission. | `PACKAGE_ARTIFACT` | release-version gate tests and branch-head check | clean release-branch push with version bump | `OPEN` |
+| `UPD-001` | Only a strictly newer, internally consistent package version from an advancing release-branch head may enter store submission. | `PACKAGE_ARTIFACT` | release-version gate tests, branch ancestry and current-head checks | clean release-branch push with version bump | `OPEN` |
 | `UPD-002` | The submitted ZIP is built from the canonical package inventory, validated against the exact source SHA, and is never assembled from prototype or legacy files. | `PACKAGE_ARTIFACT` | package validator and ZIP round trip | release workflow candidate gate and SHA-validated ZIP | `OPEN` |
-| `UPD-003` | Missing Web Store identity/credentials or a failed candidate gate stops before upload; the unpacked development build makes no false auto-update claim. | `PACKAGE_ARTIFACT`, `DOCS_ONLY` | workflow inspection and setup documentation | configured existing store item plus Web Store review and Chrome-delivered update, pending external setup | `OPEN` |
+| `UPD-003` | Missing/mismatched Web Store identity, missing credentials, or a failed candidate gate stops before upload; the unpacked development build makes no false auto-update claim. | `PACKAGE_ARTIFACT`, `DOCS_ONLY` | Store URL/ID preflight tests, workflow inspection and first-item setup documentation | configured existing store item plus Web Store review and Chrome-delivered update, pending external setup | `OPEN` |
 
 ## Active handoff UI port — September 30
 

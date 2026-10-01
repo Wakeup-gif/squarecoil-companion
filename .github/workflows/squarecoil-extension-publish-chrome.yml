@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   publish-chrome:
+    if: github.event.created == false && github.event.deleted == false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -34,9 +35,14 @@ jobs:
       - name: Require a clean, newer, internally consistent release version
         env:
           RELEASE_BASE_SHA: ${{ github.event.before }}
+          CWS_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain --untracked-files=all)"
+          if ! git merge-base --is-ancestor "$RELEASE_BASE_SHA" "$GITHUB_SHA"; then
+            echo "Release branch history must advance from its previous tip; a new or force-replaced branch cannot submit a Store update." >&2
+            exit 1
+          fi
           node browser-extension/squarecoil-companion/scripts/check-store-release.js --base-sha "$RELEASE_BASE_SHA"
 
       - name: Test release version safeguards
@@ -94,7 +100,7 @@ jobs:
           set -euo pipefail
           for name in CWS_EXTENSION_ID CWS_PUBLISHER_ID CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN; do
             if test -z "${!name:-}"; then
-              echo "Missing $name. Complete docs/AUTO-UPDATE-DELIVERY.md before publishing." >&2
+              echo "Missing $name. Complete browser-extension/squarecoil-companion/docs/AUTO-UPDATE-DELIVERY.md before publishing." >&2
               exit 1
             fi
           done

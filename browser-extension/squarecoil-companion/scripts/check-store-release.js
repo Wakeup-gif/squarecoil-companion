@@ -27,11 +27,42 @@ function compareVersions(left, right) {
   return 0;
 }
 
-function checkReleaseVersions(manifest, packageJson, release, previousManifest) {
+function checkStoreIdentity(release, extensionId) {
+  if (release.distribution?.stableBranch !== 'release/squarecoil-companion' ||
+      release.distribution?.chrome?.branch !== 'release/squarecoil-companion') {
+    throw new Error('release.json Chrome update branch must match release/squarecoil-companion');
+  }
+  if (typeof extensionId !== 'string' || !/^[a-p]{32}$/.test(extensionId)) {
+    throw new Error('CWS_EXTENSION_ID must be the 32-character Chrome Web Store item ID');
+  }
+  if (release.distribution?.recommended !== 'chrome-web-store') {
+    throw new Error('release.json must recommend chrome-web-store before a Store submission');
+  }
+  const storeUrl = release.distribution?.chrome?.storeUrl;
+  let url;
+  try {
+    url = new URL(storeUrl);
+  } catch {
+    throw new Error('release.json Chrome storeUrl must be the existing Store item URL');
+  }
+  const parts = url.pathname.split('/').filter(Boolean);
+  if (url.protocol !== 'https:' || url.hostname !== 'chromewebstore.google.com' ||
+      parts[0] !== 'detail' || ![2, 3].includes(parts.length) ||
+      parts.at(-1) !== extensionId || url.search || url.hash || url.username || url.password) {
+    throw new Error('release.json Chrome storeUrl must match CWS_EXTENSION_ID');
+  }
+  return extensionId;
+}
+
+function checkReleaseVersions(manifest, packageJson, release, previousManifest, extensionId) {
   const version = manifest.version;
   versionParts(version);
   if (packageJson.version !== version) throw new Error(`package.json version ${packageJson.version} differs from manifest ${version}`);
   if (release.latestVersion !== version) throw new Error(`release.json latestVersion ${release.latestVersion} differs from manifest ${version}`);
+  if (manifest.version_name && manifest.version_name !== version && !manifest.version_name.startsWith(`${version} `)) {
+    throw new Error(`manifest version_name ${manifest.version_name} differs from version ${version}`);
+  }
+  checkStoreIdentity(release, extensionId);
   for (const browser of ['chrome', 'edge']) {
     const artifact = release.distribution?.[browser]?.artifact;
     if (typeof artifact !== 'string' || !artifact.includes(`-v${version}-`)) {
@@ -60,7 +91,8 @@ function main(baseSha) {
     readJson('manifest.json'),
     readJson('package.json'),
     readJson('release.json'),
-    previousManifest
+    previousManifest,
+    process.env.CWS_EXTENSION_ID
   );
   process.stdout.write(`Chrome Web Store update version ${previousManifest.version} -> ${version}\n`);
 }
@@ -77,4 +109,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { versionParts, compareVersions, checkReleaseVersions };
+module.exports = { versionParts, compareVersions, checkStoreIdentity, checkReleaseVersions };

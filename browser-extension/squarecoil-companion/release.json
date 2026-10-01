@@ -13,7 +13,7 @@
       "storeUrl": null
     },
     "chrome": {
-      "branch": "release/squarecoil-companion-chrome",
+      "branch": "release/squarecoil-companion",
       "artifact": "SquareCoil-Companion-v0.7.1-CHROME.zip",
       "storeUrl": null
     },

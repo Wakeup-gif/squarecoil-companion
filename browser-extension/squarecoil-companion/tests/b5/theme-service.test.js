@@ -124,6 +124,49 @@ test('UT-B5-THEME-041 unrelated preference commits do not rewrite the same site 
   h.service.teardown();
 });
 
+test('UT-B5-THEME-042 pageshow keeps an unchanged local theme layer and updates only its route', () => {
+  const h = harness({ pathname: '/project.php' });
+  h.service.apply(preferences({ websiteTheme: 'REFINED_LIGHT' }));
+  const style = h.document.querySelectorAll(`#${STYLE_ID}`)[0];
+  let cssWrites = 0;
+  let currentCss = style.textContent;
+  Object.defineProperty(style, 'textContent', {
+    get() { return currentCss; },
+    set(value) { cssWrites += 1; currentCss = value; }
+  });
+  h.windowListeners.get('pageshow')();
+  assert.equal(h.document.querySelectorAll(`#${STYLE_ID}`)[0], style);
+  assert.equal(cssWrites, 0);
+  h.window.location.pathname = '/project_designs.php';
+  h.windowListeners.get('pageshow')();
+  assert.equal(h.document.querySelectorAll(`#${STYLE_ID}`)[0], style);
+  assert.equal(h.root.getAttribute(ROOT_ROUTE_ATTRIBUTE), 'PROJECT_DESIGNS');
+  assert.equal(cssWrites, 0);
+  h.service.teardown();
+});
+
+test('UT-B5-THEME-043 repeated CKEditor scans keep the same style bytes and frame marker', () => {
+  const editor = editorFrame();
+  const h = harness({ pathname: '/project_designs.php', editorFrames: [editor.frame] });
+  h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
+  const style = editor.head.children.find(child => child.id === EDITOR_STYLE_ID);
+  let cssWrites = 0;
+  let currentCss = style.textContent;
+  Object.defineProperty(style, 'textContent', {
+    get() { return currentCss; },
+    set(value) { cssWrites += 1; currentCss = value; }
+  });
+  let markerWrites = 0;
+  const setAttribute = editor.frame.setAttribute.bind(editor.frame);
+  editor.frame.setAttribute = (name, value) => { markerWrites += 1; setAttribute(name, value); };
+  h.windowListeners.get('pageshow')();
+  editor.listeners.get('load')();
+  assert.equal(editor.head.children.find(child => child.id === EDITOR_STYLE_ID), style);
+  assert.equal(cssWrites, 0);
+  assert.equal(markerWrites, 0);
+  h.service.teardown();
+});
+
 test('UT-B5-THEME-002 Auto keeps one current color-scheme listener and changes only effective presentation', () => {
   const h = harness();
   const auto = preferences({ timerAppearance: 'AUTO' });
