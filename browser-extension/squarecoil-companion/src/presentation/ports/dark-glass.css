@@ -6971,9 +6971,15 @@ html.us-sign-v230.us-sign-theme-dark-glass body #content :is(
 /* Companion integration delta: the pinned userscripts do not own the extension
  * workspace, website-hosted logo recovery, collapsed-navigation recovery, or
  * cinematic host. This final layer resolves historical sidebar patches in one place. */
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-branding .navbar-brand>img[data-squarecoil-companion-logo="brand"],
 html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-brand>img[data-squarecoil-companion-logo="brand"] {
   display: block !important;
   visibility: visible !important;
+  position: relative !important;
+  margin: 0 !important;
+  clip-path: none !important;
+  opacity: 1 !important;
+  overflow: visible !important;
   width: 100px !important;
   min-width: 100px !important;
   height: 38px !important;
@@ -6985,6 +6991,8 @@ html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-bra
   background: #fff !important;
 }
 
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-branding .navbar-brand::before,
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-branding .navbar-brand::after,
 html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-brand::before,
 html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-brand::after {
   content: none !important;

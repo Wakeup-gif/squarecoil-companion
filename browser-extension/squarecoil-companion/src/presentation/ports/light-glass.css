@@ -6539,9 +6539,9 @@ html.us-sign-v240.us-sign-theme-light-glass body :is(
 html.us-sign-v240.us-sign-theme-light-glass body #content :is(.panel,.panel-default):not(.alert):not([data-us-state]) {
   color: var(--usl-text-soft) !important;
   background-color: var(--usl-surface) !important;
-  background-image: linear-gradient(180deg,rgba(255,255,255,.66),rgba(235,246,252,.42)) !important;
-  border-color: var(--usl-line) !important;
-  box-shadow: var(--usl-shadow-sm) !important;
+  background-image: linear-gradient(180deg,rgba(255,255,255,.50),rgba(246,251,253,.26)) !important;
+  border-color: transparent !important;
+  box-shadow: 0 7px 20px rgba(28,55,74,.065) !important;
   -webkit-backdrop-filter: var(--us-squarecoil-live-frost) !important;
   backdrop-filter: var(--us-squarecoil-live-frost) !important;
 }
@@ -6561,9 +6561,9 @@ html.us-sign-v240.us-sign-theme-light-glass body :is(
 ) {
   color: var(--usl-text-soft) !important;
   background-color: var(--usl-surface) !important;
-  background-image: linear-gradient(180deg,rgba(255,255,255,.66),rgba(235,246,252,.42)) !important;
-  border-color: var(--usl-line) !important;
-  box-shadow: var(--usl-shadow-sm) !important;
+  background-image: linear-gradient(180deg,rgba(255,255,255,.50),rgba(246,251,253,.26)) !important;
+  border-color: transparent !important;
+  box-shadow: 0 7px 20px rgba(28,55,74,.065) !important;
   -webkit-backdrop-filter: var(--us-squarecoil-live-frost) !important;
   backdrop-filter: var(--us-squarecoil-live-frost) !important;
 }
@@ -6571,9 +6571,9 @@ html.us-sign-v240.us-sign-theme-light-glass body :is(
 html.us-sign-v240.us-sign-theme-light-glass body #pmlt {
   color: var(--usl-text-soft) !important;
   background-color: var(--us-squarecoil-glass) !important;
-  background-image: linear-gradient(180deg,rgba(255,255,255,.72),rgba(225,240,248,.48)) !important;
-  border-color: var(--usl-line) !important;
-  box-shadow: 4px 0 18px rgba(23,49,67,.10) !important;
+  background-image: linear-gradient(180deg,rgba(255,255,255,.62),rgba(244,250,252,.36)) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
   -webkit-backdrop-filter: var(--us-squarecoil-live-frost) !important;
   backdrop-filter: var(--us-squarecoil-live-frost) !important;
 }
@@ -6600,6 +6600,7 @@ html.us-sign-v240.us-sign-theme-light-glass body #content :is(
   color: var(--usl-text-soft) !important;
   background-color: transparent !important;
   background-image: none !important;
+  border-color: transparent !important;
   box-shadow: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
@@ -6619,14 +6620,56 @@ html.us-sign-v240.us-sign-theme-light-glass body #content :is(
   text-shadow: none !important;
 }
 
+/* Keep the glass hierarchy readable without outlining every nested box. */
+html.us-sign-v240.us-sign-theme-light-glass body :is(.panel .panel,.well .well,.tab-content .panel,.panel .well,.well .panel) {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+html.us-sign-v240.us-sign-theme-light-glass body :is(.panel-heading,.panel-footer,.modal-header,.modal-footer) {
+  background: transparent !important;
+  border-color: rgba(59,96,122,.10) !important;
+}
+
+html.us-sign-v240.us-sign-theme-light-glass body #topbar {
+  background: rgba(250,253,254,.76) !important;
+  border-color: rgba(59,96,122,.10) !important;
+  box-shadow: none !important;
+}
+
+html.us-sign-v240.us-sign-theme-light-glass body :is(.btn,button):not(.btn-primary):not(.btn-info):not(.btn-success):not(.btn-warning):not(.btn-danger) {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* The pinned theme draws an outline, border change and halo at once. One
+ * keyboard-only ring is sufficient, with a system-color ring in contrast mode. */
+html.us-sign-v240.us-sign-theme-light-glass body :is(a,button,input,select,textarea,[tabindex]):focus-visible {
+  outline: 2px solid #36758a !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+}
+
+@media (forced-colors: active) {
+  html.us-sign-v240.us-sign-theme-light-glass body :is(a,button,input,select,textarea,[tabindex]):focus-visible {
+    outline-color: Highlight !important;
+  }
+}
+
 
 
 /* Companion integration delta: the pinned userscripts do not own the extension
  * workspace, website-hosted logo recovery, collapsed-navigation recovery, or
  * cinematic host. This final layer resolves historical sidebar patches in one place. */
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-branding .navbar-brand>img[data-squarecoil-companion-logo="brand"],
 html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-brand>img[data-squarecoil-companion-logo="brand"] {
   display: block !important;
   visibility: visible !important;
+  position: relative !important;
+  margin: 0 !important;
+  clip-path: none !important;
+  opacity: 1 !important;
+  overflow: visible !important;
   width: 100px !important;
   min-width: 100px !important;
   height: 38px !important;
@@ -6638,6 +6681,8 @@ html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-bra
   background: #fff !important;
 }
 
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-branding .navbar-brand::before,
+html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-branding .navbar-brand::after,
 html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-brand::before,
 html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-brand::after {
   content: none !important;

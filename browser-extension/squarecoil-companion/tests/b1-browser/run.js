@@ -1383,6 +1383,14 @@ async function clickWorkspaceControl(page, selector, timeoutMs) {
   await control.click({ timeout: timeoutMs });
 }
 
+async function clickMoreTool(page, destination, timeoutMs) {
+  const tools = page.locator(`#${ROOT_ID} .sc-quick-links`);
+  if (!await tools.evaluate(node => node.open)) {
+    await clickWorkspaceControl(page, '.sc-quick-links summary', timeoutMs);
+  }
+  await clickWorkspaceControl(page, `.sc-quick-links [data-action="view"][data-view="${destination}"]`, timeoutMs);
+}
+
 async function revealWorkspaceTab(page, contextId, timeoutMs) {
   const tab = page.locator(`#${ROOT_ID} .sc-tab[data-context="${contextId}"]`);
   await tab.waitFor({ state: 'attached', timeout: timeoutMs });
@@ -2000,8 +2008,8 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             };
           }, ROOT_ID);
           assert(JSON.stringify(disclosureState.labels) === JSON.stringify([
-            'Appearance', 'Time tracking', 'Jobs and watching', 'Notifications',
-            'Privacy and data', 'Help and diagnostics'
+            'Appearance', 'Time tracking', 'Jobs', 'Notifications',
+            'Privacy and data', 'Help'
           ]) && disclosureState.expanded.length === 0 && disclosureState.visibleRoutes.length === 0 &&
             disclosureState.companionTitle === 'SquareCoil Companion' && disclosureState.companionLogoCount === 0 &&
             disclosureState.groupBorders.every(value => value === '0px' || value === '1px') &&
@@ -2442,16 +2450,14 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         assert(main.selectedContextId === 'job:260701', 'Initial B3 selection did not reflect current Context truth', main);
         assert(main.selectedAria.includes('Today') && main.selectedAria.includes('timer limit') && main.selectedAria.includes('Running'), 'Compact tab omitted Today, threshold, or operational semantics', main);
 
-        await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="home"]`, options.timeoutMs);
-        await clickWorkspaceControl(page, `.sc-home-view [data-action="view"][data-view="overview"]`, options.timeoutMs);
+        await clickMoreTool(page, 'overview', options.timeoutMs);
         const overview = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
         const normalizedOverview = overview.toLowerCase();
         assert(normalizedOverview.includes('time overview') && normalizedOverview.includes('today by job / context') && normalizedOverview.includes('by day') && normalizedOverview.includes('by job / context'), 'B3 Overview destinations were incomplete', overview);
         await page.locator(`#${ROOT_ID} [data-action="view"][data-view="main"]`).click();
-        await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="home"]`, options.timeoutMs);
-        await clickWorkspaceControl(page, `.sc-home-view [data-action="view"][data-view="history"]`, options.timeoutMs);
+        await clickMoreTool(page, 'history', options.timeoutMs);
         const history = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
-        assert(history.includes('History') && history.includes('Current work stays on the Home screen until the session is complete.'),
+        assert(history.includes('History') && history.includes('Current work stays on the timer until the session is complete.'),
           'B3 History did not preserve completed-session semantics', history);
         await page.locator(`#${ROOT_ID} [data-action="view"][data-view="main"]`).click();
 
@@ -2780,8 +2786,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             const observerVisible = await observerPage.locator(`#${ROOT_ID} .sc-tab[data-context="job:260701"]`).count();
             return ownerVisible === 0 && observerVisible === 0 ? true : null;
           }, 'cross-tab B3 hidden-tab synchronization', options.timeoutMs);
-          await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="home"]`, options.timeoutMs);
-          await clickWorkspaceControl(page, `.sc-home-view [data-action="view"][data-view="recent"]`, options.timeoutMs);
+          await clickMoreTool(page, 'recent', options.timeoutMs);
           await page.locator(`#${ROOT_ID} [data-action="show-tab"][data-context="job:260701"]`).click({ force: true });
           await waitFor(async () => {
             const ownerVisible = await page.locator(`#${ROOT_ID} .sc-tab[data-context="job:260701"]`).count();
@@ -2873,8 +2878,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         await page.locator(`#${ROOT_ID} [data-action="settings-close"]`).click({ force: true });
         const mainWorkspaceButton = page.locator(`#${ROOT_ID} [data-action="view"][data-view="main"]`);
         if (await mainWorkspaceButton.count()) await mainWorkspaceButton.click({ force: true });
-        await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="home"]`, options.timeoutMs);
-        await clickWorkspaceControl(page, `.sc-home-view [data-action="view"][data-view="recent"]`, options.timeoutMs);
+        await clickMoreTool(page, 'recent', options.timeoutMs);
         const archiveAuthorityBefore = await bridge.coreSnapshot();
         let mouseHeld = false;
         let eligibleVeil = null;
@@ -3028,8 +3032,8 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           const settingsHome = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
           const settingsCategories = await page.locator(`#${ROOT_ID} [data-action="settings-toggle-group"] strong`).allTextContents();
           assert(JSON.stringify(settingsCategories.map(value => value.trim())) === JSON.stringify([
-            'Appearance', 'Time tracking', 'Jobs and watching', 'Notifications',
-            'Privacy and data', 'Help and diagnostics'
+            'Appearance', 'Time tracking', 'Jobs', 'Notifications',
+            'Privacy and data', 'Help'
           ]), 'B5-A Settings Home was incomplete', { settingsHome, settingsCategories });
 
           await openSettingsDestination(page, 'appearance', 'timer-appearance', options.timeoutMs);
@@ -3135,7 +3139,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="settings"]`, options.timeoutMs);
           await openSettingsDestination(page, 'help', 'developer-support', options.timeoutMs);
           const developerSupport = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
-          assert(developerSupport.includes('No approved Buy Me a Coffee URL, Cash App name, or packaged QR is configured'), 'B5-A fabricated a Developer Support destination', developerSupport);
+          assert(developerSupport.includes('Tips aren’t available yet'), 'B5-A fabricated a Developer Support destination', developerSupport);
           await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
           await clickWorkspaceControl(page, `[data-action="settings-close"]`, options.timeoutMs);
 

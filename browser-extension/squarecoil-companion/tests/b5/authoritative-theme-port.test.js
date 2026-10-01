@@ -55,10 +55,14 @@ test('UT-B5-THEME-028 terminal Light compatibility owns generic content panels w
   assert.ok(rule);
   assert.ok(textRule);
   assert.match(rule, /background-color:\s*var\(--usl-surface\)\s*!important/);
+  assert.match(rule, /border-color:\s*transparent\s*!important/);
+  assert.match(rule, /box-shadow:\s*0 7px 20px rgba\(28,55,74,\.065\)\s*!important/);
   assert.match(rule, /backdrop-filter:\s*var\(--us-squarecoil-live-frost\)\s*!important/);
   assert.doesNotMatch(rule, /button|input|select|textarea|\.btn/);
   assert.match(textRule, /color:\s*var\(--usl-text\)\s*!important/);
   assert.match(textRule, /text-shadow:\s*none\s*!important/);
+  assert.match(light, /keyboard-only ring is sufficient[\s\S]*:focus-visible \{[\s\S]*outline: 2px solid #36758a !important;[\s\S]*box-shadow: none !important;/);
+  assert.match(light, /@media \(forced-colors: active\) \{[\s\S]*outline-color: Highlight !important;/);
 });
 
 test('UT-B5-THEME-029 terminal Dark compatibility replaces old graphite generic panels and clears nested exact layers', () => {

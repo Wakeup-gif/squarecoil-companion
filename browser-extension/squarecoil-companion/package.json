@@ -5,6 +5,7 @@
   "description": "Dependency-free build and test tooling for the staged SquareCoil Companion rebuild.",
   "scripts": {
     "build": "node scripts/build.js",
+    "preview:ui": "node dev/ui-preview/server.js",
     "check:theme-ports": "node scripts/generate-authoritative-theme-port.js --check",
     "lab:chrome": "node dev/local-lab/run.js --browser chrome",
     "lab:edge": "node dev/local-lab/run.js --browser edge",

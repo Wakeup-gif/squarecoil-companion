@@ -12,6 +12,8 @@ const DEFAULT_PREFERENCES = Object.freeze({
   dashboardProfile: 'OFF',
   dashboardEnabled: false,
   dashboardAppearance: 'SITE',
+  quickFilePathsEnabled: false,
+  quickClockControlsEnabled: false,
   yellowMinutes: 60,
   orangeMinutes: 120,
   redMinutes: 240
@@ -50,7 +52,7 @@ function preferenceCandidates(raw) {
   const nested = isRecord(source.settings) ? source.settings : {};
   const timerAppearance = enumValue(first(source, ['timerAppearance', 'themePreference', 'protoUiTheme', 'theme']) ??
     first(nested, ['timerAppearance', 'themePreference', 'protoUiTheme', 'theme']),
-    ['LIGHT', 'DARK', 'AUTO']);
+    ['LIGHT', 'CLEAR', 'DARK', 'AUTO']);
   const panelFinish = enumValue(first(source, ['panelFinish', 'timerSurface', 'protoUiSurface', 'surface']) ??
     first(nested, ['panelFinish', 'timerSurface', 'protoUiSurface', 'surface']),
     ['SOLID', 'GLASS'], { GLASS_BLUR: 'GLASS', BLUR: 'GLASS' });
@@ -68,10 +70,15 @@ function preferenceCandidates(raw) {
   const dashboardValue = first(source, ['dashboardEnabled']) ?? first(nested, ['dashboardEnabled']);
   const dashboardEnabled = typeof dashboardValue === 'boolean' ? dashboardValue : null;
   const dashboardAppearance = enumValue(first(source, ['dashboardAppearance']) ?? first(nested, ['dashboardAppearance']), ['SITE', 'LIGHT', 'DARK']);
+  const quickFilePathsValue = first(source, ['quickFilePathsEnabled']) ?? first(nested, ['quickFilePathsEnabled']);
+  const quickFilePathsEnabled = typeof quickFilePathsValue === 'boolean' ? quickFilePathsValue : null;
+  const quickClockControlsValue = first(source, ['quickClockControlsEnabled']) ?? first(nested, ['quickClockControlsEnabled']);
+  const quickClockControlsEnabled = typeof quickClockControlsValue === 'boolean' ? quickClockControlsValue : null;
   const yellowMinutes = integer(first(source, ['yellowMinutes', 'timerYellowMinutes', 'yellow']) ?? nested.yellow);
   const orangeMinutes = integer(first(source, ['orangeMinutes', 'timerOrangeMinutes', 'orange']) ?? nested.orange);
   const redMinutes = integer(first(source, ['redMinutes', 'timerRedMinutes', 'red']) ?? nested.red);
   return { timerAppearance, panelFinish, websiteTheme, cinematicBackground, dashboardProfile, dashboardEnabled, dashboardAppearance,
+    quickFilePathsEnabled, quickClockControlsEnabled,
     yellowMinutes, orangeMinutes, redMinutes };
 }
 
@@ -98,6 +105,8 @@ function normalizePreferenceSnapshot(raw, options = {}) {
     dashboardProfile: candidates.dashboardProfile || fallback.dashboardProfile || DEFAULT_PREFERENCES.dashboardProfile,
     dashboardEnabled: candidates.dashboardEnabled ?? fallback.dashboardEnabled ?? DEFAULT_PREFERENCES.dashboardEnabled,
     dashboardAppearance: candidates.dashboardAppearance || fallback.dashboardAppearance || DEFAULT_PREFERENCES.dashboardAppearance,
+    quickFilePathsEnabled: candidates.quickFilePathsEnabled ?? fallback.quickFilePathsEnabled ?? DEFAULT_PREFERENCES.quickFilePathsEnabled,
+    quickClockControlsEnabled: candidates.quickClockControlsEnabled ?? fallback.quickClockControlsEnabled ?? DEFAULT_PREFERENCES.quickClockControlsEnabled,
     yellowMinutes: limits.yellowMinutes ?? DEFAULT_PREFERENCES.yellowMinutes,
     orangeMinutes: limits.orangeMinutes ?? DEFAULT_PREFERENCES.orangeMinutes,
     redMinutes: limits.redMinutes ?? DEFAULT_PREFERENCES.redMinutes
@@ -160,6 +169,8 @@ function preferenceStorage(snapshot, revision = snapshot.preferenceRevision) {
     dashboardProfile: snapshot.dashboardProfile || DEFAULT_PREFERENCES.dashboardProfile,
     dashboardEnabled: snapshot.dashboardEnabled === true,
     dashboardAppearance: snapshot.dashboardAppearance || DEFAULT_PREFERENCES.dashboardAppearance,
+    quickFilePathsEnabled: snapshot.quickFilePathsEnabled === true,
+    quickClockControlsEnabled: snapshot.quickClockControlsEnabled === true,
     yellowMinutes: snapshot.yellowMinutes,
     orangeMinutes: snapshot.orangeMinutes,
     redMinutes: snapshot.redMinutes

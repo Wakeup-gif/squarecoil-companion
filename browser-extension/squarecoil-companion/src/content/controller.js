@@ -19,6 +19,7 @@ const { createThemeService } = require('../presentation/theme-service');
 const { createCinematicBackground } = require('../presentation/cinematic-background');
 const { createDashboardProfile } = require('../presentation/dashboard-profile');
 const { createAnalyticsDashboard } = require('../presentation/analytics-dashboard');
+const { createQuickFilePathsService } = require('../presentation/quick-file-paths');
 
 const DEFAULTS = Object.freeze({ timerEnabled: true });
 const BOOT_MESSAGE = 'SC_COMPANION_BOOT';
@@ -48,6 +49,7 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
   let cinematicService = null;
   let designDashboardProfile = null;
   let analyticsService = null;
+  let quickFilePathsService = null;
   let authorityCoreSync = Promise.resolve();
   let b2SettlementRefresh = null;
   let settingChangeQueue = Promise.resolve();
@@ -135,6 +137,7 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
       onChange: value => setDataset('squarecoilCompanionCinematic', value.state)
     });
     if (!designDashboardProfile) designDashboardProfile = createDashboardProfile({ document, window });
+    if (!quickFilePathsService) quickFilePathsService = createQuickFilePathsService({ document, window });
     if (!analyticsService) analyticsService = createAnalyticsDashboard({
       document,
       window,
@@ -163,11 +166,14 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
       apply(preferences, basePresentation, timerHint) {
         let analytics;
         let dashboard;
+        let quickFilePaths;
         try { dashboard = designDashboardProfile.apply(preferences, basePresentation, designDashboardSummary(timerHint)); }
         catch (_) { dashboard = { state: 'PARTIAL_SAFE', reason: 'presentation-unavailable', ownedLayerCount: 0 }; }
         try { analytics = analyticsService.apply(preferences, basePresentation, timerHint); }
         catch (_) { analytics = { state: 'UNAVAILABLE', reason: 'presentation-unavailable', ownedRootCount: 0 }; }
-        return Object.freeze({ cinematic: cinematicService.apply(preferences, basePresentation), dashboard, analytics });
+        try { quickFilePaths = quickFilePathsService.apply(preferences.quickFilePathsEnabled === true); }
+        catch (_) { quickFilePaths = { state: 'UNAVAILABLE', reason: 'job-fields-unavailable', ownedRootCount: 0 }; }
+        return Object.freeze({ cinematic: cinematicService.apply(preferences, basePresentation), dashboard, analytics, quickFilePaths });
       }
     });
   }
@@ -649,6 +655,8 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
     designDashboardProfile = null;
     if (analyticsService) analyticsService.teardown();
     analyticsService = null;
+    if (quickFilePathsService) quickFilePathsService.teardown();
+    quickFilePathsService = null;
     setDataset('squarecoilCompanionTimerAppearance', null);
     setDataset('squarecoilCompanionPanelFinish', null);
     setDataset('squarecoilCompanionWebsiteTheme', null);

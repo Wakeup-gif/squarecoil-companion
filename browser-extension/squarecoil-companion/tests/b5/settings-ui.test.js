@@ -18,12 +18,24 @@ async function harness({ confirms = [], clipboardAvailable = true, cinematicPerm
   const copied = [];
   const permissionCalls = [];
   const commandOrder = [];
+  const nativeClock = {
+    clockIn: { outsideCompanion: true, hidden: false, scrolls: [], focuses: 0, clicks: 0,
+      getAttribute() { return null; }, scrollIntoView(options) { this.scrolls.push(options); },
+      focus() { this.focuses += 1; }, click() { this.clicks += 1; } },
+    clockOut: { outsideCompanion: true, hidden: true, scrolls: [], focuses: 0, clicks: 0,
+      getAttribute() { return null; }, scrollIntoView(options) { this.scrolls.push(options); },
+      focus() { this.focuses += 1; }, click() { this.clicks += 1; } },
+    container: { outsideCompanion: true, hidden: false, scrolls: [], clicks: 0,
+      getAttribute() { return null; }, scrollIntoView(options) { this.scrolls.push(options); }, click() { this.clicks += 1; } }
+  };
   function makeRoot() {
-    return { dataset: {}, innerHTML: '', classList: { add() {} }, contains() { return true; }, querySelector() { return null; },
+    return { dataset: {}, innerHTML: '', classList: { add() {} }, contains(element) { return element?.outsideCompanion !== true; }, querySelector() { return null; },
       addEventListener(type, listener) { listeners[type] = listener; }, removeEventListener(type, listener) { if (listeners[type] === listener) delete listeners[type]; } };
   }
   let activeRoot = makeRoot();
-  const document = { getElementById(id) { return id === ROOT_ID ? activeRoot : null; }, querySelectorAll() { return [activeRoot]; } };
+  const document = { getElementById(id) { return id === ROOT_ID ? activeRoot : null; },
+    querySelector(selector) { return selector === '#clockin' ? nativeClock.clockIn : selector === '#clockout' ? nativeClock.clockOut : null; },
+    querySelectorAll(selector) { return selector === '.timeclock-container' ? [nativeClock.container] : [activeRoot]; } };
   const window = { location: new URL('https://ussignandmill.squarecoil.net/project.php?id=private-job'), localStorage: { getItem() { return null; } },
     navigator: { userAgent: 'Mozilla/5.0 Chrome/151.0.7922.174 Safari/537.36', clipboard: { async writeText(value) {
       if (!clipboardAvailable) throw new Error('clipboard unavailable');
@@ -86,19 +98,31 @@ async function harness({ confirms = [], clipboardAvailable = true, cinematicPerm
     listeners.submit({ target, isTrusted: true, preventDefault() {} });
   }
   async function drain() { await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)); }
-  return { ui, get root() { return activeRoot; }, core, preferenceCommands, permissionCalls, commandOrder, opens, copied, click, inputLimit, supportField, submit, drain,
+  return { ui, get root() { return activeRoot; }, core, nativeClock, preferenceCommands, permissionCalls, commandOrder, opens, copied, click, inputLimit, supportField, submit, drain,
     replaceRoot() { activeRoot = makeRoot(); ui.render(); } };
 }
 
 test('UT-B5-UI-001 one Settings router exposes the settled user-facing feature groups', async () => {
   const h = await harness();
   h.click({ action: 'view', view: 'settings' });
-  for (const label of ['Appearance', 'Time tracking', 'Jobs and watching', 'Notifications', 'Privacy and data',
-    'Help and diagnostics', 'Companion appearance', 'SquareCoil theme', 'Local data and backups', 'Submit a ticket']) {
+  for (const label of ['Appearance', 'Time tracking', 'Jobs', 'Notifications', 'Privacy and data',
+    'Help', 'Companion appearance', 'SquareCoil theme', 'Local data and backups', 'Submit a ticket']) {
     assert.match(h.root.innerHTML, new RegExp(label));
   }
-  assert.equal((h.root.innerHTML.match(/data-action="settings-toggle-group"/g) || []).length, 6);
-  assert.equal((h.root.innerHTML.match(/aria-expanded="false"/g) || []).length, 6);
+  assert.equal((h.root.innerHTML.match(/data-action="settings-toggle-group"/g) || []).length, 7);
+  assert.equal((h.root.innerHTML.match(/aria-expanded="false"/g) || []).length, 7);
+  h.ui.teardown();
+});
+
+test('UT-B5-UI-027 Clear appearance describes its effective glass finish', async () => {
+  const h = await harness();
+  h.core.preferences.timerAppearance = 'CLEAR';
+  h.core.preferences.panelFinish = 'SOLID';
+  h.ui.render();
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'settings-toggle-group', group: 'appearance' });
+  assert.match(h.root.innerHTML, /Companion appearance<\/strong><small>Transparent glass<\/small>/);
+  assert.doesNotMatch(h.root.innerHTML, /Companion appearance<\/strong><small>Solid panel finish<\/small>/);
   h.ui.teardown();
 });
 
@@ -242,8 +266,8 @@ test('UT-B5-UI-009 Glass uses installed capability without runtime permission re
   assert.deepEqual(granted.permissionCalls, []);
   assert.deepEqual(granted.preferenceCommands[0], { patch: { websiteTheme: 'SLEEK_DARK' }, expectedPreferenceRevision: 1 });
   assert.equal(granted.core.preferences.cinematicBackground, 'CINEMATIC');
-  assert.match(granted.root.innerHTML, /rotating Bing photograph and translucent surfaces as one theme/i);
-  assert.match(granted.root.innerHTML, /Image requests contain no job, timer, page, or account data/i);
+  assert.match(granted.root.innerHTML, /Glass themes include daily Bing photos/i);
+  assert.match(granted.root.innerHTML, /Requests contain no job, timer, page or account data/i);
   granted.ui.teardown();
 });
 
@@ -274,7 +298,7 @@ test('UT-B5-UI-012 theme choices and Advanced diagnostics stay available with ze
   const h = await harness();
   h.click({ action: 'view', view: 'settings' });
   h.click({ action: 'settings-route', view: 'website-theme' });
-  for (const label of ['Native / Off', 'Dark Glass', 'Light Glass', 'Refined Light']) assert.match(h.root.innerHTML, new RegExp(label));
+  for (const label of ['Original', 'Dark Glass', 'Light Glass', 'Refined Light']) assert.match(h.root.innerHTML, new RegExp(label));
   h.click({ action: 'preference-site', value: 'LIGHT_GLASS' });
   await h.drain();
   assert.deepEqual(h.permissionCalls, []);
@@ -397,15 +421,82 @@ test('UT-B5-UI-023 Design Dashboard restyle is a separate trusted off-by-default
   const h = await harness();
   const timerBefore = structuredClone(h.core.timer);
   h.click({ action: 'view', view: 'settings' });
-  assert.match(h.root.innerHTML, /Design Dashboard Enhancements/);
+  assert.match(h.root.innerHTML, /Dashboard restyle/);
   h.click({ action: 'settings-route', view: 'design-dashboard' });
-  assert.match(h.root.innerHTML, /dashboard\.php\?show=2/);
+  assert.match(h.root.innerHTML, /Changes the dashboard’s look and adds a time summary/);
   h.click({ action: 'preference-design-dashboard', value: 'ON' }, false);
   assert.equal(h.preferenceCommands.length, 0);
   h.click({ action: 'preference-design-dashboard', value: 'ON' }); await h.drain();
   assert.deepEqual(h.preferenceCommands[0], { patch: { dashboardProfile: 'ON' }, expectedPreferenceRevision: 1 });
   assert.equal(h.core.preferences.dashboardEnabled, undefined);
   assert.equal(h.core.preferences.dashboardProfile, 'ON');
+  assert.deepEqual({ ...h.core.timer, sourcePreferenceRevision: timerBefore.sourcePreferenceRevision }, timerBefore);
+  h.ui.teardown();
+});
+
+test('UT-B5-UI-024 Features keeps the dashboard and job-page options distinct', async () => {
+  const h = await harness();
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'settings-toggle-group', group: 'features' });
+  for (const label of ['Analytics dashboard', 'Dashboard restyle', 'Quick file paths', 'Quick clock controls',
+    'Design page layout', 'Sidebar menu toggle']) assert.match(h.root.innerHTML, new RegExp(label));
+  for (const route of ['dashboard', 'design-dashboard', 'quick-file-paths', 'quick-clock'])
+    assert.match(h.root.innerHTML, new RegExp(`data-action="settings-route" data-view="${route}"`));
+  assert.match(h.root.innerHTML, /class="sc-unavailable" aria-disabled="true"><strong>Design page layout<\/strong>/);
+  h.ui.teardown();
+});
+
+test('UT-B5-UI-025 Quick file paths changes only its off-by-default preference through a trusted command', async () => {
+  const h = await harness();
+  const timerBefore = structuredClone(h.core.timer);
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'settings-route', view: 'quick-file-paths' });
+  assert.match(h.root.innerHTML, /Design Description and project Important Details/);
+  assert.match(h.root.innerHTML, /data-action="preference-quick-files" data-value="true"/);
+  h.click({ action: 'preference-quick-files', value: 'true' }, false);
+  assert.equal(h.preferenceCommands.length, 0);
+  h.click({ action: 'preference-quick-files', value: 'true' }); await h.drain();
+  assert.deepEqual(h.preferenceCommands[0], { patch: { quickFilePathsEnabled: true }, expectedPreferenceRevision: 1 });
+  assert.equal(h.core.preferences.quickFilePathsEnabled, true);
+  h.click({ action: 'preference-quick-files', value: 'false' }); await h.drain();
+  assert.deepEqual(h.preferenceCommands[1], { patch: { quickFilePathsEnabled: false }, expectedPreferenceRevision: 2 });
+  assert.deepEqual({ ...h.core.timer, sourcePreferenceRevision: timerBefore.sourcePreferenceRevision }, timerBefore);
+  h.ui.teardown();
+});
+
+test('UT-B5-UI-026 Quick clock shortcut finds native controls without clicking or submitting them', async () => {
+  const h = await harness();
+  const timerBefore = structuredClone(h.core.timer);
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'settings-route', view: 'quick-clock' });
+  assert.match(h.root.innerHTML, /you choose Clock in or Clock out there/);
+  h.click({ action: 'preference-quick-clock', value: 'true' }, false);
+  assert.equal(h.preferenceCommands.length, 0);
+  h.click({ action: 'preference-quick-clock', value: 'true' }); await h.drain();
+  assert.deepEqual(h.preferenceCommands[0], { patch: { quickClockControlsEnabled: true }, expectedPreferenceRevision: 1 });
+  assert.match(h.root.innerHTML, /aria-label="Find SquareCoil clock controls"/);
+
+  h.click({ action: 'open-native-clock' }, false);
+  assert.equal(h.nativeClock.clockIn.scrolls.length, 0);
+  h.click({ action: 'open-native-clock' });
+  assert.equal(h.nativeClock.clockIn.scrolls.length, 1);
+  assert.equal(h.nativeClock.clockIn.focuses, 1);
+  assert.equal(h.nativeClock.clockIn.clicks, 0);
+  assert.equal(h.nativeClock.clockOut.clicks, 0);
+
+  h.nativeClock.clockIn.hidden = true;
+  h.nativeClock.clockOut.hidden = false;
+  h.click({ action: 'open-native-clock' });
+  assert.equal(h.nativeClock.clockOut.scrolls.length, 1);
+  assert.equal(h.nativeClock.clockOut.focuses, 1);
+  assert.equal(h.nativeClock.clockOut.clicks, 0);
+  h.nativeClock.clockOut.hidden = true;
+  h.click({ action: 'open-native-clock' });
+  assert.equal(h.nativeClock.container.scrolls.length, 1);
+  assert.equal(h.nativeClock.container.clicks, 0);
+  h.click({ action: 'preference-quick-clock', value: 'false' }); await h.drain();
+  assert.deepEqual(h.preferenceCommands[1], { patch: { quickClockControlsEnabled: false }, expectedPreferenceRevision: 2 });
+  assert.doesNotMatch(h.root.innerHTML, /aria-label="Find SquareCoil clock controls"/);
   assert.deepEqual({ ...h.core.timer, sourcePreferenceRevision: timerBefore.sourcePreferenceRevision }, timerBefore);
   h.ui.teardown();
 });
