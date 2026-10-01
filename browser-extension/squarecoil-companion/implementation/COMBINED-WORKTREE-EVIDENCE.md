@@ -29,6 +29,8 @@ Common base: `99879446352364035904af640845ba6c5a43a570`.
 - Repository main `30bacd6f4262623ff9fff363e6d2ea516d02c2d1` is included; its README conflict retained modern candidate behavior and the legacy-runtime warning. Main's changed historical script is not an input to the authoritative theme generator or compiled extension.
 - Clean source/package identity and installed Chrome/Edge clean/upgrade results will be recorded below after they complete.
 
+The first installed attempt was stopped after exposing stale Overview labels and an invalid diagnostic fixture. An extension tab correctly fails the popup-only sender boundary; the corrected harness opens the genuine toolbar action popup and uses trusted input. Disposable Chrome 154 and Edge 154 probes each downloaded the actual 603-byte privacy-safe JSON successfully. Exact route/navigation assertions replace obsolete labels. These are harness corrections, with no relaxation of source authorization. GitHub aggregate validation run `36909254828` passed at source `3354497682d031532eeaf1d1437a22af790dd513` before the harness correction.
+
 Evidence directory: `C:/Users/iamva/Documents/SquareCoil Companion Evidence/combined-2026-10-01/`.
 
 ## Scope boundaries

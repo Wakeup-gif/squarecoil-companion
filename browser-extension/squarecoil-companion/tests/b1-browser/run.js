@@ -1065,6 +1065,95 @@ function runBrowserCase(cases, family, stableFixtureIds, slug, name, task) {
   return runCase(cases, browserFixtureId(family, stableFixtureIds, slug), name, task, { stableFixtureIds });
 }
 
+async function downloadFromActionPopup(context, browserCdp, extensionId, profileDirectory, timeoutMs) {
+  const worker = context.serviceWorkers().find(item => item.url().startsWith(`chrome-extension://${extensionId}/`));
+  assert(worker, 'Diagnostic action popup requires the real installed extension worker');
+  const beforeTargets = new Set((await browserCdp.send('Target.getTargets')).targetInfos.map(item => item.targetId));
+  await worker.evaluate(() => chrome.action.openPopup());
+  const target = await waitFor(async () => (await browserCdp.send('Target.getTargets')).targetInfos.find(item =>
+    !beforeTargets.has(item.targetId) && item.type === 'page' && item.url === `chrome-extension://${extensionId}/popup/popup.html`),
+  'genuine extension action popup target', timeoutMs);
+  const { sessionId } = await browserCdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: false });
+  let commandId = 0;
+  const pending = new Map();
+  const receive = event => {
+    if (event.sessionId !== sessionId) return;
+    const message = JSON.parse(event.message);
+    const operation = pending.get(message.id);
+    if (!operation) return;
+    pending.delete(message.id);
+    clearTimeout(operation.timer);
+    if (message.error) operation.reject(new Error(message.error.message));
+    else operation.resolve(message.result);
+  };
+  browserCdp.on('Target.receivedMessageFromTarget', receive);
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const id = ++commandId;
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Action popup CDP ${method} timed out`)); }, timeoutMs);
+    pending.set(id, { resolve, reject, timer });
+    browserCdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id, method, params }) }).catch(error => {
+      clearTimeout(timer); pending.delete(id); reject(error);
+    });
+  });
+  const evaluate = async expression => {
+    const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+    assert(!result.exceptionDetails, 'Action popup evaluation failed', result.exceptionDetails);
+    return result.result?.value;
+  };
+  const click = async selector => {
+    const point = await evaluate(`(() => {
+      const node = document.querySelector(${JSON.stringify(selector)});
+      if (!node) return null;
+      node.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+    })()`);
+    assert(point, 'Genuine popup control was not visible', { selector });
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
+  };
+  const downloadDirectory = path.join(profileDirectory, 'diagnostic-download');
+  assert(pathIsWithin(downloadDirectory, profileDirectory), 'Diagnostic download directory escaped its isolated profile');
+  fs.mkdirSync(downloadDirectory, { recursive: true });
+  let download = null;
+  let progress = null;
+  const begin = event => { if (event.url.startsWith(`blob:chrome-extension://${extensionId}/`)) download = event; };
+  const update = event => { if (download?.guid === event.guid) progress = event; };
+  browserCdp.on('Browser.downloadWillBegin', begin);
+  browserCdp.on('Browser.downloadProgress', update);
+  try {
+    const genuinePopupView = await evaluate('chrome.extension.getViews({type:"popup"}).includes(window)');
+    assert(genuinePopupView === true, 'Diagnostic fixture is an extension tab rather than the toolbar action popup');
+    await evaluate(`document.addEventListener('click', event => {
+      if (event.target.id === 'downloadDiagnosticLog') globalThis.__a4TrustedDiagnosticDownload = event.isTrusted;
+    }, true)`);
+    await click('.technical-card > summary');
+    await browserCdp.send('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath: downloadDirectory, eventsEnabled: true });
+    await click('#downloadDiagnosticLog');
+    await waitFor(() => {
+      assert(progress?.state !== 'canceled', 'Genuine popup diagnostic download was canceled');
+      return progress?.state === 'completed' ? progress : null;
+    }, 'genuine popup diagnostic download completion', timeoutMs);
+    const filename = download.suggestedFilename;
+    assert(/^[A-Za-z0-9-]+$/.test(download.guid), 'Browser supplied an invalid diagnostic download identity');
+    const downloadedPath = path.join(downloadDirectory, download.guid);
+    assert(pathIsWithin(downloadedPath, downloadDirectory), 'Diagnostic download escaped its isolated directory');
+    const bytes = fs.readFileSync(downloadedPath);
+    const status = await evaluate('document.getElementById("diagnosticDownloadResult").textContent');
+    const trustedDownloadClick = await evaluate('globalThis.__a4TrustedDiagnosticDownload === true');
+    assert(trustedDownloadClick && status.startsWith('Download started for '), 'Genuine popup download omitted trusted input or success status', { trustedDownloadClick, status });
+    return { bytes, filename, genuinePopupView, trustedDownloadClick };
+  } finally {
+    browserCdp.off('Browser.downloadWillBegin', begin);
+    browserCdp.off('Browser.downloadProgress', update);
+    browserCdp.off('Target.receivedMessageFromTarget', receive);
+    for (const operation of pending.values()) { clearTimeout(operation.timer); operation.reject(new Error('Action popup closed')); }
+    await browserCdp.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+    await browserCdp.send('Target.closeTarget', { targetId: target.targetId }).catch(() => {});
+    await browserCdp.send('Browser.setDownloadBehavior', { behavior: 'default', eventsEnabled: false }).catch(() => {});
+  }
+}
+
 function runB2KernelBrowserCase(cases, family, b2KernelFixtureIds, stableFixtureIds, slug, name, task, extraMetadata = {}) {
   for (const fixtureId of b2KernelFixtureIds) {
     if (!REQUIRED_B2_1_A4_FIXTURE_IDS.includes(fixtureId)) throw new Error(`Unknown B2.1 A4 fixture ID: ${fixtureId}`);
@@ -1911,23 +2000,10 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           };
           context.on('request', observeRequest);
           try {
-            await setupPage.locator('.technical-card > summary').click();
-            await setupPage.locator('#downloadDiagnosticLog').waitFor({ state: 'visible', timeout: options.timeoutMs });
-            const [download] = await Promise.all([
-              setupPage.waitForEvent('download', { timeout: options.timeoutMs }),
-              setupPage.locator('#downloadDiagnosticLog').click()
-            ]);
-            assert(await download.failure() === null, 'Diagnostic JSON download failed');
-            const stream = await download.createReadStream();
-            assert(stream, 'Diagnostic download did not expose its actual file bytes');
-            const chunks = [];
-            let byteCount = 0;
-            for await (const chunk of stream) {
-              byteCount += chunk.length;
-              assert(byteCount <= 65_536, 'Downloaded diagnostic log exceeded its 64 KiB cap', { byteCount });
-              chunks.push(chunk);
-            }
-            const bytes = Buffer.concat(chunks);
+            const download = await downloadFromActionPopup(context, browserCdp, extensionId, profileDirectory, options.timeoutMs);
+            const { bytes } = download;
+            const byteCount = bytes.length;
+            assert(byteCount <= 65_536, 'Downloaded diagnostic log exceeded its 64 KiB cap', { byteCount });
             const text = bytes.toString('utf8');
             const log = JSON.parse(text);
             assert(JSON.stringify(Object.keys(log).sort()) === JSON.stringify(['entries', 'exportedAtMs', 'format', 'retention', 'schemaVersion']) &&
@@ -1950,16 +2026,12 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             }
             assert(!/@|https?:\/\/|private-job|260701 - Design|Northstar|Riverline|Cedar Point|project\.php\?id=/i.test(text),
               'Downloaded diagnostic log exposed fixture job, page, or account strings');
-            assert(download.suggestedFilename() === `SquareCoil-Companion-diagnostics-${new Date(log.exportedAtMs).toISOString().slice(0, 10)}.json`,
-              'Diagnostic download did not use the expected dated JSON filename', download.suggestedFilename());
-            await waitFor(async () => {
-              const status = await setupPage.locator('#diagnosticDownloadResult').innerText();
-              return status.startsWith('Download started for ') ? status : null;
-            }, 'diagnostic download success status', options.timeoutMs);
+            assert(download.filename === `SquareCoil-Companion-diagnostics-${new Date(log.exportedAtMs).toISOString().slice(0, 10)}.json`,
+              'Diagnostic download did not use the expected dated JSON filename', download.filename);
             assert(nativeAttempts.length === 0 && result.network.nativeMutationAttempts.length === 0,
               'No-login diagnostic download attempted a native SquareCoil mutation', nativeAttempts);
-            return { squarecoilTabs, cookieCount: squarecoilCookies.length, trustedDownloadClick: true,
-              filename: download.suggestedFilename(), bytes: byteCount, sha256: sha256(bytes),
+            return { squarecoilTabs, cookieCount: squarecoilCookies.length, trustedDownloadClick: download.trustedDownloadClick,
+              genuinePopupView: download.genuinePopupView, filename: download.filename, bytes: byteCount, sha256: sha256(bytes),
               retention: log.retention, entryCount: log.entries.length,
               eventCodes: [...new Set(log.entries.map(entry => entry.code))],
               exactSafeSchema: true, nativeMutationAttempts: nativeAttempts.length };
@@ -2063,8 +2135,13 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           const before = { revision: empty.revision, ledgerSegmentCount: empty.ledgerSegmentCount,
             timerState: empty.timer.timerState, currentContextId: empty.timer.currentContextId };
           const home = await emptyPage.locator(`#${ROOT_ID} .sc-content`).innerText();
-          assert(home.includes('No recent jobs yet') && home.includes('Settings') && home.includes('Time overview') && home.includes('History'),
-            'B5-D zero-history Home omitted feature navigation', home);
+          const homeRoutes = await emptyPage.locator(`#${ROOT_ID} .sc-content [data-action="view"]:visible`).evaluateAll(nodes =>
+            nodes.map(node => ({ view: node.dataset.view, label: node.querySelector('strong')?.textContent.trim() })));
+          assert(home.includes('No recent jobs yet') && home.includes('Settings') && home.includes('History') &&
+            JSON.stringify(homeRoutes) === JSON.stringify([
+              { view: 'recent', label: 'Jobs' }, { view: 'overview', label: 'Time' },
+              { view: 'history', label: 'History' }, { view: 'settings', label: 'Settings' }
+            ]), 'B5-D zero-history Home omitted feature navigation', { home, homeRoutes });
           await clickWorkspaceControl(emptyPage, `.sc-proto-topbar [data-action="view"][data-view="settings"]`, options.timeoutMs);
           const settings = await emptyPage.locator(`#${ROOT_ID} .sc-content`).innerText();
           const disclosureState = await emptyPage.evaluate(rootId => {
@@ -2219,7 +2296,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             after.timer.currentContextId === before.currentContextId && after.timer.contextRows.length === 0,
           'B5-D zero-history navigation changed Timer or Ledger authority', { before, after });
           assert(result.network.nativeMutationAttempts.length === 0, 'B5-D zero-history navigation attempted a native SquareCoil mutation', result.network.nativeMutationAttempts);
-          return { home, settings, disclosureState, appearanceDisclosure, featuresDisclosure, before, afterRevision: after.revision, darkTheme, lightTheme, focus, responsive,
+          return { home, homeRoutes, settings, disclosureState, appearanceDisclosure, featuresDisclosure, before, afterRevision: after.revision, darkTheme, lightTheme, focus, responsive,
             screenshots: { settingsHomeScreenshot, nativeThemeScreenshot, darkThemeScreenshot, lightThemeScreenshot, diagnosticsScreenshot } };
         } finally {
           if (emptyBridge) {
@@ -2556,7 +2633,17 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         await clickMoreTool(page, 'overview', options.timeoutMs);
         const overview = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
         const normalizedOverview = overview.toLowerCase();
-        assert(normalizedOverview.includes('time overview') && normalizedOverview.includes('today by job / context') && normalizedOverview.includes('by day') && normalizedOverview.includes('by job / context'), 'B3 Overview destinations were incomplete', overview);
+        const overviewRoutes = await page.locator(`#${ROOT_ID} .sc-nav-grid [data-action="view"]:visible`).evaluateAll(nodes =>
+          nodes.map(node => ({ view: node.dataset.view, label: node.querySelector('strong')?.textContent.trim() })));
+        assert(normalizedOverview.includes('time overview') && normalizedOverview.includes('today by job') &&
+          JSON.stringify(overviewRoutes) === JSON.stringify([{ view: 'by-day', label: 'By Day' }, { view: 'by-context', label: 'By job' }]),
+        'B3 Overview destinations were incomplete', { overview, overviewRoutes });
+        for (const [view, heading] of [['by-day', 'By Day'], ['by-context', 'By job']]) {
+          await clickWorkspaceControl(page, `[data-action="view"][data-view="${view}"]`, options.timeoutMs);
+          const routeHeading = await page.locator(`#${ROOT_ID} [data-sc-view-heading]`).innerText();
+          assert(routeHeading === heading, 'B3 Overview destination did not open its canonical time view', { view, routeHeading });
+          await clickWorkspaceControl(page, `[data-action="view"][data-view="overview"]`, options.timeoutMs);
+        }
         await page.locator(`#${ROOT_ID} [data-action="view"][data-view="main"]`).click();
         await clickMoreTool(page, 'history', options.timeoutMs);
         const history = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
@@ -2567,7 +2654,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         const after = await bridge.coreSnapshot();
         assert(after.revision === before.revision && after.ledgerSegmentCount === before.ledgerSegmentCount, 'B3 view navigation mutated authoritative Timer/Ledger state', { before, after });
         assert(result.network.nativeMutationAttempts.length === 0, 'B3 view navigation attempted a native SquareCoil mutation', result.network.nativeMutationAttempts);
-        return { beforeRevision: before.revision, afterRevision: after.revision, main, overview, history };
+        return { beforeRevision: before.revision, afterRevision: after.revision, main, overview, overviewRoutes, history };
       }
     );
 
