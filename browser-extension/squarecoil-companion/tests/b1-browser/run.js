@@ -481,6 +481,63 @@ async function waitFor(check, description, timeoutMs, intervalMs = 50) {
   throw new Error(`Timed out waiting for ${description}.${suffix}`);
 }
 
+async function withHarnessDeadline(operation, label, timeoutMs) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(`${label}: exceeded hard deadline of ${timeoutMs} ms`);
+          error.harnessDeadline = true;
+          reject(error);
+        }, timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function navigateInitialCleanFixture(context, page, browserCdp, family, timeoutMs, evidence) {
+  const fixtureUrl = `${FIXTURE_ORIGIN}${FIXTURE_PATH}`;
+  evidence.stages = [];
+  evidence.timedOut = false;
+  for (const [name, operation] of [
+    ['FOCUS', () => page.bringToFront()],
+    ['GOTO', () => page.goto(fixtureUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs })]
+  ]) {
+    const label = `A4-SETUP-${family === 'chrome' ? 'CH' : 'ED'}-INITIAL-FIXTURE-${name}`;
+    const started = Date.now();
+    process.stderr.write(`${label}: START\n`);
+    try {
+      await withHarnessDeadline(operation, label, timeoutMs);
+      evidence.stages.push({ id: label, status: 'PASS', durationMs: Date.now() - started });
+      process.stderr.write(`${label}: PASS (${Date.now() - started} ms)\n`);
+    } catch (error) {
+      evidence.timedOut = error.harnessDeadline === true || error.name === 'TimeoutError';
+      const diagnostic = {
+        fixtureUrl,
+        pageUrl: page.url(),
+        pageClosed: page.isClosed(),
+        browserConnected: context.browser()?.isConnected() ?? false,
+        pages: context.pages().slice(0, 8).map(candidate => ({ url: candidate.url().slice(0, 512), closed: candidate.isClosed() }))
+      };
+      process.stderr.write(`${label}: FAIL (${Date.now() - started} ms): ${error.message}\n`);
+      try {
+        const targets = await withHarnessDeadline(() => browserCdp.send('Target.getTargets'), `${label}-DIAGNOSTIC`, 1_500);
+        diagnostic.targets = targets.targetInfos.filter(target => ['page', 'service_worker'].includes(target.type)).slice(0, 16)
+          .map(target => ({ targetId: target.targetId, type: target.type, url: target.url.slice(0, 512), attached: target.attached }));
+      } catch (diagnosticError) {
+        diagnostic.targetSnapshotError = diagnosticError.message;
+      }
+      evidence.stages.push({ id: label, status: 'FAIL', durationMs: Date.now() - started, error: error.message, diagnostic });
+      error.details = { ...(error.details || {}), initialFixtureNavigation: evidence };
+      throw error;
+    }
+  }
+}
+
 async function pageState(page) {
   return page.evaluate(({ rootId, runtimeKey, claimKey, bootstrapKey, tokenKey }) => {
     function safeRead(key) {
@@ -1878,6 +1935,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
     b5cThemeFixtureCoverage: null,
     b5dThemeFixtureCoverage: null,
     b6CandidateFixtureCoverage: null,
+    initialFixtureNavigation: {},
     cases: [],
     durationMs: null,
     cleanupWarning: null
@@ -2054,13 +2112,21 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
     await installSyntheticRouting(context, result.network, transitionFixture);
 
     const existingPages = context.pages();
-    const page = existingPages[0] || await context.newPage();
-    for (const extra of existingPages.slice(1)) await extra.close().catch(() => {});
+    const page = await context.newPage();
+    result.initialFixtureNavigation.ignoredStartupPageUrls = [];
+    for (const extra of existingPages) {
+      // Edge owns this native download surface; closing it as a Playwright page can stall.
+      if (family === 'edge' && extra.url() === 'edge://downloads-hub/') {
+        result.initialFixtureNavigation.ignoredStartupPageUrls.push(extra.url());
+        continue;
+      }
+      await extra.close().catch(() => {});
+    }
     page.on('console', message => {
       if (message.type() === 'error' || message.type() === 'warning') result.console.errors.push({ type: message.type(), text: message.text() });
     });
     page.on('pageerror', error => result.console.pageErrors.push(String(error?.message || error)));
-    await page.goto(`${FIXTURE_ORIGIN}${FIXTURE_PATH}`, { waitUntil: 'domcontentloaded', timeout: options.timeoutMs });
+    await navigateInitialCleanFixture(context, page, browserCdp, family, options.timeoutMs, result.initialFixtureNavigation);
     await waitFor(async () => (await pageState(page)).documentToken, 'content-controller document identity', options.timeoutMs);
     bridge = new ContentBridge(context, page, extensionId, options.timeoutMs, candidateIdentity);
     await bridge.initialize();
@@ -4727,15 +4793,31 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
   } finally {
     if (tracker) await tracker.detach();
     if (bridge) await bridge.detach();
-    if (browserCdp) await browserCdp.detach().catch(() => {});
-    if (context) await context.close().catch(() => {});
     const tempRoot = path.resolve(os.tmpdir());
     const resolvedProfile = path.resolve(profileDirectory);
     const safeProfile = resolvedProfile.toLowerCase().startsWith(`${tempRoot.toLowerCase()}${path.sep}`) && path.basename(resolvedProfile).startsWith(`squarecoil-b1-a4-${family}-`);
-    if (safeProfile) {
+    let retainProfile = false;
+    if (result.initialFixtureNavigation.timedOut && context) {
+      if (safeProfile && pathIsWithin(fs.realpathSync(resolvedProfile), fs.realpathSync(tempRoot))) {
+        try {
+          await withHarnessDeadline(() => context.close(), `A4-SETUP-${family}-TIMEOUT-CONTEXT-CLEANUP`, 5_000);
+        } catch (error) {
+          retainProfile = true;
+          result.cleanupWarning = `Timed-out test context cleanup did not settle; profile retained at ${resolvedProfile}: ${error.message}`;
+        }
+      } else {
+        retainProfile = true;
+        result.cleanupWarning = `Refused timed-out context cleanup for unexpected profile path: ${resolvedProfile}`;
+      }
+      if (browserCdp) await withHarnessDeadline(() => browserCdp.detach(), `A4-SETUP-${family}-TIMEOUT-CDP-CLEANUP`, 1_500).catch(() => {});
+    } else {
+      if (browserCdp) await browserCdp.detach().catch(() => {});
+      if (context) await context.close().catch(() => {});
+    }
+    if (safeProfile && !retainProfile) {
       try { fs.rmSync(resolvedProfile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
       catch (error) { result.cleanupWarning = `Temporary profile retained at ${resolvedProfile}: ${error.message}`; }
-    } else {
+    } else if (!safeProfile) {
       result.cleanupWarning = `Refused to remove unexpected profile path: ${resolvedProfile}`;
     }
     result.durationMs = Date.now() - suiteStarted;
