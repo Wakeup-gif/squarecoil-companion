@@ -100,6 +100,7 @@ async function harness(options = {}) {
     data: { revision: timer.revision, recentRows: timer.contextRows.map(row => ({
       contextId: row.contextId, label: row.label, protected: row.status !== 'NOT_RUNNING'
     })) } };
+  options.prepareCore?.(core);
   const handle = {
     coreSnapshot(view) {
       if (throwRead) throw new Error('transient-read');
@@ -141,6 +142,29 @@ async function harness(options = {}) {
     cancelFilePicker() { listeners.cancel?.({ target: fileInput }); }
   };
 }
+
+test('UT-B3-UI-024 startup loading discloses connection without fabricated Timer values and keeps Settings available', async () => {
+  const h = await harness({ prepareCore(core) { core.timer = null; core.initialized = false; core.status = 'initializing'; } });
+  assert.match(h.root.innerHTML, /Loading…/);
+  assert.doesNotMatch(h.root.innerHTML, /Connecting to your saved workspace/);
+  assert.match(h.root.innerHTML, /data-sc-view-key="main:loading"/);
+  assert.match(h.root.innerHTML, /data-action="view" data-view="settings"/);
+  assert.doesNotMatch(h.root.innerHTML, /data-timer-action=/);
+  h.core.timer = h.timer; h.core.initialized = true;
+  h.ui.render();
+  assert.doesNotMatch(h.root.innerHTML, /sc-loading-heading"/);
+  assert.match(h.root.innerHTML, /data-sc-view-key="main:ready"/);
+  h.ui.teardown();
+});
+
+test('UT-B3-UI-025 a blocked pre-Timer snapshot shows recovery instead of indefinite loading', async () => {
+  const h = await harness({ prepareCore(core) { core.timer = null; core.initialized = false; core.blocked = true; } });
+  assert.match(h.root.innerHTML, /Needs attention/);
+  assert.doesNotMatch(h.root.innerHTML, /Loading…/);
+  assert.doesNotMatch(h.root.innerHTML, /data-timer-action=/);
+  assert.equal(h.root.dataset.workspaceState, 'blocked');
+  h.ui.teardown();
+});
 
 test('UT-B3-UI-001 compact tabs expose Today, threshold meaning, operational status, and accessibility text together', async () => {
   const h = await harness();
@@ -205,7 +229,7 @@ test('UT-B3-UI-005 transient failure and an older revision retain the last trust
   assert.match(h.root.innerHTML, /Job 101/);
   h.setThrowRead(true);
   h.ui.render();
-  assert.match(h.root.innerHTML, /Showing the last saved view while Companion reconnects/);
+  assert.match(h.root.innerHTML, /Reconnecting…/);
   assert.match(h.root.innerHTML, /Job 101/);
   h.setThrowRead(false);
   h.timer.revision = 0;
@@ -238,13 +262,75 @@ test('UT-B3-UI-007 cross-tab visibility and order synchronization changes presen
   h.ui.teardown();
 });
 
-test('UT-B3-UI-008 Context Detail discloses undated legacy balance separately from dated totals', async () => {
+test('UT-B3-UI-008 Details discloses undated legacy balance separately from dated totals', async () => {
   const h = await harness();
   h.timer.contextDetails['job:202'].legacyUnattributedMs = 60_000;
   h.timer.contextDetails['job:202'].totalMs += 60_000;
   h.click({ action: 'context-detail', context: 'job:202' });
-  assert.match(h.root.innerHTML, /Older time without date detail/);
-  assert.match(h.root.innerHTML, /not fabricated into Today, Week, or daily history/);
+  assert.match(h.root.innerHTML, /Undated time/);
+  assert.match(h.root.innerHTML, /Included in the total only/);
+  h.ui.teardown();
+});
+
+test('UT-B3-UI-026 Details Back returns directly to the view that opened it', async () => {
+  const h = await harness();
+  h.click({ action: 'context-detail', context: 'job:101' });
+  assert.match(h.root.innerHTML, /data-action="view" data-view="main" aria-label="Back"/);
+  h.click({ action: 'view', view: 'main' });
+  assert.match(h.root.innerHTML, /class="sc-timer-card"/);
+
+  h.click({ action: 'view', view: 'overview' });
+  h.click({ action: 'context-detail', context: 'job:202' });
+  assert.match(h.root.innerHTML, /data-action="view" data-view="overview" aria-label="Back"/);
+  h.click({ action: 'view', view: 'overview' });
+  assert.match(h.root.innerHTML, /data-sc-view-heading>Time Overview<\/strong>/);
+
+  h.click({ action: 'view', view: 'by-context' });
+  h.click({ action: 'context-detail', context: 'job:303' });
+  assert.match(h.root.innerHTML, /data-action="view" data-view="by-context" aria-label="Back"/);
+  h.click({ action: 'view', view: 'by-context' });
+  assert.match(h.root.innerHTML, /data-sc-view-heading>By job<\/strong>/);
+  assert.deepEqual(h.timerActions, []);
+  h.ui.teardown();
+});
+
+test('UT-B3-UI-027 More tools contains search below destinations and long job views expose scroll regions', async () => {
+  const h = await harness();
+  const main = h.root.innerHTML;
+  assert.doesNotMatch(main, /data-action="view" data-view="home"/);
+  const tools = main.slice(main.indexOf('<details class="sc-quick-links"'));
+  assert.ok(tools.indexOf('>More tools</summary>') < tools.indexOf('data-view="recent"'));
+  assert.ok(tools.indexOf('data-view="recent"') < tools.indexOf('data-view="overview"'));
+  assert.ok(tools.indexOf('data-view="overview"') < tools.indexOf('data-view="history"'));
+  assert.ok(tools.indexOf('data-view="history"') < tools.indexOf('data-sc-search-form'));
+  for (const [route, list] of [['recent', 'recent'], ['overview', 'overview'], ['history', 'history']]) {
+    h.click({ action: 'view', view: route });
+    assert.match(h.root.innerHTML, new RegExp(`class="sc-list-scroll" data-sc-list="${list}" role="region"`));
+  }
+  h.click({ action: 'view', view: 'settings' });
+  assert.doesNotMatch(h.root.innerHTML, /data-action="view" data-view="home"/);
+  h.click({ action: 'settings-close' });
+  assert.match(h.root.innerHTML, /class="sc-timer-card"/);
+  assert.deepEqual(h.timerActions, []);
+  h.ui.teardown();
+});
+
+test('UT-B3-UI-028 inspected job keeps current context visible and returns from the total row without changing time', async () => {
+  const h = await harness();
+  h.click({ action: 'select', context: 'job:202' });
+  const html = h.root.innerHTML;
+  const cue = html.slice(html.indexOf('<div class="sc-current-strip">'), html.indexOf('<section class="sc-timer-card"'));
+  const totalAreaStart = html.indexOf('<div class="sc-total-area">');
+  const totalArea = html.slice(totalAreaStart, html.indexOf('<div class="sc-actions">', totalAreaStart));
+  assert.match(cue, /Working now · Job 101/);
+  assert.doesNotMatch(cue, /View current/);
+  assert.match(totalArea, /class="sc-view-current" data-action="select" data-context="job:101"/);
+  assert.ok(totalArea.indexOf('View current') < totalArea.indexOf('class="sc-metric sc-metric-total"'));
+  assert.equal(h.timer.currentContextId, 'job:101');
+  h.click({ action: 'select', context: 'job:101' });
+  assert.doesNotMatch(h.root.innerHTML, /class="sc-current-strip"|class="sc-view-current"/);
+  assert.equal(h.timer.currentContextId, 'job:101');
+  assert.deepEqual(h.timerActions, []);
   h.ui.teardown();
 });
 
@@ -326,7 +412,7 @@ test('UT-B3-UI-014 job tabs protrude above the Companion frame with scroll and d
   const shellAt = h.root.innerHTML.indexOf('class="sc-proto-shell"');
   assert.ok(tabsAt >= 0 && shellAt > tabsAt);
   assert.match(h.root.innerHTML, /role="tablist"/);
-  assert.match(h.root.innerHTML, /Swipe sideways to see more jobs\. Drag tabs to reorder/);
+  assert.match(h.root.innerHTML, /Scroll to see more jobs\. Drag tabs to reorder/);
   assert.match(h.root.innerHTML, /class="sc-tab-slot"/);
   assert.match(h.root.innerHTML, /class="sc-tab-x"/);
   assert.equal(h.root.dataset.hasTabs, 'true');
@@ -367,7 +453,7 @@ test('UT-B3-UI-017 narrow archive guidance rises above the Companion instead of 
   h.ui.teardown();
 });
 
-test('UT-B3-UI-018 Main rejects a persisted archived selection but explicit Context Detail preserves it', async () => {
+test('UT-B3-UI-018 Main rejects a persisted archived selection but explicit Details preserves it', async () => {
   const h = await harness({
     preferences: { b3LastSelectedContextId: 'job:202' },
     prepareTimer(timer) {
@@ -382,7 +468,7 @@ test('UT-B3-UI-018 Main rejects a persisted archived selection but explicit Cont
   assert.equal(h.writes.some(write => write.b3LastSelectedContextId === 'job:101'), true);
 
   h.click({ action: 'context-detail', context: 'job:202' });
-  assert.match(h.root.innerHTML, /Context Detail/);
+  assert.match(h.root.innerHTML, /Details/);
   assert.match(h.root.innerHTML, /Job 202/);
   h.ui.teardown();
 });

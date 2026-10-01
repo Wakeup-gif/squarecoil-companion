@@ -8,7 +8,8 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { copyPackageFiles } = require('../../scripts/package-inventory');
 const { computeCandidateFingerprint } = require('../../scripts/candidate-identity');
-const { verifySelectedContext, verifyDashboardJourney, verifyDesignProfileJourney } = require('./prototype-journey');
+const { verifySelectedContext, verifyDashboardJourney, verifyDesignProfileJourney, verifyUiPolish } = require('./prototype-journey');
+const { verifyQuickToolsJourney } = require('./quick-tools-journey');
 
 const ORIGIN = 'https://ussignandmill.squarecoil.net';
 const LAB_ROOT = '/__companion_lab__';
@@ -289,13 +290,16 @@ async function inspectThemeState(page, theme, bingPermissionGranted) {
         return surface.background.channels.some((channel, index) => Math.abs(channel - [9,18,27][index]) > 1) ||
           Math.abs(surface.background.alpha - 0.57) > 0.02;
       }
-      return surface.background.channels.some(channel => Math.abs(channel - 255) > 1) ||
-        Math.abs(surface.background.alpha - 0.54) > 0.02;
+      const recipe = surface.level === 'nested' ? { channels: [245,250,253], alpha: 0.56 } : { channels: [255,255,255], alpha: 0.54 };
+      return surface.background.channels.some((channel, index) => Math.abs(channel - recipe.channels[index]) > 1) ||
+        Math.abs(surface.background.alpha - recipe.alpha) > 0.02;
     }).length;
     const textContrastMismatchCount = textSamples.filter(sample => sample.present && sample.parsed &&
       (expectedTheme === 'SLEEK_DARK' ? sample.parsed.brightness < 140 : sample.parsed.brightness > 170)).length;
     const notes = Array.from(root?.querySelectorAll('.sc-note') || []).map(node => node.textContent.replace(/\s+/g, ' ').trim());
     const backgroundStatus = notes.find(text => text.startsWith('Background status:')) || null;
+    const header = document.querySelector('#navbar')?.getBoundingClientRect();
+    const sidebar = document.querySelector('#sidebar_left')?.getBoundingClientRect();
     const trustedSelections = Array.isArray(window.__squareCoilLabTrustedThemeSelections)
       ? window.__squareCoilLabTrustedThemeSelections.filter(item => item.value === expectedTheme) : [];
     return {
@@ -317,6 +321,7 @@ async function inspectThemeState(page, theme, bingPermissionGranted) {
       controllerReason: document.documentElement.dataset.squarecoilCompanionControllerReason || null,
       documentToken: document.documentElement.dataset.squarecoilCompanionDocumentToken || null,
       backgroundStatus,
+      shellJoinGap: header && sidebar ? Math.round(sidebar.top - header.bottom) : null,
       hostCount: document.querySelectorAll('#squarecoil-companion-cinematic-host').length,
       hostTheme: host?.getAttribute('data-theme') || null,
       hostBackgroundImage: host ? getComputedStyle(host).backgroundImage : null,
@@ -335,6 +340,22 @@ async function inspectThemeState(page, theme, bingPermissionGranted) {
       cinematicStyleOwned: cinematicStyle?.getAttribute('data-squarecoil-companion-owned') || null
     };
   }, { expectedTheme: theme, permissionGranted: bingPermissionGranted });
+}
+
+async function verifyLightThemeFocus(page, theme) {
+  await page.keyboard.press('Tab');
+  await page.locator('#job-search').focus();
+  const proof = await page.evaluate(() => {
+    const field = document.querySelector('#job-search');
+    const style = getComputedStyle(field);
+    return { focusVisible: field.matches(':focus-visible'), outlineWidth: style.outlineWidth,
+      outlineStyle: style.outlineStyle, boxShadow: style.boxShadow };
+  });
+  await page.locator('#job-search').evaluate(field => field.blur());
+  assertVisualCondition(proof.focusVisible && proof.outlineWidth === '2px' &&
+    proof.outlineStyle === 'solid' && proof.boxShadow === 'none',
+  `${theme} has a missing or stacked keyboard focus indicator`, proof);
+  return proof;
 }
 
 async function selectAndCaptureTheme(page, theme, evidenceFile, evidence, bingPermissionGranted, timeout) {
@@ -379,8 +400,11 @@ async function selectAndCaptureTheme(page, theme, evidenceFile, evidence, bingPe
   'Offline background fallback or status wording is not truthful', proof);
   assertVisualCondition(proof.outerSurfaceCount >= 5 && proof.nestedSurfaceCount >= 5 && proof.oppositeSurfaceCount === 0,
     'Representative outer or nested lab surfaces contain an opposite-theme card', proof);
+  assertVisualCondition(proof.shellJoinGap !== null && Math.abs(proof.shellJoinGap) <= 1,
+    'Website header and sidebar do not meet cleanly beneath the lab banner', proof);
   assertVisualCondition(proof.surfaceRecipeMismatchCount === 0 && proof.textContrastMismatchCount === 0,
     'Representative Glass panels or their strong text do not share the terminal theme recipe', proof);
+  if (theme === 'LIGHT_GLASS') proof.focusTreatment = await verifyLightThemeFocus(page, theme);
   if (evidence) {
     await page.screenshot({ path: evidenceFile, fullPage: false, animations: 'disabled', caret: 'hide' });
   }
@@ -635,6 +659,7 @@ async function selectAndCaptureRefinedLight(page, evidenceFile, evidence, timeou
     proof.logo.width > 0 && proof.logo.display !== 'none' && proof.companionLogoCount === 0 &&
     proof.companionTitle === 'SquareCoil Companion' && proof.darkSurfaceCount === 0 && proof.paleTextCount === 0,
   'Refined Light did not settle as one readable light palette with the website-only logo replacement', proof);
+  proof.focusTreatment = await verifyLightThemeFocus(page, 'REFINED_LIGHT');
   if (evidence) await page.screenshot({ path: evidenceFile, fullPage: false, animations: 'disabled', caret: 'hide' });
   return proof;
 }
@@ -707,8 +732,8 @@ async function verifyThemeEvidence(page, evidence, bingPermissionGranted, timeou
     expandedCount: document.querySelectorAll('#ussign-job-timer [data-action="settings-toggle-group"][aria-expanded="true"]').length,
     visibleRoutes: Array.from(document.querySelectorAll('#ussign-job-timer [data-action="settings-route"]')).filter(node => node.getClientRects().length > 0).map(node => node.dataset.view)
   }));
-  assertVisualCondition(settings.groupCount === 6 && settings.expandedCount === 1 &&
-    JSON.stringify(settings.visibleRoutes) === JSON.stringify(['timer-appearance','website-theme','dashboard','design-dashboard']),
+  assertVisualCondition(settings.groupCount === 7 && settings.expandedCount === 1 &&
+    JSON.stringify(settings.visibleRoutes) === JSON.stringify(['timer-appearance','website-theme']),
   'Settings did not render as one compact disclosure navigator', settings);
   if (evidence) {
     await page.screenshot({ path: evidence.files.settings, fullPage: false, animations: 'disabled', caret: 'hide' });
@@ -939,6 +964,8 @@ async function verifyVisualContract(page, evidence, timeout, options = {}) {
       const message = veil?.querySelector(':scope > div');
       const detailNode = veil?.querySelector('[data-sc-archive-veil-detail]');
       const shell = root?.querySelector('.sc-proto-shell');
+      const sourceSlot = root?.querySelector('.sc-tab-slot[data-drag-source="true"]');
+      const sourceTab = sourceSlot?.querySelector('.sc-tab');
       const style = veil ? getComputedStyle(veil) : null;
       const messageStyle = message ? getComputedStyle(message) : null;
       const rect = veil?.getBoundingClientRect();
@@ -950,6 +977,9 @@ async function verifyVisualContract(page, evidence, timeout, options = {}) {
         .map(key => [key, Math.round(candidate[key] * 100) / 100])) : null;
       return {
         dragging: root?.dataset.dragging || null,
+        dragAway: root?.dataset.dragAway || null,
+        sourceTabVisibility: sourceTab ? getComputedStyle(sourceTab).visibility : null,
+        sourceSlotWidth: sourceSlot?.getBoundingClientRect().width || 0,
         visible: veil?.dataset.visible || null,
         tone: veil?.dataset.tone || null,
         ariaHidden: veil?.getAttribute('aria-hidden') || null,
@@ -968,6 +998,8 @@ async function verifyVisualContract(page, evidence, timeout, options = {}) {
       };
     });
     assertVisualCondition(archiveVeil.dragging === 'true' && archiveVeil.visible === 'true' && archiveVeil.ariaHidden === 'false', 'Archive preview did not expose its drag state', archiveVeil);
+    assertVisualCondition(archiveVeil.dragAway === 'true' && archiveVeil.sourceTabVisibility === 'hidden' && archiveVeil.sourceSlotWidth > 0,
+      'Dragged job stayed visible in the tab strip after leaving it', archiveVeil);
     assertVisualCondition(archiveVeil.tone === 'eligible' && archiveVeil.title === 'Release to archive', 'Archive preview did not show the eligible release message', archiveVeil);
     assertVisualCondition(archiveVeil.detail === 'Hours and history stay saved.' && archiveVeil.detailColor === 'rgb(214, 224, 232)',
       'Archive preview detail is missing or too dim against its prompt', archiveVeil);
@@ -996,12 +1028,16 @@ async function verifyVisualContract(page, evidence, timeout, options = {}) {
   }, null, { timeout });
   const archiveCanceled = await page.evaluate(expectedTabCount => ({
     dragging: document.querySelector('#ussign-job-timer')?.dataset.dragging || null,
+    dragAway: document.querySelector('#ussign-job-timer')?.dataset.dragAway || null,
+    sourceMarked: Boolean(document.querySelector('#ussign-job-timer .sc-tab-slot[data-drag-source]')),
+    sourceVisibility: getComputedStyle(document.querySelector('#ussign-job-timer .sc-tab[data-context="job:910001"]')).visibility,
     veilVisible: document.querySelector('#ussign-job-timer .sc-archive-veil')?.dataset.visible || null,
     inactiveTabStillOpen: Boolean(document.querySelector('#ussign-job-timer .sc-tab[data-context="job:910001"]')),
     tabCount: document.querySelectorAll('#ussign-job-timer .sc-tab[data-context]').length,
     expectedTabCount
   }), tabCountBeforePreview);
-  assertVisualCondition(archiveCanceled.dragging === 'false' && archiveCanceled.veilVisible === 'false' &&
+  assertVisualCondition(archiveCanceled.dragging === 'false' && archiveCanceled.dragAway === 'false' &&
+    !archiveCanceled.sourceMarked && archiveCanceled.sourceVisibility === 'visible' && archiveCanceled.veilVisible === 'false' &&
     archiveCanceled.inactiveTabStillOpen && archiveCanceled.tabCount === archiveCanceled.expectedTabCount,
   'Archive preview was not canceled without changing the fake workspace', archiveCanceled);
 
@@ -1325,7 +1361,7 @@ async function main() {
         const root = document.querySelector('#ussign-job-timer');
         const shell = root?.querySelector('.sc-proto-shell');
         const tabs = root?.querySelector('.sc-tabs');
-        const focusTarget = root?.querySelector('.sc-proto-topbar [data-action="view"][data-view="home"]');
+        const focusTarget = root?.querySelector('.sc-proto-topbar [data-action="view"][data-view="settings"]');
         if (!shell || !tabs || !focusTarget) return false;
         window.__squarecoilStableUi = { root, shell, tabs, focusTarget };
         focusTarget.focus();
@@ -1371,6 +1407,9 @@ async function main() {
       }, null, { timeout });
       const selectedContext = await verifySelectedContext({ page, timeout, readBoundary, screenshot: evidence?.files.selectedContext });
       const visualProof = await verifyVisualContract(page, evidence, timeout, { bingPermissionGranted });
+      // Screenshot capture freezes finite CSS animations for deterministic
+      // pixels; the non-evidence smoke separately proves route motion.
+      await verifyUiPolish({ page, timeout, motionExpected: !evidence });
       await page.waitForTimeout(1_100);
       await sendSealedLabClockAction(page, 4);
       await page.waitForFunction(() => document.querySelector('#metric-state')?.textContent === 'Between jobs', null, { timeout });
@@ -1397,9 +1436,31 @@ async function main() {
           !root.querySelector('.sc-current-strip') &&
           root.querySelector('.sc-timer-card .sc-status')?.textContent.trim() === 'Not running';
       }, null, { timeout });
-      await page.click('#ussign-job-timer .sc-proto-topbar [data-action="view"][data-view="home"]');
-      await page.click('#ussign-job-timer .sc-home-view [data-action="view"][data-view="history"]');
+      if (!await page.locator('#ussign-job-timer .sc-quick-links').evaluate(node => node.open)) {
+        await page.click('#ussign-job-timer .sc-quick-links summary');
+      }
+      await page.click('#ussign-job-timer .sc-quick-links [data-action="view"][data-view="history"]');
       await page.waitForFunction(() => document.querySelectorAll('#ussign-job-timer [data-history-session]').length === 6, null, { timeout });
+      const historyScroll = await page.evaluate(() => {
+        const style = document.createElement('style');
+        style.id = 'sc-history-scroll-proof';
+        style.textContent = '#ussign-job-timer .sc-list-scroll[data-sc-list="history"]{max-height:100px!important}';
+        document.head.append(style);
+        const list = document.querySelector('#ussign-job-timer .sc-list-scroll[data-sc-list="history"]');
+        list.scrollTop = list.scrollHeight;
+        return { top: list.scrollTop, overflow: list.scrollHeight - list.clientHeight };
+      });
+      assert(historyScroll.overflow > 0 && historyScroll.top > 0,
+        'History rows should remain reachable by scrolling', historyScroll);
+      await page.waitForTimeout(1_150);
+      const retainedHistoryScroll = await page.evaluate(() => {
+        const list = document.querySelector('#ussign-job-timer .sc-list-scroll[data-sc-list="history"]');
+        const top = list?.scrollTop || 0;
+        document.querySelector('#sc-history-scroll-proof')?.remove();
+        return top;
+      });
+      assert(retainedHistoryScroll > 0, 'History scroll position was lost during a timer refresh',
+        { historyScroll, retainedHistoryScroll });
       const proof = await page.evaluate(() => ({
         labEvents: Number(document.querySelector('#metric-actions')?.textContent || 0),
         historyRows: document.querySelectorAll('#ussign-job-timer [data-history-session]').length,
@@ -1427,9 +1488,11 @@ async function main() {
       const designProfile = await verifyDesignProfileJourney({ page, origin: ORIGIN, timeout, readBoundary,
         screenshot: evidence?.files.designProfile });
       const quietNavigation = await verifyQuietGlassNavigation(page, evidence, timeout);
+      const quickTools = await verifyQuickToolsJourney({ page, origin: ORIGIN, timeout, readBoundary });
       const identity = { url: page.url(), title: await page.title() };
       const pageContent = await page.locator('body').innerText();
-      const nonblank = pageContent.includes('LOCAL SIMULATOR') && pageContent.includes('SquareCoil Companion');
+      const nonblank = pageContent.includes('LOCAL SIMULATOR') && pageContent.includes('Job Timer') &&
+        await page.locator('#ussign-job-timer .sc-timer-card').isVisible();
       const frameworkOverlay = await page.locator('vite-error-overlay, nextjs-portal [data-nextjs-dialog-overlay], #webpack-dev-server-client-overlay').count() > 0;
       assertVisualCondition(identity.url === `${ORIGIN}${LAB_ROOT}/index.html` && identity.title === 'SquareCoil Companion Lab', 'Smoke ended on the wrong page', identity);
       assertVisualCondition(nonblank && !frameworkOverlay, 'Rendered page was blank or showed a framework error overlay', { nonblank, frameworkOverlay });
@@ -1477,6 +1540,7 @@ async function main() {
           selectedContext,
           dashboard,
           designProfile,
+          quickTools,
           browserChecks: { identity, nonblank, frameworkOverlay, browserErrors, network,
             permissionProof,
             browserPath: 'Browser plugin not available; repository Playwright harness' },

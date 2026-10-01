@@ -455,7 +455,7 @@ function validateDataSafety(dataSafety, contexts) {
     if (![1, 2, 3].includes(preferences.preferencesSchemaVersion) || !isNonNegativeInteger(preferences.preferenceRevision)) {
       throw new Error('preferences-schema-invalid');
     }
-    if (!['LIGHT', 'DARK', 'AUTO'].includes(preferences.timerAppearance) ||
+    if (!['LIGHT', 'CLEAR', 'DARK', 'AUTO'].includes(preferences.timerAppearance) ||
         !['SOLID', 'GLASS'].includes(preferences.panelFinish) ||
         !['ORIGINAL', 'LIGHT_GLASS', 'REFINED_LIGHT', 'SLEEK_DARK'].includes(preferences.websiteTheme)) {
       throw new Error('preferences-appearance-invalid');
@@ -468,6 +468,11 @@ function validateDataSafety(dataSafety, contexts) {
     }
     if (preferences.dashboardAppearance !== undefined && !['SITE', 'LIGHT', 'DARK'].includes(preferences.dashboardAppearance)) {
       throw new Error('preferences-dashboard-appearance-invalid');
+    }
+    for (const key of ['quickFilePathsEnabled', 'quickClockControlsEnabled']) {
+      if (preferences[key] !== undefined && typeof preferences[key] !== 'boolean') {
+        throw new Error(`preferences-${key}-invalid`);
+      }
     }
     if (preferences.preferencesSchemaVersion >= 2 &&
         !['NONE', 'CINEMATIC'].includes(preferences.cinematicBackground)) {

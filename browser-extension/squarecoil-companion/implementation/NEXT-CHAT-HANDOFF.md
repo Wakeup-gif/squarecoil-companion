@@ -1,10 +1,14 @@
 # SquareCoil Companion Rebuild — Current Handoff
 
-**Current work: confirmed prototype integration (September 14, 2026).** The isolated branch is `codex/squarecoil-prototype-integration`, based on `07d6b575a7ac908ecff42d425eb245d58341670e`. The user authorized the exact September 9 Companion UI plus the separate September 7 analytics dashboard, canonical service wiring, themes/Bing setup, and a tested loadable candidate. The current Bing policy is narrow required installation/update host access with no runtime consent request; this supersedes prior optional-host/revocation instructions below. Exact Companion HTML recovery and new candidate acceptance remain open. Prior UI/theme/lab/Figma stabilization evidence below is historical and does not certify this change. See [the integration checkpoint](../docs/PROTOTYPE-INTEGRATION-2026-09-14.md) for current scope and proof.
+**Current work: combined worktree integration (October 1, 2026).** See the combined review candidate below for current branch and authorization. The confirmed prototype integration checkpoint is historical at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`; previous UI/theme/lab/Figma stabilization evidence remains source-bound.
 
-Updated: 2026-09-14
-Repository: `Wakeup-gif/test_repo`
-Branch: `codex/squarecoil-prototype-integration`
+Updated: 2026-10-01
+Repository: `Wakeup-gif/squarecoil-companion`
+Branch: `codex/squarecoil-combined-2026-10-01`
+
+## Combined review candidate
+
+Combine Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b`. Preserve the original worktrees. Integration evidence belongs in `implementation/COMBINED-WORKTREE-EVIDENCE.md`; previous acceptance below remains historical. The current authorization covers integration, testing and a review PR. Main merge, Store submission and live SquareCoil writes remain separate actions.
 
 ## Historical accepted gates
 

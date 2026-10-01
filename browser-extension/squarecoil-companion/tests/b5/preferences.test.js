@@ -16,6 +16,16 @@ const { legacyPreferencesFromSources } = require('../../src/content/trusted-tran
 
 const NOW = Date.parse('2026-08-28T15:00:00Z');
 
+test('UT-B5-PREF-015 Clear survives persistence and document validation without changing timing', () => {
+  const document = documentFixture();
+  const timing = JSON.stringify([document.timer, document.ledger]);
+  applyPreferenceCommand(document, { type: PREFERENCE_COMMANDS.INITIALIZE, expectedPreferenceRevision: 0,
+    legacyPreferences: { timerAppearance: 'CLEAR' } });
+  assert.equal(normalizePreferenceSnapshot(JSON.parse(JSON.stringify(document.dataSafety.preferences))).timerAppearance, 'CLEAR');
+  assert.equal(validateDocument(document), true);
+  assert.equal(JSON.stringify([document.timer, document.ledger]), timing);
+});
+
 function documentFixture() {
   return createEmptyDocument({ nowMs: NOW, workdayZone: 'UTC', datasetId: 'b5-preference-fixture' });
 }
@@ -78,6 +88,8 @@ test('UT-B5-PREF-012 page-local v0.7 Glass settings preserve appearance and limi
     dashboardProfile: 'OFF',
     dashboardEnabled: false,
     dashboardAppearance: 'SITE',
+    quickFilePathsEnabled: false,
+    quickClockControlsEnabled: false,
     yellowMinutes: 15,
     orangeMinutes: 45,
     redMinutes: 90
@@ -137,7 +149,8 @@ test('UT-B5-PREF-007 invalid restored values fall back to the current compatible
   const restored = restoredPreferenceStorage(current, { timerAppearance: 'invalid', yellowMinutes: 100, orangeMinutes: 10, redMinutes: 5 });
   assert.equal(restored.preferenceRevision, 4);
   assert.deepEqual(restored, { ...current, preferencesSchemaVersion: 3, preferenceRevision: 4,
-    cinematicBackground: 'NONE', dashboardProfile: 'OFF', dashboardEnabled: false, dashboardAppearance: 'SITE' });
+    cinematicBackground: 'NONE', dashboardProfile: 'OFF', dashboardEnabled: false, dashboardAppearance: 'SITE',
+    quickFilePathsEnabled: false, quickClockControlsEnabled: false });
 });
 
 test('UT-B5-PREF-008 canonical threshold presentation reads the committed preference revision and exact Today value', () => {
@@ -244,4 +257,25 @@ test('UT-B5-DASH-PREF-001 dashboard opt-in persists and restores through fenced 
     patch: { dashboardEnabled: false } }), /preference-revision-conflict/);
   document.dataSafety.preferences.dashboardEnabled = 'true';
   assert.throws(() => validateDocument(document), /preferences-dashboard-invalid/);
+});
+
+test('UT-B5-FEATURE-PREF-001 optional quick tools persist without changing timer or ledger', () => {
+  const document = documentFixture();
+  const before = { timer: structuredClone(document.timer), ledger: structuredClone(document.ledger) };
+  const result = applyPreferenceCommand(document, {
+    type: PREFERENCE_COMMANDS.COMMIT,
+    expectedPreferenceRevision: 0,
+    patch: { quickFilePathsEnabled: true, quickClockControlsEnabled: true }
+  });
+  assert.equal(result.preferences.quickFilePathsEnabled, true);
+  assert.equal(result.preferences.quickClockControlsEnabled, true);
+  const restored = restoredPreferenceStorage({}, document.dataSafety.preferences);
+  assert.equal(restored.quickFilePathsEnabled, true);
+  assert.equal(restored.quickClockControlsEnabled, true);
+  assert.deepEqual(document.timer, before.timer);
+  assert.deepEqual(document.ledger, before.ledger);
+  assert.equal(validateDocument(document), true);
+  assert.throws(() => validatePreferencePatch({ quickFilePathsEnabled: 'true' }), /preference-value-invalid/);
+  document.dataSafety.preferences.quickClockControlsEnabled = 'true';
+  assert.throws(() => validateDocument(document), /preferences-quickClockControlsEnabled-invalid/);
 });

@@ -4,6 +4,7 @@ const { TIMER_COMMANDS } = require('../timer/commands');
 const { DATA_COMMANDS, MAX_INPUT_BYTES } = require('../data/data-safety');
 const { DEFAULT_PREFERENCES, validLimits } = require('../preferences/preferences');
 const { prototypeDockStyle } = require('./prototype-dock-style');
+const { captureDockText, revealDockMorph } = require('./dock-morph');
 const {
   SUPPORT_EMAIL,
   TICKET_TYPES,
@@ -20,6 +21,25 @@ const {
 } = require('../workspace/model');
 
 const ROOT_ID = 'ussign-job-timer';
+const ICON_PATHS = Object.freeze({
+  pause: '<path d="M8 5v14M16 5v14"/>',
+  play: '<path d="m8 5 11 7-11 7Z"/>',
+  jobs: '<rect x="3" y="6" width="18" height="15" rx="3"/><path d="M8 6V3h8v3M3 12h18"/>',
+  history: '<path d="M3 11a9 9 0 1 1 2 7M3 4v7h7M12 7v5l3 2"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
+  timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6M12 2v3"/>',
+  home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>',
+  settings: '<path d="m9 3-.6 3-2.7 1.5-2.9-.9-1.5 2.6 2.3 2v3l-2.3 2 1.5 2.6 2.9-.9L8.4 19l.6 3h3l.6-3 2.7-1.5 2.9.9 1.5-2.6-2.3-2v-3l2.3-2-1.5-2.6-2.9.9L12.6 6 12 3Z" transform="translate(1 -1)"/><circle cx="11.5" cy="11.5" r="3"/>',
+  up: '<path d="m6 15 6-6 6 6"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  back: '<path d="m15 6-6 6 6 6"/>',
+  next: '<path d="m9 6 6 6-6 6"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  external: '<path d="M14 3h7v7M21 3 10 14M21 14v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h6"/>'
+});
+function uiIcon(name) {
+  return `<svg class="sc-ui-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICON_PATHS[name] || ICON_PATHS.timer}</svg>`;
+}
 const UI_STORAGE_DEFAULTS = Object.freeze({
   protoUiTheme: 'light',
   protoUiSurface: 'solid',
@@ -36,11 +56,11 @@ const UI_STORAGE_DEFAULTS = Object.freeze({
 const WORKSPACE_STORAGE_KEYS = new Set(['protoUiHiddenTabs', 'b3WorkspaceOrder', 'b3WorkspaceRevision']);
 const VIEW_IDS = new Set([
   'main', 'home', 'recent', 'overview', 'by-day', 'by-context', 'history', 'context-detail',
-  'settings', 'timer-appearance', 'website-theme', 'dashboard', 'design-dashboard', 'timer-limits', 'submit-ticket',
+  'settings', 'timer-appearance', 'website-theme', 'dashboard', 'design-dashboard', 'quick-file-paths', 'quick-clock', 'timer-limits', 'submit-ticket',
   'send-feedback', 'developer-support', 'data-tools', 'advanced-diagnostics'
 ]);
 const SETTINGS_VIEW_IDS = new Set([
-  'settings', 'timer-appearance', 'website-theme', 'dashboard', 'design-dashboard', 'timer-limits', 'submit-ticket',
+  'settings', 'timer-appearance', 'website-theme', 'dashboard', 'design-dashboard', 'quick-file-paths', 'quick-clock', 'timer-limits', 'submit-ticket',
   'send-feedback', 'developer-support', 'data-tools', 'advanced-diagnostics'
 ]);
 const TIMER_ACTIONS = Object.freeze({
@@ -103,6 +123,7 @@ function statusTone(status) {
 
 function friendlyCompanionStatus(core, timer) {
   if (core?.blocked) return Object.freeze({ label: 'Needs attention', tone: 'danger', message: 'Open Settings for recovery options.' });
+  if (!core || (!core.initialized && !timer && !String(core.status || '').includes('recover'))) return Object.freeze({ label: 'Connecting', tone: 'warning', message: 'Getting your saved workspace ready.' });
   if (timer?.running) return Object.freeze({ label: 'Working', tone: 'positive', message: 'Watching your current SquareCoil activity.' });
   if (core?.initialized && timer) return Object.freeze({ label: 'Ready', tone: 'positive', message: 'Companion is ready when you are.' });
   if (String(core?.status || '').includes('recover')) return Object.freeze({ label: 'Working', tone: 'warning', message: 'Reconnecting to this SquareCoil page.' });
@@ -155,7 +176,7 @@ function sameWorkspaceNode(current, next) {
   if (current.nodeType !== next.nodeType) return false;
   if (current.nodeType !== 1) return true;
   if (current.tagName !== next.tagName) return false;
-  for (const name of ['id', 'data-action', 'data-context', 'data-view', 'data-group', 'data-timer-action', 'data-data-type']) {
+  for (const name of ['id', 'data-action', 'data-context', 'data-view', 'data-group', 'data-timer-action', 'data-data-type', 'data-sc-view-key']) {
     if (current.getAttribute(name) !== next.getAttribute(name)) return false;
   }
   return true;
@@ -223,10 +244,16 @@ function createWorkspaceUi(options = {}) {
   let started = false;
   let disposed = false;
   let intervalId = null;
+  let viewHeightAnimation = null;
+  let cancelDockMorph = () => {};
+  let cycleHoverFrame = null;
+  let cycleHoverDirection = 0;
+  let cycleHoverTime = 0;
   let root = null;
   let selectedContextId = null;
   let lastOperationalContextId = null;
   let view = 'main';
+  let detailReturnView = 'main';
   let theme = 'LIGHT';
   let surface = 'SOLID';
   let websiteTheme = 'ORIGINAL';
@@ -234,6 +261,8 @@ function createWorkspaceUi(options = {}) {
   let dashboardProfile = 'OFF';
   let dashboardEnabled = false;
   let dashboardAppearance = 'SITE';
+  let quickFilePathsEnabled = false;
+  let quickClockControlsEnabled = false;
   let preferenceRevision = 0;
   let preferenceInitialized = false;
   let presentation = null;
@@ -262,6 +291,7 @@ function createWorkspaceUi(options = {}) {
   let archiveNoticeShouldReveal = false;
   let pendingFileMode = null;
   let advancedDiagnosticsOpen = false;
+  let quickToolsOpen = false;
   let pendingImport = null;
   let invalidCsvRows = null;
   const backupRestoreOptions = {
@@ -308,7 +338,15 @@ function createWorkspaceUi(options = {}) {
       const candidate = handle.coreSnapshot({ selectedContextId, historyLimit, deviceTimeZone: deviceTimeZone() });
       const currentRevision = lastGoodCore?.timer?.revision;
       const nextRevision = candidate?.timer?.revision;
-      if (!candidate?.timer) throw new Error(candidate?.readModelError || 'Companion data is not available yet.');
+      if (!candidate?.timer) {
+        if (lastGoodCore) { snapshotStale = true; return lastGoodCore; }
+        if (candidate && typeof candidate === 'object') {
+          adoptPreferenceState(candidate);
+          snapshotStale = false;
+          return candidate;
+        }
+        throw new Error('Companion data is not available yet.');
+      }
       if (Number.isSafeInteger(currentRevision) && (!Number.isSafeInteger(nextRevision) || nextRevision < currentRevision)) {
         snapshotStale = true;
         errorMessage = 'An older update was ignored; showing the latest saved values.';
@@ -351,6 +389,10 @@ function createWorkspaceUi(options = {}) {
       root.removeEventListener('dragend', onDragEnd); root.removeEventListener('change', onChange);
       root.removeEventListener('cancel', onFileCancel);
       root.removeEventListener('input', onInput); root.removeEventListener('keydown', onKeyDown);
+      root.removeEventListener('scroll', onTabScroll, true);
+      root.removeEventListener('wheel', onTabWheel);
+      root.removeEventListener('pointermove', onCyclePointerEnter, true);
+      root.removeEventListener('pointerleave', onCyclePointerLeave, true);
     }
     root = candidate;
     root.classList.add('sc-proto-root');
@@ -366,7 +408,154 @@ function createWorkspaceUi(options = {}) {
     root.addEventListener('cancel', onFileCancel);
     root.addEventListener('input', onInput);
     root.addEventListener('keydown', onKeyDown);
+    root.addEventListener('scroll', onTabScroll, true);
+    root.addEventListener('wheel', onTabWheel, { passive: false });
+    root.addEventListener('pointermove', onCyclePointerEnter, true);
+    root.addEventListener('pointerleave', onCyclePointerLeave, true);
     return root;
+  }
+
+  function stopCycleHover() {
+    cycleHoverDirection = 0;
+    cycleHoverTime = 0;
+    if (cycleHoverFrame !== null) window.cancelAnimationFrame?.(cycleHoverFrame);
+    cycleHoverFrame = null;
+    root?.querySelector?.('.sc-tabs')?.classList?.remove?.('is-hover-scrolling');
+  }
+
+  function updateTabCycleButtons() {
+    const strip = root?.querySelector?.('.sc-tabs');
+    const previous = root?.querySelector?.('.sc-tab-cycle-prev');
+    const next = root?.querySelector?.('.sc-tab-cycle-next');
+    if (!strip || !previous || !next) { stopCycleHover(); return; }
+    const maxScroll = Math.max(0, strip.scrollWidth - strip.clientWidth);
+    const hasLeft = maxScroll > 2 && strip.scrollLeft > 2;
+    const hasRight = maxScroll > 2 && strip.scrollLeft < maxScroll - 2;
+    const slots = [...strip.querySelectorAll('.sc-tab-slot')];
+    const selectedIndex = slots.findIndex(slot => slot.dataset.selected === 'true');
+    // Keep both arrows visible whenever the rail overflows. The dimmed arrow
+    // still marks the edge, while a click changes the selected job.
+    previous.hidden = maxScroll <= 2;
+    next.hidden = maxScroll <= 2;
+    previous.dataset.atEnd = selectedIndex <= 0 ? 'true' : 'false';
+    next.dataset.atEnd = selectedIndex >= slots.length - 1 ? 'true' : 'false';
+    strip.classList.toggle('has-left-overflow', hasLeft);
+    strip.classList.toggle('has-right-overflow', hasRight);
+    if ((cycleHoverDirection < 0 && !hasLeft) || (cycleHoverDirection > 0 && !hasRight)) stopCycleHover();
+  }
+
+  function onTabScroll(event) {
+    if (event.target?.matches?.('.sc-tabs')) updateTabCycleButtons();
+  }
+
+  function onTabWheel(event) {
+    const strip = event.target?.closest?.('.sc-tabs');
+    if (!strip || !root?.contains(strip) || Math.abs(event.deltaX || 0) < 1 ||
+      strip.scrollWidth <= strip.clientWidth + 2) return;
+    const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? strip.clientWidth : 1;
+    event.preventDefault?.();
+    strip.style.scrollBehavior = 'auto';
+    strip.scrollLeft += event.deltaX * scale;
+    updateTabCycleButtons();
+    window.requestAnimationFrame?.(() => {
+      if (strip.isConnected) strip.style.removeProperty('scroll-behavior');
+    });
+  }
+
+  function hoverCycleTick(time) {
+    if (!cycleHoverDirection) return;
+    const strip = root?.querySelector?.('.sc-tabs');
+    if (!strip) { stopCycleHover(); return; }
+    if (cycleHoverTime) strip.scrollLeft += cycleHoverDirection * 110 * Math.min(34, time - cycleHoverTime) / 1000;
+    cycleHoverTime = time;
+    updateTabCycleButtons();
+    if (cycleHoverDirection) cycleHoverFrame = window.requestAnimationFrame?.(hoverCycleTick) ?? null;
+  }
+
+  function onCyclePointerEnter(event) {
+    const button = event.target?.closest?.('.sc-tab-cycle:not([hidden])');
+    if (draggedContextId || !button) return;
+    const direction = button.dataset.direction === 'next' ? 1 : -1;
+    if (cycleHoverDirection === direction) return;
+    const strip = root?.querySelector?.('.sc-tabs');
+    const maxScroll = Math.max(0, (strip?.scrollWidth || 0) - (strip?.clientWidth || 0));
+    if ((direction > 0 && (strip?.scrollLeft || 0) >= maxScroll - 2) ||
+      (direction < 0 && (strip?.scrollLeft || 0) <= 2)) return;
+    stopCycleHover();
+    cycleHoverDirection = direction;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+      strip.scrollLeft += cycleHoverDirection * 64;
+      stopCycleHover();
+      updateTabCycleButtons();
+      return;
+    }
+    root?.querySelector?.('.sc-tabs')?.classList?.add?.('is-hover-scrolling');
+    // Move on entry so a live timer patch cannot make a brief edge hover inert.
+    strip.scrollLeft += direction * 14;
+    updateTabCycleButtons();
+    if (cycleHoverDirection) cycleHoverFrame = window.requestAnimationFrame?.(hoverCycleTick) ?? null;
+  }
+
+  function onCyclePointerLeave(event) {
+    if (event.target?.matches?.('.sc-tab-cycle')) stopCycleHover();
+  }
+
+  function cycleTabs(direction) {
+    stopCycleHover();
+    const strip = root?.querySelector?.('.sc-tabs');
+    const slots = [...(strip?.querySelectorAll?.('.sc-tab-slot') || [])];
+    if (!strip || slots.length < 2) return;
+    const selectedIndex = slots.findIndex(slot => slot.dataset.selected === 'true');
+    const index = Math.max(0, Math.min(slots.length - 1, selectedIndex + direction));
+    if (index === selectedIndex || !slots[index]?.dataset.context) return;
+    const contextId = slots[index].dataset.context;
+    selectContext(contextId);
+    focusTarget = `.sc-tab[data-context="${contextId}"]`;
+    render();
+    const nextStrip = root?.querySelector?.('.sc-tabs');
+    const nextSlot = [...(nextStrip?.querySelectorAll?.('.sc-tab-slot') || [])]
+      .find(slot => slot.dataset.context === contextId);
+    if (nextStrip && nextSlot) {
+      const left = Math.max(0, Math.min(nextStrip.scrollWidth - nextStrip.clientWidth, nextSlot.offsetLeft));
+      // A click snaps the chosen tab into view. Native smooth scrolling can be
+      // interrupted by the next live timer patch and leave it offscreen.
+      nextStrip.style.scrollBehavior = 'auto';
+      nextStrip.style.scrollSnapType = 'none';
+      nextStrip.scrollLeft = left;
+      window.requestAnimationFrame?.(() => {
+        if (!nextStrip.isConnected) return;
+        nextStrip.style.removeProperty('scroll-behavior');
+        nextStrip.style.removeProperty('scroll-snap-type');
+        updateTabCycleButtons();
+      });
+    }
+    updateTabCycleButtons();
+  }
+
+  function updateTitlePan() {
+    const clip = root?.querySelector?.('.sc-timer-card .sc-title-clip');
+    const title = clip?.querySelector?.('.sc-title');
+    if (!clip || !title) return;
+    const travel = Math.max(0, title.scrollWidth - clip.clientWidth);
+    clip.dataset.overflow = travel > 2 ? 'true' : 'false';
+    clip.style.setProperty('--sc-title-travel', `${Math.ceil(travel)}px`);
+    clip.style.setProperty('--sc-title-pan-duration', `${Math.max(2600, Math.ceil(travel * 32))}ms`);
+    clip.tabIndex = travel > 2 ? 0 : -1;
+  }
+
+  function closingTabGhost(slot) {
+    if (!slot?.cloneNode || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return null;
+    const bounds = slot.getBoundingClientRect();
+    const parent = root.getBoundingClientRect();
+    const ghost = slot.cloneNode(true);
+    ghost.classList.add('sc-tab-closing');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.inert = true;
+    ghost.style.left = `${bounds.left - parent.left}px`;
+    ghost.style.top = `${bounds.top - parent.top}px`;
+    ghost.style.width = `${bounds.width}px`;
+    ghost.style.height = `${bounds.height}px`;
+    return ghost;
   }
 
   async function loadPreferences() {
@@ -415,6 +604,8 @@ function createWorkspaceUi(options = {}) {
     dashboardProfile = next.dashboardProfile || DEFAULT_PREFERENCES.dashboardProfile;
     dashboardEnabled = next.dashboardEnabled === true;
     dashboardAppearance = next.dashboardAppearance || 'SITE';
+    quickFilePathsEnabled = next.quickFilePathsEnabled === true;
+    quickClockControlsEnabled = next.quickClockControlsEnabled === true;
     preferenceRevision = Number.isSafeInteger(next.preferenceRevision) ? next.preferenceRevision : 0;
     preferenceInitialized = next.initialized === true;
     presentation = core.presentation || presentation;
@@ -563,7 +754,7 @@ ${prototypeDockStyle(ROOT_ID)}
     const workspace = deriveTabWorkspace(eligibleRows(timer), { hiddenContextIds: [...hiddenTabs], durableOrder, selectedContextId, operationalContextId: timer.currentContextId });
     durableOrder = [...workspace.order];
     if (!workspace.visibleRows.length) return '';
-    return `<div class="sc-tabs" role="tablist" aria-label="Open job tabs"><span class="sc-tab-help" id="sc-tab-help">Swipe sideways to see more jobs. Drag tabs to reorder. Drag an inactive job onto the SquareCoil page to archive it without deleting its history.</span>${workspace.visibleRows.map(row => {
+    return `<div class="sc-tabs" role="tablist" aria-label="Open job tabs"><span class="sc-tab-help" id="sc-tab-help">Scroll to see more jobs. Drag tabs to reorder. Drag an inactive job onto the SquareCoil page to archive it without deleting its history.</span>${workspace.visibleRows.map(row => {
       const selected = row.contextId === selectedContextId;
       const archiveEligibility = archiveGestureEligibility(core, row.contextId, { snapshotStale, busy: Boolean(busyAction) });
       const canHide = archiveEligibility.eligible;
@@ -571,26 +762,25 @@ ${prototypeDockStyle(ROOT_ID)}
       const thresholdText = THRESHOLD_LABELS[threshold] || THRESHOLD_LABELS.NONE;
       const label = `${row.label}, Today ${formatDuration(row.todayMs, { compact: true })}, ${thresholdText}, ${statusLabel(row.status)}${marker(row)}`;
       const projectId = safeProjectId(row.projectId);
-      return `<div class="sc-tab-slot" data-context="${escapeHtml(row.contextId)}" data-selected="${selected}"><button class="sc-tab" draggable="true" role="tab" aria-selected="${selected}" aria-controls="sc-workspace-panel" aria-describedby="sc-tab-help" tabindex="${selected ? '0' : '-1'}" data-action="select" data-context="${escapeHtml(row.contextId)}" data-selected="${selected}" data-operational="${row.isOperational === true}" data-threshold="${escapeHtml(threshold)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span class="sc-dot" data-tone="${statusTone(row.status)}"></span><span class="sc-tab-label">${escapeHtml(row.shortLabel || row.label)}</span><span></span><span class="sc-tab-time">${formatDuration(row.todayMs, { compact: true })}${row.isProvisional ? '*' : ''} · ${escapeHtml(threshold)}</span></button>${projectId ? `<button class="sc-tab-open" data-action="open-job" data-project="${escapeHtml(projectId)}" aria-label="Open job ${escapeHtml(projectId)} in SquareCoil" title="Open in SquareCoil">↗</button>` : ''}${canHide ? `<button class="sc-tab-x" data-action="hide-tab" data-context="${escapeHtml(row.contextId)}" aria-label="Hide ${escapeHtml(row.label)} from the tab strip" title="Hide from tabs">×</button>` : ''}</div>`;
-    }).join('')}</div>`;
+      return `<div class="sc-tab-slot" data-context="${escapeHtml(row.contextId)}" data-selected="${selected}"><button class="sc-tab" draggable="true" role="tab" aria-selected="${selected}" aria-controls="sc-workspace-panel" aria-describedby="sc-tab-help" tabindex="${selected ? '0' : '-1'}" data-action="select" data-context="${escapeHtml(row.contextId)}" data-selected="${selected}" data-operational="${row.isOperational === true}" data-threshold="${escapeHtml(threshold)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span class="sc-dot" data-tone="${statusTone(row.status)}"></span><span class="sc-tab-label">${escapeHtml(row.shortLabel || row.label)}</span><span></span><span class="sc-tab-time">${formatDuration(row.todayMs, { compact: true })}${row.isProvisional ? '*' : ''}</span></button>${projectId ? `<button class="sc-tab-open" data-action="open-job" data-project="${escapeHtml(projectId)}" aria-label="Open job ${escapeHtml(projectId)} in SquareCoil" title="Open in SquareCoil">${uiIcon('external')}</button>` : ''}${canHide ? `<button class="sc-tab-x" data-action="hide-tab" data-context="${escapeHtml(row.contextId)}" aria-label="Hide ${escapeHtml(row.label)} from the tab strip" title="Hide from tabs">${uiIcon('close')}</button>` : ''}</div>`;
+    }).join('')}</div><button class="sc-tab-cycle sc-tab-cycle-prev" data-action="cycle-tabs" data-direction="prev" aria-label="Previous job tabs" title="Previous jobs" hidden>${uiIcon('back')}</button><button class="sc-tab-cycle sc-tab-cycle-next" data-action="cycle-tabs" data-direction="next" aria-label="Next job tabs" title="Next jobs" hidden>${uiIcon('next')}</button>`;
   }
 
   function viewHeader(title, backView = 'main') {
     const settingsRoute = SETTINGS_VIEW_IDS.has(view);
     const effectiveBack = settingsReturnView === view ? 'settings' : backView;
-    return `<div class="sc-view-head"><button class="sc-icon-btn" data-action="${settingsRoute ? 'settings-back' : 'view'}" data-view="${escapeHtml(effectiveBack)}" aria-label="Back">‹</button><strong tabindex="-1" data-sc-view-heading>${escapeHtml(title)}</strong>${settingsRoute ? '<button class="sc-icon-btn" data-action="settings-close" aria-label="Close Settings">×</button>' : ''}</div>`;
+    return `<div class="sc-view-head"><button class="sc-icon-btn" data-action="${settingsRoute ? 'settings-back' : 'view'}" data-view="${escapeHtml(effectiveBack)}" aria-label="Back">${uiIcon('back')}</button><strong tabindex="-1" data-sc-view-heading>${escapeHtml(title)}</strong>${settingsRoute ? '<button class="sc-icon-btn" data-action="settings-close" aria-label="Close Settings">' + uiIcon('close') + '</button>' : ''}</div>`;
   }
   function openButton(row, label = 'Open Job') { return safeProjectId(row?.projectId) ? `<button data-action="open-job" data-project="${escapeHtml(row.projectId)}">${escapeHtml(label)}</button>` : ''; }
-  function searchMarkup() { return `<form class="sc-search" data-sc-search-form><input name="projectId" inputmode="search" autocomplete="off" placeholder="Find known context or open job #"><button type="submit">Find</button></form>`; }
+  function searchMarkup() { return `<form class="sc-search" data-sc-search-form><input name="projectId" inputmode="search" autocomplete="off" aria-label="Find a job" placeholder="Find a job"><button type="submit">Find</button></form>`; }
 
   function mainNavigationMarkup() {
-    return '<div class="sc-nav-grid"><button data-action="view" data-view="recent"><strong>Recent jobs</strong><small>Visibility, recency, status</small></button><button data-action="view" data-view="overview"><strong>Time overview</strong><small>Today, week, day, context</small></button><button data-action="view" data-view="history"><strong>History</strong><small>Completed Companion sessions</small></button><button data-action="view" data-view="settings"><strong>Settings</strong><small>Appearance, tracking and privacy</small></button></div>';
+    return '<div class="sc-nav-grid"><button data-action="view" data-view="recent"><strong>Jobs</strong><small>Recent work</small></button><button data-action="view" data-view="overview"><strong>Time</strong><small>Today and this week</small></button><button data-action="view" data-view="history"><strong>History</strong><small>Completed sessions</small></button><button data-action="view" data-view="settings"><strong>Settings</strong><small>Appearance and privacy</small></button></div>';
   }
 
   function currentStrip(timer, operational, selected) {
-    if (!operational) return '';
-    const different = operational.contextId !== selected?.contextId;
-    return `<div class="sc-current-strip"><div><div class="sc-eyebrow">Working now · actually running / observed</div><div class="sc-row-title">${escapeHtml(operational.label)}</div><div class="sc-row-meta">Today ${formatDuration(operational.todayMs, { compact: true })}${marker(operational)} · ${escapeHtml(statusLabel(operational.status))}</div></div>${different ? `<button data-action="select" data-context="${escapeHtml(operational.contextId)}">View current</button>` : ''}</div>`;
+    if (!operational || operational.contextId === selected?.contextId) return '';
+    return `<div class="sc-current-strip"><span title="${escapeHtml(operational.label)}">Working now · ${escapeHtml(operational.label)}</span></div>`;
   }
 
   function homeView(timer) {
@@ -598,8 +788,8 @@ ${prototypeDockStyle(ROOT_ID)}
     const currentLabel = operational?.label || 'No current job';
     const currentDetail = operational
       ? `${statusLabel(operational.status)} · Today ${formatDuration(operational.todayMs, { compact: true })}${marker(operational)}`
-      : 'Open a SquareCoil job to begin. Your Companion tools are ready.';
-    return `<div class="sc-view sc-home-view">${viewHeader('Home')}<p class="sc-home-intro">Your current context, time and Companion destinations in one place.</p><div class="sc-home-section">Current timer</div><div class="sc-home-current"><div class="sc-home-current-copy"><strong>${escapeHtml(currentLabel)}</strong><small>${escapeHtml(currentDetail)}</small></div>${operational ? `<span class="sc-home-current-time">${formatDuration(operational.todayMs)}</span>` : ''}<button data-action="view" data-view="main">View timer</button></div><div class="sc-home-section">Explore Companion</div>${mainNavigationMarkup()}<div class="sc-home-section">Find job / context</div>${searchMarkup()}</div>`;
+      : 'Open a SquareCoil job to begin. ';
+    return `<div class="sc-view sc-home-view">${viewHeader('Home')}<p class="sc-home-intro">Your time at a glance.</p><div class="sc-home-section">Current timer</div><div class="sc-home-current"><div class="sc-home-current-copy"><strong>${escapeHtml(currentLabel)}</strong><small>${escapeHtml(currentDetail)}</small></div>${operational ? `<span class="sc-home-current-time">${formatDuration(operational.todayMs)}</span>` : ''}<button data-action="view" data-view="main">View timer</button></div><div class="sc-home-section">Tools</div>${mainNavigationMarkup()}<div class="sc-home-section">Find a job</div>${searchMarkup()}</div>`;
   }
 
   function mainView(timer) {
@@ -608,55 +798,57 @@ ${prototypeDockStyle(ROOT_ID)}
     if (!selected) return `<div class="sc-view"><div class="sc-empty"><strong>No recent jobs yet.</strong><br>Open a SquareCoil job to begin. Settings, history and local data tools are available now.</div>${mainNavigationMarkup()}${searchMarkup()}</div>`;
     const selectedOperational = selected.contextId === timer.currentContextId;
     const status = selected.status || 'NOT_RUNNING';
-    const activeSession = selectedOperational && status.startsWith('RUNNING') && timer.running;
     const actions = [];
-    if (selectedOperational && timer.availableActions?.localPause) actions.push('<button class="sc-primary" data-action="timer" data-timer-action="pause">Pause locally</button>');
+    if (selectedOperational && timer.availableActions?.localPause) actions.push(`<button class="sc-primary" data-action="timer" data-timer-action="pause">${uiIcon('pause')}<span>Pause locally</span></button>`);
     if (selectedOperational && timer.availableActions?.resume) { actions.push('<button class="sc-primary" data-action="timer" data-timer-action="resume">Resume</button>'); actions.push('<button data-action="timer" data-timer-action="fresh">Start fresh</button>'); }
     if (selectedOperational && timer.availableActions?.localResume) actions.push('<button class="sc-primary" data-action="timer" data-timer-action="localResume">Resume locally</button>');
-    const open = openButton(selected); if (open) actions.push(open);
-    actions.push(`<button data-action="context-detail" data-context="${escapeHtml(selected.contextId)}">Context detail</button>`);
+    const open = safeProjectId(selected.projectId) ? `<button data-action="open-job" data-project="${escapeHtml(selected.projectId)}">${uiIcon('external')}<span>Open Job</span></button>` : ''; if (open) actions.push(open);
+    actions.push(`<button data-action="context-detail" data-context="${escapeHtml(selected.contextId)}">${uiIcon('info')}<span>Details</span></button>`);
     const pending = selectedOperational && timer.pending ? `<div class="sc-note">Choose Resume or Start fresh. Time is not added until you choose.</div>` : '';
     const hold = selected.isSafetyHeld ? '<div class="sc-note">Time is paused here while Companion verifies the page. Your SquareCoil clock was not changed.</div>' : '';
     const native = timer.nativeDisposition && timer.nativeDisposition !== 'TRACKABLE_CONTEXT'
-      ? '<div class="sc-note">This page is visible, but it is not currently eligible for local time tracking.</div>' : '';
-    return `<div class="sc-view">${currentStrip(timer, operational, selected)}<section class="sc-timer-card"><div class="sc-eyebrow">${selected.kind === 'job' ? `Job ${escapeHtml(selected.projectId)}` : 'General context'}</div><div class="sc-title">${escapeHtml(selected.label)}</div><div class="sc-status" data-tone="${statusTone(status)}"><span class="sc-dot" data-tone="${statusTone(status)}"></span>${escapeHtml(statusLabel(status))}</div><div class="sc-metrics"><div class="sc-metric"><span class="sc-eyebrow">Today</span><strong>${formatDuration(selected.todayMs)}${selected.isProvisional ? '*' : ''}</strong></div><div class="sc-metric"><span class="sc-eyebrow">${selected.kind === 'job' ? 'Job total' : 'Context total'}</span><strong>${formatDuration(selected.totalMs)}${selected.isProvisional ? '*' : ''}</strong></div></div>${activeSession ? `<div class="sc-session"><span>Current session${timer.running.provisional ? ' · provisional' : ''}</span><strong>${formatDuration(timer.running.elapsedMs)}</strong></div>` : ''}${pending}${hold}${native}<div class="sc-actions">${busyAction ? '<button disabled>Working…</button>' : actions.join('')}</div></section><details class="sc-quick-links"><summary>More Companion tools</summary>${mainNavigationMarkup()}${searchMarkup()}</details></div>`;
+      ? '<div class="sc-note">Tracking isn’t available on this page.</div>' : '';
+    const jobId = selected.kind === 'job' ? `<span class="sc-job-id">Job ${escapeHtml(selected.projectId)}</span>` : '';
+    const viewCurrent = operational && operational.contextId !== selected.contextId
+      ? `<button class="sc-view-current" data-action="select" data-context="${escapeHtml(operational.contextId)}" aria-label="View current job, ${escapeHtml(operational.label)}">View current</button>` : '';
+    return `<div class="sc-view">${currentStrip(timer, operational, selected)}<section class="sc-timer-card" data-threshold="${escapeHtml(selected.thresholdLevel || 'NONE')}"><div class="sc-timer-heading"><div class="sc-job-identity">${jobId}<div class="sc-title-clip" title="${escapeHtml(selected.label)}"><div class="sc-title">${escapeHtml(selected.label)}</div></div></div><div class="sc-status" data-tone="${statusTone(status)}"><span class="sc-dot" data-tone="${statusTone(status)}"></span>${escapeHtml(statusLabel(status))}</div></div><div class="sc-metrics"><div class="sc-metric"><span class="sc-eyebrow sc-visually-hidden">Today</span><strong>${formatDuration(selected.todayMs)}${selected.isProvisional ? '*' : ''}</strong></div><div class="sc-total-area">${viewCurrent}<div class="sc-metric sc-metric-total"><span class="sc-eyebrow">${selected.kind === 'job' ? 'Job total' : 'Total'}</span><strong>${formatDuration(selected.totalMs)}${selected.isProvisional ? '*' : ''}</strong></div></div></div>${pending}${hold}${native}<div class="sc-actions">${busyAction ? '<button disabled>Working…</button>' : actions.join('')}</div></section><details class="sc-quick-links"${quickToolsOpen ? ' open' : ''}><summary>More tools</summary><div class="sc-tool-panel"><div class="sc-tool-buttons"><button data-action="view" data-view="recent">${uiIcon('jobs')}<span>Jobs</span></button><button data-action="view" data-view="overview">${uiIcon('timer')}<span>Overview</span></button><button data-action="view" data-view="history">${uiIcon('history')}<span>History</span></button></div>${searchMarkup()}</div></details></div>`;
   }
 
   function recentView(timer, core) {
     const rows = eligibleRows(timer);
     const workspace = deriveTabWorkspace(rows, { hiddenContextIds: [...hiddenTabs], durableOrder, selectedContextId, operationalContextId: timer.currentContextId });
-    return `<div class="sc-view">${viewHeader('Recent Jobs')}<div class="sc-actions"><button data-action="data-simple" data-data-type="${DATA_COMMANDS.ARCHIVE_ELIGIBLE}">Archive eligible</button><button data-action="data-simple" data-data-type="${DATA_COMMANDS.CLEAR_RECENT}">Clear Recent</button></div><div class="sc-note">Clear Recent only removes inactive jobs from this workspace. It never deletes their Companion history.</div>${rows.length ? rows.map(row => {
+    return `<div class="sc-view">${viewHeader('Recent Jobs')}<div class="sc-actions"><button data-action="data-simple" data-data-type="${DATA_COMMANDS.ARCHIVE_ELIGIBLE}">Archive eligible</button><button data-action="data-simple" data-data-type="${DATA_COMMANDS.CLEAR_RECENT}">Clear list</button></div><div class="sc-note">Clearing this list keeps your saved time.</div><div class="sc-list-scroll" data-sc-list="recent" role="region" aria-label="Recent jobs" tabindex="0">${rows.length ? rows.map(row => {
       const disposition = workspace.dispositionByContextId[row.contextId] || 'OVERFLOW';
       const archiveEligibility = archiveGestureEligibility(core, row.contextId, { snapshotStale, busy: Boolean(busyAction) });
       return `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">Today ${formatDuration(row.todayMs, { compact: true })}${marker(row)} · Total ${formatDuration(row.totalMs, { compact: true })} · ${escapeHtml(statusLabel(row.status))}</div><div class="sc-row-meta">Last seen ${escapeHtml(formatDateTime(row.lastSeenAtMs))} · Last recorded ${escapeHtml(formatDateTime(row.lastRecordedActivityAtMs))} · ${escapeHtml(disposition.toLowerCase())}</div></div><div class="sc-row-actions"><button data-action="select" data-context="${escapeHtml(row.contextId)}">View</button><button data-action="data-context" data-data-type="${DATA_COMMANDS.ARCHIVE_CONTEXT}" data-context="${escapeHtml(row.contextId)}" title="${escapeHtml(archiveEligibility.message)}" ${archiveEligibility.eligible ? '' : 'disabled'}>Archive</button>${disposition !== 'VISIBLE' ? `<button data-action="show-tab" data-context="${escapeHtml(row.contextId)}">Show in Tabs</button>` : ''}${openButton(row, 'Open')}</div></div>`;
-    }).join('') : '<div class="sc-empty">No recent jobs in the workspace.</div>'}</div>`;
+    }).join('') : '<div class="sc-empty">No recent jobs in the workspace.</div>'}</div></div>`;
   }
 
   function overviewView(timer) {
     const rows = timer.todayByContext || [];
-    const basis = timer.timeBasis?.disclosed ? `<div class="sc-note">${escapeHtml(timer.timeBasis.label)}${timer.timeBasis.deviceMismatch ? ` · device uses ${escapeHtml(timer.timeBasis.deviceTimeZone)}` : ''}${timer.timeBasis.diagnostic ? ` · ${escapeHtml(timer.timeBasis.diagnostic)}` : ''}</div>` : '';
-    return `<div class="sc-view">${viewHeader('Time Overview')}<div class="sc-summary-grid"><div class="sc-summary"><span class="sc-eyebrow">Today total</span><strong>${formatDuration(timer.todayTotalMs)}${timer.todayTotalIsProvisional ? '*' : ''}</strong></div><div class="sc-summary"><span class="sc-eyebrow">This week</span><strong>${formatDuration(timer.weekTotalMs)}${timer.weekTotalIsProvisional ? '*' : ''}</strong></div></div><div class="sc-eyebrow">Today by job / context</div>${rows.length ? rows.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">${escapeHtml(statusLabel(row.status))}${marker(row)}</div></div><button data-action="context-detail" data-context="${escapeHtml(row.contextId)}">${formatDuration(row.durationMs, { compact: true })}</button></div>`).join('') : '<div class="sc-empty">No Companion time recorded today.</div>'}<div class="sc-nav-grid"><button data-action="view" data-view="by-day"><strong>By Day</strong><small>Persisted workday dates</small></button><button data-action="view" data-view="by-context"><strong>By Job / Context</strong><small>Recorded activity order</small></button></div>${basis}<div class="sc-note">Companion time is your local productivity record, not official payroll time.</div></div>`;
+    const basis = timer.timeBasis?.disclosed ? `<div class="sc-note">Workday time zone: ${escapeHtml(timer.timeBasis.label)}${timer.timeBasis.deviceMismatch ? ` · Your device: ${escapeHtml(timer.timeBasis.deviceTimeZone)}` : ''}</div>` : '';
+    return `<div class="sc-view">${viewHeader('Time Overview')}<div class="sc-summary-grid"><div class="sc-summary"><span class="sc-eyebrow">Today total</span><strong>${formatDuration(timer.todayTotalMs)}${timer.todayTotalIsProvisional ? '*' : ''}</strong></div><div class="sc-summary"><span class="sc-eyebrow">This week</span><strong>${formatDuration(timer.weekTotalMs)}${timer.weekTotalIsProvisional ? '*' : ''}</strong></div></div><div class="sc-eyebrow">Today by job</div><div class="sc-list-scroll" data-sc-list="overview" role="region" aria-label="Today by job" tabindex="0">${rows.length ? rows.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">${escapeHtml(statusLabel(row.status))}${marker(row)}</div></div><button data-action="context-detail" data-context="${escapeHtml(row.contextId)}">${formatDuration(row.durationMs, { compact: true })}</button></div>`).join('') : '<div class="sc-empty">No Companion time recorded today.</div>'}</div><div class="sc-nav-grid"><button data-action="view" data-view="by-day"><strong>By Day</strong><small>Daily totals</small></button><button data-action="view" data-view="by-context"><strong>By job</strong><small>Job totals</small></button></div>${basis}<div class="sc-note">Companion tracks your own time. SquareCoil’s official time is unchanged.</div></div>`;
   }
 
   function byDayView(timer) {
     const rows = timer.byDayRows || [];
-    return `<div class="sc-view">${viewHeader('By Day', 'overview')}${rows.length ? rows.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.localDate)}</div><div class="sc-row-meta">${row.contextCount} context${row.contextCount === 1 ? '' : 's'}${row.topContextLabel ? ` · top ${escapeHtml(row.topContextLabel)} ${formatDuration(row.topContextDurationMs, { compact: true })}` : ''}</div></div><strong>${formatDuration(row.durationMs, { compact: true })}</strong></div>`).join('') : '<div class="sc-empty">No dated Companion history yet.</div>'}</div>`;
+    return `<div class="sc-view">${viewHeader('By Day', 'overview')}${rows.length ? rows.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.localDate)}</div><div class="sc-row-meta">${row.contextCount} job${row.contextCount === 1 ? '' : 's'}${row.topContextLabel ? ` · top ${escapeHtml(row.topContextLabel)} ${formatDuration(row.topContextDurationMs, { compact: true })}` : ''}</div></div><strong>${formatDuration(row.durationMs, { compact: true })}</strong></div>`).join('') : '<div class="sc-empty">No daily time yet.</div>'}</div>`;
   }
 
   function byContextView(timer) {
     const rows = timer.byContextRows || [];
-    return `<div class="sc-view">${viewHeader('By Job / Context', 'overview')}${rows.length ? rows.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">Today ${formatDuration(row.todayMs, { compact: true })} · Last recorded ${escapeHtml(formatDateTime(row.lastRecordedActivityAtMs))}${row.legacyUnattributedMs ? ` · older undated ${formatDuration(row.legacyUnattributedMs, { compact: true })}` : ''}</div></div><button data-action="context-detail" data-context="${escapeHtml(row.contextId)}">${formatDuration(row.totalMs, { compact: true })}</button></div>`).join('') : '<div class="sc-empty">No authoritative Companion time yet.</div>'}</div>`;
+    return `<div class="sc-view">${viewHeader('By job', 'overview')}${rows.length ? rows.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">Today ${formatDuration(row.todayMs, { compact: true })} · Last active ${escapeHtml(formatDateTime(row.lastRecordedActivityAtMs))}${row.legacyUnattributedMs ? ` · Earlier time ${formatDuration(row.legacyUnattributedMs, { compact: true })}` : ''}</div></div><button data-action="context-detail" data-context="${escapeHtml(row.contextId)}">${formatDuration(row.totalMs, { compact: true })}</button></div>`).join('') : '<div class="sc-empty">No time recorded yet.</div>'}</div>`;
   }
 
   function historyView(timer) {
     const rows = timer.historyRows || [];
-    return `<div class="sc-view">${viewHeader('History')}${rows.length ? rows.map(row => `<div class="sc-row" data-history-session="${escapeHtml(row.sessionId || '')}"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">${escapeHtml(row.localDates?.join(' → ') || row.localDate)} · ${escapeHtml(formatClockTime(row.startAtMs))} to ${escapeHtml(formatClockTime(row.endAtMs))}</div></div><strong>${formatDuration(row.durationMs, { compact: true })}</strong></div>`).join('') : '<div class="sc-empty">No completed Companion sessions yet.</div>'}${timer.historyHasMore ? `<div class="sc-actions"><button data-action="load-history">Load more (${timer.historyRows.length} of ${timer.historyTotal})</button></div>` : ''}<div class="sc-note">Current work stays on the Home screen until the session is complete.</div></div>`;
+    return `<div class="sc-view">${viewHeader('History')}<div class="sc-list-scroll" data-sc-list="history" role="region" aria-label="Completed sessions" tabindex="0">${rows.length ? rows.map(row => `<div class="sc-row" data-history-session="${escapeHtml(row.sessionId || '')}"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">${escapeHtml(row.localDates?.join(' → ') || row.localDate)} · ${escapeHtml(formatClockTime(row.startAtMs))} to ${escapeHtml(formatClockTime(row.endAtMs))}</div></div><strong>${formatDuration(row.durationMs, { compact: true })}</strong></div>`).join('') : '<div class="sc-empty">No completed Companion sessions yet.</div>'}</div>${timer.historyHasMore ? `<div class="sc-actions"><button data-action="load-history">Load more (${timer.historyRows.length} of ${timer.historyTotal})</button></div>` : ''}<div class="sc-note">Current work stays on the timer until the session is complete.</div></div>`;
   }
 
   function contextDetailView(timer) {
     const detail = timer.contextDetails?.[selectedContextId] || null;
-    if (!detail) return `<div class="sc-view">${viewHeader('Context Detail', 'overview')}<div class="sc-empty">No matching job found.</div></div>`;
-    return `<div class="sc-view">${viewHeader('Context Detail', 'overview')}<div class="sc-title">${escapeHtml(detail.label)}</div><div class="sc-status" data-tone="${statusTone(detail.status)}">${escapeHtml(statusLabel(detail.status))}${marker(detail)}</div><div class="sc-summary-grid"><div class="sc-summary"><span class="sc-eyebrow">Recorded Today</span><strong>${formatDuration(detail.todayMs)}</strong></div><div class="sc-summary"><span class="sc-eyebrow">This Week</span><strong>${formatDuration(detail.weekMs)}</strong></div><div class="sc-summary"><span class="sc-eyebrow">Context Total</span><strong>${formatDuration(detail.totalMs)}</strong></div><div class="sc-summary"><span class="sc-eyebrow">Dated history</span><strong>${formatDuration(detail.datedMs)}</strong></div></div>${detail.legacyUnattributedMs ? `<div class="sc-note">Older time without date detail: ${formatDuration(detail.legacyUnattributedMs)}. It is included in Total but not fabricated into Today, Week, or daily history.</div>` : ''}<div class="sc-eyebrow" style="margin-top:12px">Daily attributed totals</div>${detail.dailyRows?.length ? detail.dailyRows.slice().reverse().map(day => `<div class="sc-row"><span>${escapeHtml(day.localDate)}</span><strong>${formatDuration(day.durationMs, { compact: true })}</strong></div>`).join('') : '<div class="sc-empty">No dated history for this context.</div>'}<div class="sc-eyebrow" style="margin-top:12px">Finalized logical sessions</div>${detail.finalizedSessions?.length ? detail.finalizedSessions.slice(0, 20).map(session => `<div class="sc-row"><span>${escapeHtml(formatDateTime(session.endAtMs))}</span><strong>${formatDuration(session.durationMs, { compact: true })}</strong></div>`).join('') : '<div class="sc-empty">No finalized sessions.</div>'}<div class="sc-actions">${openButton(detail)}</div></div>`;
+    if (!detail) return `<div class="sc-view">${viewHeader('Details', detailReturnView)}<div class="sc-empty">No matching job found.</div></div>`;
+    return `<div class="sc-view">${viewHeader('Details', detailReturnView)}<div class="sc-title">${escapeHtml(detail.label)}</div><div class="sc-status" data-tone="${statusTone(detail.status)}">${escapeHtml(statusLabel(detail.status))}${marker(detail)}</div><div class="sc-summary-grid"><div class="sc-summary"><span class="sc-eyebrow">Recorded Today</span><strong>${formatDuration(detail.todayMs)}</strong></div><div class="sc-summary"><span class="sc-eyebrow">This Week</span><strong>${formatDuration(detail.weekMs)}</strong></div><div class="sc-summary"><span class="sc-eyebrow">Total</span><strong>${formatDuration(detail.totalMs)}</strong></div><div class="sc-summary"><span class="sc-eyebrow">Dated history</span><strong>${formatDuration(detail.datedMs)}</strong></div></div>${detail.legacyUnattributedMs ? `<div class="sc-note">Undated time: ${formatDuration(detail.legacyUnattributedMs)}. Included in the total only.</div>` : ''}<div class="sc-eyebrow" style="margin-top:12px">Daily totals</div>${detail.dailyRows?.length ? detail.dailyRows.slice().reverse().map(day => `<div class="sc-row"><span>${escapeHtml(day.localDate)}</span><strong>${formatDuration(day.durationMs, { compact: true })}</strong></div>`).join('') : '<div class="sc-empty">No daily history yet.</div>'}<div class="sc-eyebrow" style="margin-top:12px">Past sessions</div>${detail.finalizedSessions?.length ? detail.finalizedSessions.slice(0, 20).map(session => `<div class="sc-row"><span>${escapeHtml(formatDateTime(session.endAtMs))}</span><strong>${formatDuration(session.durationMs, { compact: true })}</strong></div>`).join('') : '<div class="sc-empty">No past sessions.</div>'}<div class="sc-actions">${openButton(detail)}</div></div>`;
   }
 
   function settingsNav(viewName, title, detail) {
@@ -670,16 +862,16 @@ ${prototypeDockStyle(ROOT_ID)}
   function settingsGroup(group, title, summary, contents) {
     const expanded = expandedSettingsGroup === group;
     const panelId = `sc-settings-group-${group}`;
-    return `<section class="sc-settings-group" data-expanded="${expanded}"><button class="sc-settings-group-toggle" data-action="settings-toggle-group" data-group="${escapeHtml(group)}" aria-expanded="${expanded}" aria-controls="${panelId}"><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(summary)}</small></span><svg class="sc-settings-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m6.5 8 3.5 3.5L13.5 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="sc-settings-group-panel" id="${panelId}" role="region" aria-label="${escapeHtml(title)} settings"${expanded ? '' : ' hidden'}><div class="sc-nav-grid">${contents}</div></div></section>`;
+    return `<section class="sc-settings-group" data-group="${escapeHtml(group)}" data-expanded="${expanded}"><button class="sc-settings-group-toggle" data-action="settings-toggle-group" data-group="${escapeHtml(group)}" aria-expanded="${expanded}" aria-controls="${panelId}"><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(summary)}</small></span><svg class="sc-settings-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m6.5 8 3.5 3.5L13.5 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="sc-settings-group-panel" id="${panelId}" role="region" aria-label="${escapeHtml(title)} settings"${expanded ? '' : ' hidden'}><div class="sc-nav-grid">${contents}</div></div></section>`;
   }
 
   function websiteThemeLabel(value) {
     return ({
-      ORIGINAL: 'Native / Off',
-      SLEEK_DARK: 'Dark Glass v2.3.4',
-      LIGHT_GLASS: 'Light Glass v1.0.0',
-      REFINED_LIGHT: 'Refined Light v1.0.1'
-    })[value] || 'Native / Off';
+      ORIGINAL: 'Original',
+      SLEEK_DARK: 'Dark Glass',
+      LIGHT_GLASS: 'Light Glass',
+      REFINED_LIGHT: 'Refined Light'
+    })[value] || 'Original';
   }
 
   function optionalStateLabel(feature) {
@@ -718,8 +910,14 @@ ${prototypeDockStyle(ROOT_ID)}
   }
 
   function settingsView() {
-    const appearanceSummary = `${theme === 'AUTO' ? 'System' : theme === 'DARK' ? 'Dark' : 'Light'} Companion · ${websiteThemeLabel(websiteTheme)}`;
-    return `<div class="sc-view">${viewHeader('Settings')}<p class="sc-settings-intro">Choose a category, then open only the option you need.</p><div class="sc-settings-list">${settingsGroup('appearance', 'Appearance', appearanceSummary, `${settingsNav('timer-appearance', 'Companion appearance', `${surface === 'GLASS' ? 'Glass' : 'Solid'} panel finish`)}${settingsNav('website-theme', 'SquareCoil theme', websiteThemeLabel(websiteTheme))}${settingsNav('dashboard', 'Analytics dashboard', dashboardEnabled ? 'Enabled on the SquareCoil dashboard' : 'Off')}${settingsNav('design-dashboard', 'Design Dashboard Enhancements', dashboardProfile === 'ON' ? 'On · Sleek Dark Design page' : 'Off')}`)}${settingsGroup('time', 'Time tracking', 'Overview, history and color limits', `${settingsNav('overview', 'Time overview', 'Today, week, day and job')}${settingsNav('history', 'History', 'Completed Companion sessions')}${settingsNav('timer-limits', 'Time color limits', `${limitDraft?.yellowMinutes ?? 60} / ${limitDraft?.orangeMinutes ?? 120} / ${limitDraft?.redMinutes ?? 240} min`)}`)}${settingsGroup('jobs', 'Jobs and watching', 'Recent jobs and future watch tools', `${settingsNav('recent', 'Recent jobs', 'Visibility and archive actions')}${settingsUnavailable('Watched-job changes', 'Not available yet · needs a verified read-only source')}`)}${settingsGroup('notifications', 'Notifications', 'SquareCoil alerts', settingsUnavailable('SquareCoil alerts', 'Not available yet · no proven notification source'))}${settingsGroup('privacy', 'Privacy and data', 'Backups, restore and cleanup', settingsNav('data-tools', 'Local data and backups', 'Export, restore and cleanup'))}${settingsGroup('help', 'Help and diagnostics', 'Support, feedback and technical details', `${settingsNav('submit-ticket', 'Submit a ticket', `Email ${SUPPORT_EMAIL}`)}${settingsNav('send-feedback', 'Send feedback', 'Suggestion, UI / UX or feature idea')}${settingsNav('advanced-diagnostics', 'Technical details', 'Status and privacy-safe diagnostics')}${settingsNav('developer-support', 'Support the developer', 'Free app · optional tips')}`)}</div></div>`;
+    const appearanceSummary = `${theme === 'AUTO' ? 'System' : theme === 'DARK' ? 'Dark' : theme === 'CLEAR' ? 'Clear' : 'Light'} Companion · ${websiteThemeLabel(websiteTheme)}`;
+    const companionFinishLabel = theme === 'CLEAR' ? 'Transparent glass' : `${surface === 'GLASS' ? 'Glass' : 'Solid'} panel finish`;
+    const appearanceRoutes = `${settingsNav('timer-appearance', 'Companion appearance', companionFinishLabel)}${settingsNav('website-theme', 'SquareCoil theme', websiteThemeLabel(websiteTheme))}`;
+    const featureRoutes = `${settingsNav('dashboard', 'Analytics dashboard', dashboardEnabled ? 'On' : 'Off')}${settingsNav('design-dashboard', 'Dashboard restyle', dashboardProfile === 'ON' ? 'On · Dark Glass' : 'Off')}${settingsNav('quick-file-paths', 'Quick file paths', quickFilePathsEnabled ? 'On · Design and project pages' : 'Off')}${settingsNav('quick-clock', 'Quick clock controls', quickClockControlsEnabled ? 'On · SquareCoil clock' : 'Off')}${settingsUnavailable('Design page layout', 'Coming soon · scan and copy')}${settingsUnavailable('Sidebar menu toggle', 'Coming soon · hide menus')}`;
+    const timeRoutes = `${settingsNav('overview', 'Time overview', 'Today, week, day and job')}${settingsNav('history', 'History', 'Past sessions')}${settingsNav('timer-limits', 'Time color limits', `${limitDraft?.yellowMinutes ?? 60} / ${limitDraft?.orangeMinutes ?? 120} / ${limitDraft?.redMinutes ?? 240} min`)}`;
+    const jobRoutes = `${settingsNav('recent', 'Recent jobs', 'Manage recent jobs')}${settingsUnavailable('Watched-job changes', 'Coming soon')}`;
+    const helpRoutes = `${settingsNav('submit-ticket', 'Submit a ticket', `Email ${SUPPORT_EMAIL}`)}${settingsNav('send-feedback', 'Send feedback', 'Suggestion, UI / UX or feature idea')}${settingsNav('advanced-diagnostics', 'Technical details', 'Connection and troubleshooting')}${settingsNav('developer-support', 'Support the developer', 'Free app · optional tips')}`;
+    return `<div class="sc-view">${viewHeader('Settings')}<div class="sc-settings-list">${settingsGroup('appearance', 'Appearance', appearanceSummary, appearanceRoutes)}${settingsGroup('features', 'Features', 'Dashboard and job-page tools', featureRoutes)}${settingsGroup('time', 'Time tracking', 'Totals, history and color limits', timeRoutes)}${settingsGroup('jobs', 'Jobs', 'Recent jobs', jobRoutes)}${settingsGroup('notifications', 'Notifications', 'SquareCoil alerts', settingsUnavailable('SquareCoil alerts', 'Coming soon'))}${settingsGroup('privacy', 'Privacy and data', 'Backups, restore and cleanup', settingsNav('data-tools', 'Local data and backups', 'Export, restore and cleanup'))}${settingsGroup('help', 'Help', 'Support and feedback', helpRoutes)}</div></div>`;
   }
 
   function choiceMarkup(action, values, current) {
@@ -730,9 +928,9 @@ ${prototypeDockStyle(ROOT_ID)}
   function timerAppearanceView() {
     const effectiveTheme = presentation?.timerAppearanceEffective || theme;
     const effectiveFinish = presentation?.panelFinishEffective || surface;
-    const finishNote = surface === 'GLASS' && effectiveFinish === 'SOLID_FALLBACK'
+    const finishNote = (surface === 'GLASS' || theme === 'CLEAR') && effectiveFinish === 'SOLID_FALLBACK'
       ? '<div class="sc-note">Glass is selected, but this browser or accessibility mode currently uses a readable Solid fallback.</div>' : '';
-    return `<div class="sc-view">${viewHeader('Companion appearance', 'settings')}<div class="sc-eyebrow">Color</div>${choiceMarkup('preference', [['LIGHT', 'Light'], ['DARK', 'Dark'], ['AUTO', 'System']], theme)}<div class="sc-note">System follows your browser or operating-system appearance.</div><div class="sc-eyebrow sc-section-label">Panel finish</div>${choiceMarkup('preference-finish', [['SOLID', 'Solid'], ['GLASS', 'Glass']], surface)}${finishNote}</div>`;
+    return `<div class="sc-view">${viewHeader('Companion appearance', 'settings')}<div class="sc-eyebrow">Color</div>${choiceMarkup('preference', [['LIGHT', 'Light'], ['CLEAR', 'Clear'], ['DARK', 'Dark'], ['AUTO', 'System']], theme)}<div class="sc-note">System follows your browser or operating-system appearance.</div><div class="sc-eyebrow sc-section-label">Panel finish</div>${theme === 'CLEAR' ? '<div class="sc-note">Transparent glass, like the prototype.</div>' : choiceMarkup('preference-finish', [['SOLID', 'Solid'], ['GLASS', 'Glass']], surface)}${finishNote}</div>`;
   }
 
   function dashboardView() {
@@ -746,10 +944,23 @@ ${prototypeDockStyle(ROOT_ID)}
 
   function designDashboardView() {
     const profile = presentation?.optional?.dashboard || {};
-    const status = profile.state === 'APPLIED' ? 'Active on this Design dashboard'
-      : profile.state === 'PARTIAL_SAFE' ? 'Partially applied where audited selectors match'
-        : dashboardProfile === 'ON' ? 'Ready when Sleek Dark is active on the Design dashboard' : 'Off';
-    return `<div class="sc-view">${viewHeader('Design Dashboard Enhancements', 'settings')}<div class="sc-eyebrow">Page presentation</div>${choiceMarkup('preference-design-dashboard', [['OFF', 'Off'], ['ON', 'On']], dashboardProfile)}<div class="sc-note" role="status">${escapeHtml(status)}. This optional restyle applies only to /dashboard.php?show=2 with Sleek Dark. It does not change SquareCoil records or actions.</div><div class="sc-note">Analytics dashboard is a separate option in Appearance.</div></div>`;
+    const status = profile.state === 'APPLIED' ? 'Active on this dashboard'
+      : profile.state === 'PARTIAL_SAFE' ? 'Available on parts of this page'
+        : dashboardProfile === 'ON' ? 'Ready on the Design dashboard with Dark Glass' : 'Off';
+    return `<div class="sc-view">${viewHeader('Dashboard restyle', 'settings')}<div class="sc-eyebrow">Design dashboard</div>${choiceMarkup('preference-design-dashboard', [['OFF', 'Off'], ['ON', 'On']], dashboardProfile)}<div class="sc-note" role="status">${escapeHtml(status)}. Changes the dashboard’s look and adds a time summary.</div><div class="sc-note">This does not change an individual job’s Design page. Analytics is a separate feature.</div></div>`;
+  }
+
+  function quickFilePathsView() {
+    const paths = presentation?.optional?.quickFilePaths || {};
+    const status = !quickFilePathsEnabled ? 'Off' : paths.state === 'APPLIED' ? 'Files found on this page'
+      : paths.state === 'EMPTY' ? 'No paths or links found here'
+        : paths.state === 'SOURCE_MISSING' ? 'No supported job details on this page'
+          : 'Ready on job Design and project pages';
+    return `<div class="sc-view">${viewHeader('Quick file paths', 'settings')}<div class="sc-eyebrow">Show quick files</div>${choiceMarkup('preference-quick-files', [['true', 'On'], ['false', 'Off']], String(quickFilePathsEnabled))}<div class="sc-note" role="status">${escapeHtml(status)}.</div><div class="sc-note">Finds paths and links in Design Description and project Important Details. Copy file paths or open web links from the page.</div></div>`;
+  }
+
+  function quickClockView() {
+    return `<div class="sc-view">${viewHeader('Quick clock controls', 'settings')}<div class="sc-eyebrow">SquareCoil clock shortcut</div>${choiceMarkup('preference-quick-clock', [['true', 'On'], ['false', 'Off']], String(quickClockControlsEnabled))}<div class="sc-note">A clock button appears in Companion’s top bar. It takes you to SquareCoil’s clock controls; you choose Clock in or Clock out there.</div>${quickClockControlsEnabled ? `<div class="sc-actions"><button class="sc-primary" data-action="open-native-clock">${uiIcon('timer')}<span>Find clock controls</span></button></div>` : ''}</div>`;
   }
 
   function websiteThemeView() {
@@ -780,7 +991,7 @@ ${prototypeDockStyle(ROOT_ID)}
   }
 
   function developerSupportView() {
-    return `<div class="sc-view">${viewHeader('Support the Developer', 'settings')}<div class="sc-title">Free app. Free updates. Optional tips.</div><div class="sc-note">The tiny development gremlins appreciate caffeine, but every Companion feature remains available whether or not you tip.</div><div class="sc-empty">No approved Buy Me a Coffee URL, Cash App name, or packaged QR is configured. Nothing has been fabricated or opened.</div></div>`;
+    return `<div class="sc-view">${viewHeader('Support the Developer', 'settings')}<div class="sc-title">Free app. Free updates. Optional tips.</div><div class="sc-note">The tiny development gremlins appreciate caffeine, but every Companion feature remains available whether or not you tip.</div><div class="sc-empty">Tips aren’t available yet.</div></div>`;
   }
 
   function advancedDiagnosticsView(core) {
@@ -806,16 +1017,19 @@ ${prototypeDockStyle(ROOT_ID)}
   function dataToolsView(core) {
     const data = core?.data;
     const archived = data?.archivedRows || [];
-    const readiness = data ? (data.quiescent ? 'Idle · global destructive operations available' : 'Timer/recovery state is not quiescent · Replace and Wipe are blocked') : 'Data safety read model unavailable';
-    return `<div class="sc-view">${viewHeader('Archives & Backup', 'settings')}${dataMessage ? `<div class="sc-note">${escapeHtml(dataMessage)}</div>` : ''}<div class="sc-eyebrow">Portable files</div><div class="sc-actions"><button data-action="data-export" data-export="FULL_BACKUP">Download Full Backup JSON</button><button data-action="data-export" data-export="HISTORY_CSV">Download History CSV</button><button data-action="data-export" data-export="TIME_REPORT_CSV">Download Time Report CSV</button></div><div class="sc-actions"><button data-action="pick-file" data-file-mode="BACKUP_MERGE">Add from Backup JSON</button><button data-action="pick-file" data-file-mode="BACKUP_REPLACE" ${data?.quiescent ? '' : 'disabled'}>Replace from Backup JSON</button><button data-action="pick-file" data-file-mode="HISTORY_CSV">Import History CSV</button></div>${restoreOptionsMarkup()}<input data-sc-data-file type="file" accept=".json,.csv,application/json,text/csv" hidden><div class="sc-note">Full Backup JSON saves Companion jobs, time history, settings, and the activity log without a live clock state. History CSV is importable finalized time. Time Report CSV is for spreadsheets only and cannot be imported.</div>${conflictMarkup()}<div class="sc-eyebrow" style="margin-top:12px">Archived contexts</div>${archived.length ? archived.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">Total ${formatDuration(row.totalMs, { compact: true })} · archived ${escapeHtml(formatDateTime(row.archivedAtMs))}</div></div><div class="sc-row-actions"><button data-action="data-context" data-data-type="${DATA_COMMANDS.RESTORE_ARCHIVED}" data-context="${escapeHtml(row.contextId)}">Restore</button><button data-action="data-context" data-data-type="${DATA_COMMANDS.DELETE_CONTEXT}" data-context="${escapeHtml(row.contextId)}" data-label="${escapeHtml(row.label)}" ${row.protected ? 'disabled' : ''}>Delete Data</button></div></div>`).join('') : '<div class="sc-empty">No archived Contexts.</div>'}<div class="sc-eyebrow" style="margin-top:12px">High-impact cleanup</div><div class="sc-actions"><button data-action="data-simple" data-data-type="${DATA_COMMANDS.DELETE_ALL_ARCHIVED}" ${archived.length ? '' : 'disabled'}>Delete All Archived Data</button><button data-action="data-simple" data-data-type="${DATA_COMMANDS.WIPE_HISTORY}" ${data?.quiescent ? '' : 'disabled'}>Wipe All Time History</button></div><div class="sc-note">${escapeHtml(readiness)}. These tools only affect Companion data; SquareCoil official time is never changed.</div></div>`;
+    const readiness = data ? (data.quiescent ? 'Cleanup is available' : 'Stop timing before replacing a backup or deleting all history') : 'Your data is not ready yet';
+    return `<div class="sc-view">${viewHeader('Backups and data', 'settings')}${dataMessage ? `<div class="sc-note">${escapeHtml(dataMessage)}</div>` : ''}<div class="sc-eyebrow">Your files</div><div class="sc-actions"><button data-action="data-export" data-export="FULL_BACKUP">Download backup</button><button data-action="data-export" data-export="HISTORY_CSV">Download history</button><button data-action="data-export" data-export="TIME_REPORT_CSV">Download report</button></div><div class="sc-actions"><button data-action="pick-file" data-file-mode="BACKUP_MERGE">Add from backup</button><button data-action="pick-file" data-file-mode="BACKUP_REPLACE" ${data?.quiescent ? '' : 'disabled'}>Replace from backup</button><button data-action="pick-file" data-file-mode="HISTORY_CSV">Import history</button></div>${restoreOptionsMarkup()}<input data-sc-data-file type="file" accept=".json,.csv,application/json,text/csv" hidden><div class="sc-note">Full Backup JSON saves Companion jobs, time history, settings, and the activity log without a live clock state. History CSV can restore finalized time. Time Report CSV is for spreadsheets only and cannot be imported.</div>${conflictMarkup()}<div class="sc-eyebrow" style="margin-top:12px">Archived in Companion</div>${archived.length ? archived.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">Total ${formatDuration(row.totalMs, { compact: true })} · archived ${escapeHtml(formatDateTime(row.archivedAtMs))}</div></div><div class="sc-row-actions"><button data-action="data-context" data-data-type="${DATA_COMMANDS.RESTORE_ARCHIVED}" data-context="${escapeHtml(row.contextId)}">Restore</button><button data-action="data-context" data-data-type="${DATA_COMMANDS.DELETE_CONTEXT}" data-context="${escapeHtml(row.contextId)}" data-label="${escapeHtml(row.label)}" ${row.protected ? 'disabled' : ''}>Delete data</button></div></div>`).join('') : '<div class="sc-empty">No archived jobs.</div>'}<div class="sc-eyebrow" style="margin-top:12px">Clear saved data</div><div class="sc-actions"><button data-action="data-simple" data-data-type="${DATA_COMMANDS.DELETE_ALL_ARCHIVED}" ${archived.length ? '' : 'disabled'}>Delete archived data</button><button data-action="data-simple" data-data-type="${DATA_COMMANDS.WIPE_HISTORY}" ${data?.quiescent ? '' : 'disabled'}>Delete all time history</button></div><div class="sc-note">${escapeHtml(readiness)}. These tools only affect Companion data; SquareCoil official time is never changed.</div></div>`;
   }
 
   function unavailableMainView(core) {
+    if (!core || (!core.initialized && !core.blocked && !String(core.status || '').includes('recover'))) {
+      return `<div class="sc-view sc-loading-view"><div class="sc-loading-heading" role="status"><span class="sc-loading-spinner" aria-hidden="true"></span><div><strong>Loading…</strong></div></div><div class="sc-loading-card" aria-hidden="true"><span class="sc-skeleton sc-skeleton-label"></span><span class="sc-skeleton sc-skeleton-time"></span><div class="sc-loading-columns"><span class="sc-skeleton"></span><span class="sc-skeleton"></span></div></div><div class="sc-nav-grid"><button data-action="view" data-view="settings"><strong>Settings</strong><small>Appearance and support</small></button><button data-action="open-diagnostics"><strong>Technical details</strong><small>Status and support</small></button></div></div>`;
+    }
     const status = friendlyCompanionStatus(core, null);
     const message = core?.blocked
       ? 'Companion paused time and data actions because a safety check needs attention. Appearance, support and privacy-safe diagnostics remain available.'
       : 'Companion is reconnecting to this page. Appearance, Settings and diagnostics remain available while time and data actions stay paused.';
-    return `<div class="sc-view"><section class="sc-health-summary" data-tone="${status.tone}"><span class="sc-health-icon" aria-hidden="true">!</span><div><strong>${escapeHtml(status.label)}</strong><small>${escapeHtml(message)}</small></div></section><div class="sc-nav-grid" style="margin-top:10px"><button data-action="view" data-view="settings"><strong>Settings</strong><small>Appearance, themes and support</small></button><button data-action="open-diagnostics"><strong>Technical details</strong><small>Status and recovery information</small></button></div></div>`;
+    return `<div class="sc-view"><section class="sc-health-summary" data-tone="${status.tone}"><span class="sc-health-icon" aria-hidden="true">!</span><div><strong>${escapeHtml(status.label)}</strong><small>${escapeHtml(message)}</small></div></section><div class="sc-nav-grid" style="margin-top:10px"><button data-action="view" data-view="settings"><strong>Settings</strong><small>Appearance and support</small></button><button data-action="open-diagnostics"><strong>Technical details</strong><small>Status and support</small></button></div></div>`;
   }
 
   function bodyMarkup(timer, core) {
@@ -824,8 +1038,10 @@ ${prototypeDockStyle(ROOT_ID)}
       if (view === 'settings') return settingsView();
       if (view === 'timer-appearance') return timerAppearanceView();
       if (view === 'website-theme') return websiteThemeView();
-    if (view === 'dashboard') return dashboardView();
-    if (view === 'design-dashboard') return designDashboardView();
+      if (view === 'dashboard') return dashboardView();
+      if (view === 'design-dashboard') return designDashboardView();
+      if (view === 'quick-file-paths') return quickFilePathsView();
+      if (view === 'quick-clock') return quickClockView();
       if (view === 'timer-limits') return timerLimitsView();
       if (view === 'submit-ticket') return supportView('ticket');
       if (view === 'send-feedback') return supportView('feedback');
@@ -844,6 +1060,8 @@ ${prototypeDockStyle(ROOT_ID)}
     if (view === 'website-theme') return websiteThemeView();
     if (view === 'dashboard') return dashboardView();
     if (view === 'design-dashboard') return designDashboardView();
+    if (view === 'quick-file-paths') return quickFilePathsView();
+    if (view === 'quick-clock') return quickClockView();
     if (view === 'timer-limits') return timerLimitsView();
     if (view === 'submit-ticket') return supportView('ticket');
     if (view === 'send-feedback') return supportView('feedback');
@@ -892,34 +1110,86 @@ ${prototypeDockStyle(ROOT_ID)}
     // including async completions and notice timers, must wait for dragend/drop.
     if (draggedContextId) return;
     if (allowInteractionDeferral && (pendingFileMode || target.querySelector?.('input:focus, textarea:focus, select:focus'))) return;
+    const quickTools = target.querySelector?.('.sc-quick-links');
+    if (quickTools) quickToolsOpen = quickTools.open === true;
     const technicalDetails = target.querySelector?.('.sc-technical');
     if (technicalDetails) advancedDiagnosticsOpen = technicalDetails.open === true;
     const retainedFocus = captureFocusDescriptor(target);
+    const outgoingViewKey = target.querySelector?.('.sc-view')?.dataset.scViewKey;
+    const navigationChanged = outgoingViewKey && outgoingViewKey.split(':')[0] !== view;
+    const outgoingText = navigationChanged ? captureDockText(target) : null;
     const previousScroll = target.querySelector?.('.sc-content')?.scrollTop || 0;
+    const previousListScroll = new Map(Array.from(target.querySelectorAll?.('.sc-list-scroll[data-sc-list]') || [])
+      .map(node => [node.dataset.scList, node.scrollTop]));
     const previousTabScroll = target.querySelector?.('.sc-tabs')?.scrollLeft || 0;
     const core = readCoreSnapshot();
     const timer = core?.timer || null;
     if (timer) { syncSelection(timer); flushDeferredFocus(timer); }
     target.dataset.protoTheme = String(presentation?.timerAppearanceEffective || theme).toLowerCase();
-    target.dataset.protoSurface = String(presentation?.panelFinishEffective || surface).startsWith('GLASS') ? 'glass' : 'solid';
+    target.dataset.protoSurface = String(presentation?.panelFinishEffective || (theme === 'CLEAR' ? 'GLASS' : surface)).startsWith('GLASS') ? 'glass' : 'solid';
     target.dataset.protoCollapsed = collapsed ? 'true' : 'false';
-    target.dataset.workspaceState = snapshotStale ? 'stale' : timer ? 'loaded' : 'loading';
+    target.dataset.protoMenu = SETTINGS_VIEW_IDS.has(view) || view === 'home' ? 'true' : 'false';
+    target.dataset.workspaceState = snapshotStale ? 'stale' : timer ? 'loaded' : core?.blocked ? 'blocked' : 'loading';
     target.dataset.busy = busyAction ? 'true' : 'false';
     target.setAttribute?.('aria-busy', busyAction ? 'true' : 'false');
     const tabs = timer ? tabMarkup(timer, core) : '';
     target.dataset.hasTabs = tabs ? 'true' : 'false';
     target.dataset.dragging = draggedContextId ? 'true' : 'false';
     const friendlyStatus = friendlyCompanionStatus(core, timer);
-    const basis = timer?.timeBasis?.disclosed ? timer.timeBasis.label : timer?.workdayZone || 'waiting for time basis';
+    const basis = timer?.timeBasis?.disclosed ? timer.timeBasis.label : timer?.workdayZone || '';
     const selected = timer ? selectedRow(timer) : null;
+    target.dataset.selectedThreshold = selected?.thresholdLevel || 'NONE';
     const summaryContext = selected?.kind === 'job' ? selected.projectId : selected ? 'General' : 'No job';
     const summaryTime = selected ? formatDuration(selected.todayMs) : '--:--:--';
-    const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false" data-tone="eligible" aria-hidden="true"><div><span data-sc-archive-veil-title>Release to archive</span><small data-sc-archive-veil-detail>Hours and history stay saved.</small></div></div>${tabs}<div class="sc-proto-shell"><div class="sc-proto-topbar"><span class="sc-proto-timer-icon" aria-hidden="true">◴</span><div class="sc-proto-brand"><strong>SquareCoil Companion</strong><span class="sc-summary-title">Job Timer <small>${escapeHtml(summaryContext)}</small></span></div><time class="sc-summary-time" aria-label="Selected context today">${summaryTime}</time><span class="sc-proto-status" data-tone="${friendlyStatus.tone}" data-sc-status>${escapeHtml(friendlyStatus.label)}</span><button class="sc-icon-btn" data-action="view" data-view="home" aria-label="Open Companion home" title="Home">⌂</button><button class="sc-icon-btn" data-action="view" data-view="settings" aria-label="Open Settings" title="Settings">⚙</button><button class="sc-icon-btn" data-action="collapse" aria-label="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '⌄' : '⌃'}</button></div><div class="sc-content" role="tabpanel" id="sc-workspace-panel">${archiveNoticeMarkup()}${snapshotStale ? '<div class="sc-stale">Showing the last saved view while Companion reconnects.</div>' : ''}${bodyMarkup(timer, core)}</div>${errorMessage ? `<div class="sc-error">${escapeHtml(errorMessage)}</div>` : ''}<div class="sc-foot"><span>${escapeHtml(basis)}</span><div><button data-action="sync" aria-label="Refresh Companion">Refresh</button><button data-action="open-diagnostics">Technical details</button></div></div></div>`;
+    const viewKey = `${view}:${timer ? 'ready' : core?.blocked ? 'blocked' : 'loading'}`;
+    // Key only navigation/readiness changes. Canonical clock ticks patch the
+    // existing view, preserving focus and never restarting its reveal motion.
+    const previousViewKey = target.querySelector?.('.sc-view')?.dataset.scViewKey;
+    const routeChanged = Boolean(previousViewKey && previousViewKey !== viewKey);
+    const previousHeight = routeChanged ? target.querySelector?.('.sc-content')?.getBoundingClientRect?.().height : 0;
+    const contentBody = bodyMarkup(timer, core).replace('<div class="sc-view', `<div data-sc-view-key="${viewKey}" class="sc-view`);
+    const clockShortcut = quickClockControlsEnabled
+      ? `<button class="sc-icon-btn" data-action="open-native-clock" aria-label="Find SquareCoil clock controls" title="SquareCoil clock">${uiIcon('timer')}</button>` : '';
+const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false" data-tone="eligible" aria-hidden="true"><div><span data-sc-archive-veil-title>Release to archive</span><small data-sc-archive-veil-detail>Hours and history stay saved.</small></div></div>${tabs}<div class="sc-proto-shell"><div class="sc-proto-topbar"><span class="sc-proto-timer-icon" aria-hidden="true">${uiIcon('timer')}</span><div class="sc-proto-brand"><strong>SquareCoil Companion</strong><span class="sc-summary-title">Job Timer <small>${escapeHtml(summaryContext)}</small></span></div><time class="sc-summary-time" aria-label="Selected job today">${summaryTime}</time><span class="sc-proto-status" data-tone="${friendlyStatus.tone}" data-sc-status>${escapeHtml(friendlyStatus.label)}</span>${clockShortcut}<button class="sc-icon-btn" data-action="view" data-view="settings" aria-label="Open Settings" title="Settings">${uiIcon('settings')}</button><button class="sc-icon-btn" data-action="collapse" aria-label="${collapsed ? 'Expand' : 'Collapse'}">${uiIcon(collapsed ? 'down' : 'up')}</button></div><div class="sc-content" role="tabpanel" id="sc-workspace-panel">${archiveNoticeMarkup()}${snapshotStale ? '<div class="sc-stale">Reconnecting…</div>' : ''}${contentBody}</div>${errorMessage ? `<div class="sc-error">${escapeHtml(errorMessage)}</div>` : ''}<div class="sc-foot">${target.dataset.protoMenu === 'true' ? '<span>SquareCoil Companion</span>' : `<span>${escapeHtml(basis)}</span><div><button data-action="sync" aria-label="Refresh Companion">Refresh</button><button data-action="open-diagnostics">Technical details</button></div>`}</div></div>`;
+    cancelDockMorph();
     updateWorkspaceMarkup(target, markup);
+    if (navigationChanged) cancelDockMorph = revealDockMorph(target, outgoingText, window);
     const content = target.querySelector?.('.sc-content');
-    if (content) content.scrollTop = archiveNoticeShouldReveal ? 0 : previousScroll;
+    if (routeChanged) {
+      viewHeightAnimation?.cancel();
+      viewHeightAnimation = null;
+      const nextHeight = content?.getBoundingClientRect?.().height;
+      if (!collapsed && previousHeight > 0 && nextHeight > 0 && !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches && content?.animate) {
+        content.style.minHeight = '0px';
+        content.style.overflow = 'hidden';
+        viewHeightAnimation = content.animate([{ height: `${previousHeight}px` }, { height: `${nextHeight}px` }], {
+          duration: 420, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'both'
+        });
+        const animation = viewHeightAnimation;
+        const finish = () => {
+          if (viewHeightAnimation === animation) viewHeightAnimation = null;
+          content.style.removeProperty('min-height');
+          content.style.removeProperty('overflow');
+          animation.cancel();
+        };
+        animation.addEventListener('finish', finish, { once: true });
+        animation.addEventListener('cancel', () => {
+          content.style.removeProperty('min-height');
+          content.style.removeProperty('overflow');
+        }, { once: true });
+      }
+    }
+    if (content) content.scrollTop = archiveNoticeShouldReveal || routeChanged ? 0 : previousScroll;
+    if (!routeChanged) {
+      for (const list of target.querySelectorAll?.('.sc-list-scroll[data-sc-list]') || []) {
+        list.scrollTop = previousListScroll.get(list.dataset.scList) || 0;
+      }
+    }
     archiveNoticeShouldReveal = false;
     const tabStrip = target.querySelector?.('.sc-tabs'); if (tabStrip) tabStrip.scrollLeft = previousTabScroll;
+    updateTabCycleButtons();
+    updateTitlePan();
+    if (navigationChanged) window.setTimeout?.(updateTabCycleButtons, 260);
     if (focusTarget || retainedFocus) {
       const selector = focusTarget;
       focusTarget = null;
@@ -950,6 +1220,7 @@ ${prototypeDockStyle(ROOT_ID)}
 
   function selectContext(contextId, targetView = 'main') {
     if (!contextId) return;
+    if (targetView === 'context-detail' && view !== 'context-detail') detailReturnView = view;
     selectionSerial += 1;
     selectedContextId = String(contextId);
     pendingFocusIntent = null;
@@ -1203,6 +1474,31 @@ ${prototypeDockStyle(ROOT_ID)}
   function onClick(event) {
     const button = event.target.closest?.('[data-action]'); if (!button || !root?.contains(button)) return;
     const action = button.dataset.action;
+    if (action === 'open-native-clock' && event.isTrusted === true) {
+      const visible = element => {
+        if (!element || root.contains(element)) return false;
+        for (let current = element; current && current !== document.documentElement; current = current.parentElement) {
+          if (current.hidden || current.getAttribute?.('aria-hidden') === 'true') return false;
+          const style = window.getComputedStyle?.(current);
+          if (style?.display === 'none' || style?.visibility === 'hidden') return false;
+        }
+        return true;
+      };
+      const control = ['#clockin', '#clockout'].map(selector => document.querySelector?.(selector)).find(visible);
+      const containers = [...(document.querySelectorAll?.('.timeclock-container') || [])].filter(visible);
+      const target = control || (containers.length === 1 ? containers[0] : null);
+      if (!target) {
+        errorMessage = 'SquareCoil clock controls are not on this page.';
+        render();
+        return;
+      }
+      errorMessage = null;
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+      target.scrollIntoView?.({ behavior: reducedMotion ? 'instant' : 'smooth', block: 'center' });
+      if (control) target.focus?.({ preventScroll: true });
+      return;
+    }
+    if (action === 'cycle-tabs') { cycleTabs(button.dataset.direction === 'next' ? 1 : -1); return; }
     if (action === 'collapse') { collapsed = !collapsed; savePreferences(); render(); return; }
     if (action === 'back') { view = 'main'; render(); return; }
     if (action === 'view') {
@@ -1220,8 +1516,23 @@ ${prototypeDockStyle(ROOT_ID)}
     }
     if (action === 'settings-toggle-group') {
       const group = String(button.dataset.group || '');
+      const beforeHeights = new Map([...(root.querySelectorAll?.('.sc-settings-group') || [])]
+        .map(node => [node.dataset.group, node.getBoundingClientRect().height]));
+      const outgoingText = captureDockText(root, '.sc-settings-list');
       expandedSettingsGroup = expandedSettingsGroup === group ? null : group;
       render();
+      if (!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+        for (const node of root.querySelectorAll?.('.sc-settings-group') || []) {
+          const before = beforeHeights.get(node.dataset.group);
+          const after = node.getBoundingClientRect().height;
+          if (before > 0 && Math.abs(after - before) > 2) {
+            node.animate?.([{ height: `${before}px` }, { height: `${after}px` }], {
+              duration: 300, easing: 'cubic-bezier(.22,1,.36,1)'
+            });
+          }
+        }
+        cancelDockMorph = revealDockMorph(root, outgoingText, window, '.sc-settings-list');
+      }
       return;
     }
     if (action === 'settings-route') { navigateSettings(button.dataset.view); return; }
@@ -1236,9 +1547,12 @@ ${prototypeDockStyle(ROOT_ID)}
       const id = button.dataset.context;
       const eligibility = archiveGestureEligibility(lastGoodCore, id, { snapshotStale, busy: Boolean(busyAction) });
       if (!eligibility.eligible) { errorMessage = eligibility.message; render(); return; }
+      const ghost = closingTabGhost(button.closest?.('.sc-tab-slot'));
       hiddenTabs.add(id);
       if (!reconcileWorkspaceSelection()) savePreferences();
-      render(); return;
+      render();
+      if (ghost) { root.append(ghost); window.setTimeout(() => ghost.remove(), 260); }
+      return;
     }
     if (action === 'show-tab') {
       const id = button.dataset.context;
@@ -1278,6 +1592,14 @@ ${prototypeDockStyle(ROOT_ID)}
     }
     if (action === 'preference-design-dashboard' && event.isTrusted === true) {
       withBusy('preference', () => commitPreferencePatch({ dashboardProfile: button.dataset.value })); return;
+    }
+    if (action === 'preference-quick-files' && event.isTrusted === true) {
+      if (!['true', 'false'].includes(button.dataset.value)) return;
+      withBusy('preference', () => commitPreferencePatch({ quickFilePathsEnabled: button.dataset.value === 'true' })); return;
+    }
+    if (action === 'preference-quick-clock' && event.isTrusted === true) {
+      if (!['true', 'false'].includes(button.dataset.value)) return;
+      withBusy('preference', () => commitPreferencePatch({ quickClockControlsEnabled: button.dataset.value === 'true' })); return;
     }
     if (action === 'preference-site' && event.isTrusted === true) {
       if (busyAction) return;
@@ -1500,11 +1822,15 @@ ${prototypeDockStyle(ROOT_ID)}
   function clearDragState(options = {}) {
     clearDropIndicators();
     setArchiveVeil(false);
+    root?.querySelector?.('.sc-tab-slot[data-drag-source]')?.removeAttribute?.('data-drag-source');
     draggedContextId = null;
     draggedArchiveEligibility = null;
     dragAttemptedOutside = false;
     if (options.preserveOwnership !== true) ownedDragActive = false;
-    if (root) root.dataset.dragging = 'false';
+    if (root) {
+      root.dataset.dragging = 'false';
+      root.dataset.dragAway = 'false';
+    }
   }
 
   function isOwnedDragEvent(event) {
@@ -1575,7 +1901,12 @@ ${prototypeDockStyle(ROOT_ID)}
       snapshotStale,
       busy: Boolean(busyAction)
     });
-    if (root) root.dataset.dragging = draggedContextId ? 'true' : 'false';
+    stopCycleHover();
+    if (root) {
+      root.dataset.dragging = draggedContextId ? 'true' : 'false';
+      root.dataset.dragAway = 'false';
+    }
+    tab.closest('.sc-tab-slot')?.setAttribute?.('data-drag-source', 'true');
     try {
       // Keep the authoritative Context id in closure state. The page only sees
       // a generic drag payload, so a SquareCoil drop target cannot read a job id.
@@ -1592,6 +1923,7 @@ ${prototypeDockStyle(ROOT_ID)}
     consumeDragEvent(event);
     const slot = event.target.closest?.('.sc-tab-slot');
     if (!slot || !root.contains(slot)) {
+      root.dataset.dragAway = 'true';
       clearDropIndicators();
       // On narrow screens the dock can occupy the whole viewport. A drag
       // outside the tab rail therefore uses the explicit retirement veil.
@@ -1606,6 +1938,7 @@ ${prototypeDockStyle(ROOT_ID)}
       }
       return;
     }
+    root.dataset.dragAway = 'false';
     setArchiveVeil(false);
     clearDropIndicators();
     const rect = slot.getBoundingClientRect?.();
@@ -1658,6 +1991,7 @@ ${prototypeDockStyle(ROOT_ID)}
     if (root.contains(event.target)) return;
     consumeDragEvent(event);
     dragAttemptedOutside = true;
+    root.dataset.dragAway = 'true';
     clearDropIndicators();
     const eligibility = refreshDraggedEligibility();
     setArchiveVeil(true, eligibility);
@@ -1791,6 +2125,7 @@ ${prototypeDockStyle(ROOT_ID)}
     document.addEventListener?.('visibilitychange', onVisibilityChange);
     window.addEventListener?.('blur', onWindowBlur);
     window.addEventListener?.('pagehide', onWindowBlur);
+    window.addEventListener?.('resize', updateTabCycleButtons);
     render();
     intervalId = window.setInterval(() => render({ allowInteractionDeferral: true }), REFRESH_MS);
   }
@@ -1803,6 +2138,10 @@ ${prototypeDockStyle(ROOT_ID)}
   function teardown() {
     if (disposed) return;
     disposed = true;
+    stopCycleHover();
+    cancelDockMorph();
+    viewHeightAnimation?.cancel();
+    viewHeightAnimation = null;
     if (intervalId !== null) window.clearInterval(intervalId);
     intervalId = null;
     if (archiveNoticeTimer !== null) window.clearTimeout?.(archiveNoticeTimer);
@@ -1816,6 +2155,7 @@ ${prototypeDockStyle(ROOT_ID)}
     document.removeEventListener?.('visibilitychange', onVisibilityChange);
     window.removeEventListener?.('blur', onWindowBlur);
     window.removeEventListener?.('pagehide', onWindowBlur);
+    window.removeEventListener?.('resize', updateTabCycleButtons);
     if (root) {
       root.removeEventListener('click', onClick); root.removeEventListener('dblclick', onDoubleClick);
       root.removeEventListener('submit', onSubmit); root.removeEventListener('dragstart', onDragStart);
@@ -1824,6 +2164,10 @@ ${prototypeDockStyle(ROOT_ID)}
       root.removeEventListener('change', onChange);
       root.removeEventListener('cancel', onFileCancel);
       root.removeEventListener('input', onInput); root.removeEventListener('keydown', onKeyDown);
+      root.removeEventListener('scroll', onTabScroll, true);
+      root.removeEventListener('wheel', onTabWheel);
+      root.removeEventListener('pointermove', onCyclePointerEnter, true);
+      root.removeEventListener('pointerleave', onCyclePointerLeave, true);
     }
     root = null;
   }

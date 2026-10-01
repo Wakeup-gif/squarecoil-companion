@@ -153,10 +153,184 @@ async function verifySelectedContext({ page, timeout, readBoundary, screenshot }
   check(inspected.selected === 'job:910001' && inspected.operational === original.operational &&
     inspected.native === original.native && inspected.actions === original.actions &&
     JSON.stringify(before) === JSON.stringify(after), 'Selecting a historical tab changed operational timing or native state', { before, after, original, inspected });
+  const viewCurrent = page.locator(`${ROOT} .sc-total-area .sc-view-current[data-action="select"]`);
+  const totalRow = await page.evaluate(() => {
+    const button = document.querySelector('#ussign-job-timer .sc-total-area .sc-view-current');
+    const total = document.querySelector('#ussign-job-timer .sc-metric-total');
+    const action = button?.getBoundingClientRect();
+    const metric = total?.getBoundingClientRect();
+    return { buttonRight: action?.right, totalLeft: metric?.left,
+      buttonBottom: action?.bottom, totalBottom: metric?.bottom };
+  });
+  check(totalRow.buttonRight <= totalRow.totalLeft - 12 &&
+    Math.abs(totalRow.buttonBottom - totalRow.totalBottom) <= 6,
+  'View current is not aligned beside Job total', totalRow);
   if (screenshot) await page.screenshot({ path: screenshot, fullPage: false, animations: 'disabled' });
-  await page.locator(`${ROOT} .sc-tab[data-context="${original.selected}"]`).evaluate(node => node.scrollIntoView({ block: 'nearest', inline: 'center' }));
-  await page.locator(`${ROOT} .sc-tab[data-context="${original.selected}"]`).click({ force: true });
-  return { fixtureId: 'PI-UI-001', original, inspected, canonicalBoundaryUnchanged: true };
+  await viewCurrent.click();
+  await page.waitForFunction(context =>
+    document.querySelector('#ussign-job-timer .sc-tab[data-selected="true"]')?.dataset.context === context,
+  original.selected, { timeout });
+  check(await page.locator(`${ROOT} .sc-current-strip`).count() === 0 &&
+    JSON.stringify(before) === JSON.stringify(await readBoundary()),
+  'View current did not return to the running job without changing timer state');
+  return { fixtureId: 'PI-UI-001', original, inspected, totalRow, canonicalBoundaryUnchanged: true };
+}
+
+async function verifyUiPolish({ page, timeout, motionExpected = true }) {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await home(page, timeout);
+  const strip = page.locator(`${ROOT} .sc-tabs`);
+  await strip.evaluate(node => { node.scrollLeft = 0; });
+  const initialTabs = await page.evaluate(() => {
+    const root = document.querySelector('#ussign-job-timer');
+    const tabs = root.querySelector('.sc-tabs');
+    return { scroll: tabs.scrollLeft, overflow: tabs.scrollWidth - tabs.clientWidth,
+      offsets: [...tabs.querySelectorAll('.sc-tab-slot')].map(node => node.offsetLeft),
+      selected: root.querySelector('.sc-tab[data-selected="true"]')?.dataset.context,
+      operational: root.querySelector('.sc-tab[data-operational="true"]')?.dataset.context,
+      nextContext: root.querySelector('.sc-tab[data-selected="true"]')?.closest('.sc-tab-slot')?.nextElementSibling?.dataset.context,
+      previousHidden: root.querySelector('.sc-tab-cycle-prev').hidden,
+      nextHidden: root.querySelector('.sc-tab-cycle-next').hidden,
+      nextOpacity: Number.parseFloat(getComputedStyle(root.querySelector('.sc-tab-cycle-next')).opacity) };
+  });
+  check(initialTabs.overflow > 2 && !initialTabs.previousHidden && !initialTabs.nextHidden && initialTabs.nextOpacity > .5,
+    'Overflow tabs did not show the cycle controls', initialTabs);
+  const nextTab = page.locator(`${ROOT} .sc-tab-cycle-next`);
+  await nextTab.click();
+  await page.waitForTimeout(420);
+  const cycledTabs = await page.evaluate(() => ({
+    scroll: document.querySelector('#ussign-job-timer .sc-tabs').scrollLeft,
+    selected: document.querySelector('#ussign-job-timer .sc-tab[data-selected="true"]')?.dataset.context,
+    operational: document.querySelector('#ussign-job-timer .sc-tab[data-operational="true"]')?.dataset.context,
+    previousHidden: document.querySelector('#ussign-job-timer .sc-tab-cycle-prev').hidden
+  }));
+  check(cycledTabs.selected === initialTabs.nextContext && cycledTabs.operational === initialTabs.operational &&
+    cycledTabs.scroll > 20 && !cycledTabs.previousHidden,
+  'Tab cycling did not select the next job and reveal it', { initialTabs, cycledTabs });
+  await page.mouse.move(100, 200);
+  const previousTab = page.locator(`${ROOT} .sc-tab-cycle-prev`);
+  const beforeLeftHover = await strip.evaluate(node => node.scrollLeft);
+  await previousTab.hover();
+  await page.waitForTimeout(300);
+  const afterLeftHover = await strip.evaluate(node => node.scrollLeft);
+  check(afterLeftHover < beforeLeftHover - 6, 'Hovering over the left edge did not move the tabs', { beforeLeftHover, afterLeftHover });
+  await page.mouse.move(100, 200);
+  const beforeHover = await strip.evaluate(node => node.scrollLeft);
+  await nextTab.hover();
+  await page.waitForTimeout(300);
+  const afterHover = await strip.evaluate(node => node.scrollLeft);
+  check(afterHover > beforeHover + 2, 'Hovering over the right edge did not move the tabs', { beforeHover, afterHover });
+  await page.mouse.move(100, 200);
+  const tools = page.locator(`${ROOT} .sc-quick-links`);
+  if (await tools.getAttribute('open') !== null) await tools.locator('summary').click();
+  const toolsTarget = await tools.locator('summary').boundingBox();
+  check(toolsTarget?.height >= 44, 'More tools has an inaccessible click target', toolsTarget);
+  await tools.locator('summary').click();
+  await page.waitForTimeout(1200);
+  check(await tools.getAttribute('open') !== null && await tools.locator('.sc-tool-buttons').isVisible(),
+    'Timer refresh closed More tools');
+  const toolRows = await tools.evaluate(node => {
+    const summary = node.querySelector('summary')?.getBoundingClientRect();
+    const buttons = node.querySelector('.sc-tool-buttons')?.getBoundingClientRect();
+    const search = node.querySelector('[data-sc-search-form]')?.getBoundingClientRect();
+    return { summary: summary && { top: summary.top, bottom: summary.bottom },
+      buttons: buttons && { top: buttons.top, bottom: buttons.bottom },
+      search: search && { top: search.top, bottom: search.bottom } };
+  });
+  check(toolRows.buttons?.top >= toolRows.summary?.bottom - 1 && toolRows.search?.top >= toolRows.buttons?.bottom - 1,
+    'More tools did not place Search below Jobs, Overview and History', toolRows);
+  await tools.locator('summary').click();
+  const icons = await page.locator(`${ROOT} .sc-proto-topbar .sc-ui-icon`).evaluateAll(nodes => nodes.map(node => {
+    const bounds = node.getBoundingClientRect();
+    return { width: bounds.width, height: bounds.height };
+  }));
+  check(icons.length === 3 && icons.every(icon => icon.width === 18 && icon.height === 18), 'Toolbar SVG geometry is distorted', icons);
+  await page.locator(`${ROOT} .sc-proto-topbar [data-view="settings"]`).click();
+  try {
+    await page.waitForFunction(() => {
+      const view = document.querySelector('#ussign-job-timer .sc-view');
+      return view?.dataset.scViewKey === 'settings:ready';
+    }, null, { timeout });
+  } catch (_) {
+    const state = await page.evaluate(() => {
+      const root = document.querySelector('#ussign-job-timer');
+      const view = root?.querySelector('.sc-view');
+      return { viewKey: view?.dataset.scViewKey, animation: view && getComputedStyle(view).animationName,
+        rootView: root?.dataset.protoView, busy: root?.dataset.busy, workspaceState: root?.dataset.workspaceState,
+        settingsGroups: root?.querySelectorAll('.sc-settings-group').length,
+        reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches };
+    });
+    throw new Error(`Settings route or motion did not settle: ${JSON.stringify(state)}`);
+  }
+  await page.waitForFunction(() => document.querySelector('#ussign-job-timer').getBoundingClientRect().width <= 371, null, { timeout });
+  const menu = await page.evaluate(() => {
+    const root = document.querySelector('#ussign-job-timer');
+    const cards = [...root.querySelectorAll('.sc-settings-group')].map(node => node.getBoundingClientRect());
+    return { width: root.getBoundingClientRect().width, vertical: cards.every((box, index) => index === 0 || box.top >= cards[index - 1].bottom),
+      closeVisible: root.querySelector('[data-action="settings-close"]').getBoundingClientRect().width > 0 };
+  });
+  check(menu.vertical && menu.closeVisible, 'Settings lost its vertical layout or close control', menu);
+  const appearance = page.locator(`${ROOT} [data-action="settings-toggle-group"][data-group="appearance"]`);
+  await page.evaluate(() => {
+    window.__scDisclosureProof = null;
+    document.addEventListener('click', event => {
+      if (!event.target.closest('#ussign-job-timer [data-action="settings-toggle-group"][data-group="appearance"]')) return;
+      const before = document.querySelector('#ussign-job-timer .sc-settings-group[data-group="appearance"]')?.getBoundingClientRect().height;
+      setTimeout(() => {
+        const group = document.querySelector('#ussign-job-timer .sc-settings-group[data-group="appearance"]');
+        window.__scDisclosureProof = {
+          before, after: group?.getBoundingClientRect().height,
+          heightAnimation: group?.getAnimations().some(animation => animation.effect?.getKeyframes?.().some(frame => frame.height)),
+          panelAnimation: getComputedStyle(group.querySelector('.sc-settings-group-panel')).animationName
+        };
+      }, 0);
+    }, { capture: true });
+  });
+  await appearance.click();
+  await page.waitForFunction(() => window.__scDisclosureProof !== null, null, { timeout });
+  const disclosureMotion = await page.evaluate(() => window.__scDisclosureProof);
+  if (motionExpected) check(disclosureMotion.heightAnimation && disclosureMotion.panelAnimation.includes('sc-panel-slide'),
+    'Settings disclosure snapped instead of sliding open', disclosureMotion);
+  const view = await page.locator(`${ROOT} .sc-view`).elementHandle();
+  const before = await view.evaluate(node => ({ key: node.dataset.scViewKey, animation: getComputedStyle(node).animationName }));
+  await page.waitForTimeout(1200);
+  const after = await view.evaluate(node => ({ connected: node.isConnected, key: node.dataset.scViewKey, animation: getComputedStyle(node).animationName }));
+  check(before.key === 'settings:ready' && after.connected && before.key === after.key &&
+    (!motionExpected || (before.animation.includes('sc-copy-resolve') && before.animation === after.animation)),
+  'Timer refresh replayed route motion or replaced the view', { before, after });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const reduced = await page.evaluate(() => ({
+    animation: getComputedStyle(document.querySelector('#ussign-job-timer .sc-view')).animationName,
+    transition: getComputedStyle(document.querySelector('#ussign-job-timer')).transitionDuration
+  }));
+  if (motionExpected) check(reduced.animation === 'none' && reduced.transition === '0s', 'Reduced motion still animates the dock', reduced);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await view.dispose();
+  await home(page, timeout);
+  const viewCurrent = page.locator(`${ROOT} .sc-total-area .sc-view-current[data-action="select"]`);
+  if (await viewCurrent.count()) {
+    const alignment = await page.evaluate(() => {
+      const button = document.querySelector('#ussign-job-timer .sc-total-area .sc-view-current');
+      const total = document.querySelector('#ussign-job-timer .sc-metric-total');
+      const action = button?.getBoundingClientRect();
+      const metric = total?.getBoundingClientRect();
+      return { buttonRight: action?.right, totalLeft: metric?.left,
+        buttonBottom: action?.bottom, totalBottom: metric?.bottom };
+    });
+    check(alignment.buttonRight <= alignment.totalLeft - 12 &&
+      Math.abs(alignment.buttonBottom - alignment.totalBottom) <= 6,
+    'View current is not aligned beside Job total', alignment);
+    await viewCurrent.click();
+  }
+  check(await page.locator(`${ROOT} .sc-current-strip`).count() === 0, 'Current job is duplicated above its timer card');
+  await page.locator(`${ROOT} .sc-timer-card [data-action="context-detail"]`).click();
+  const detailsBack = page.locator(`${ROOT} .sc-view-head [data-action="view"][data-view="main"][aria-label="Back"]`);
+  await detailsBack.waitFor({ state: 'visible', timeout });
+  await detailsBack.click();
+  check(await page.locator(`${ROOT} .sc-timer-card`).isVisible() &&
+    await page.locator(`${ROOT} [data-sc-view-heading]`).filter({ hasText: 'Time Overview' }).count() === 0,
+  'Details Back did not return directly to the timer');
+  return { initialTabs, cycledTabs, icons, before, after, reduced };
 }
 
 async function captureDashboardRow(page, screenshot) {
@@ -196,7 +370,7 @@ async function verifyDashboardJourney({ page, origin, timeout, readBoundary, scr
   const nativeBefore = await nativeDashboardSnapshot(page);
   check(nativeBefore.every(item => item.html && item.visible), 'Dashboard fixture omitted native mount/cleanup anchors', nativeBefore);
   check(await page.locator(DASHBOARD).count() === 0, 'Dashboard is not off by default');
-  await settingsRoute(page, 'appearance', 'dashboard', timeout, diagnostic('open analytics settings to enable'));
+  await settingsRoute(page, 'features', 'dashboard', timeout, diagnostic('open analytics settings to enable'));
   await page.locator(`${ROOT} [data-action="preference-dashboard"][data-value="true"]`).click();
   await waitForDashboardStage(page, () => Boolean(document.querySelector('#squarecoil-companion-analytics')?.shadowRoot?.querySelector('[data-action="period"]')),
     'initial analytics mount', timeout, readDiagnosticState);
@@ -209,7 +383,7 @@ async function verifyDashboardJourney({ page, origin, timeout, readBoundary, scr
   check(JSON.stringify(await nativeDashboardSnapshot(page)) === JSON.stringify(nativeBefore), 'Enabling dashboard changed native content or controls');
 
   const host = page.locator(DASHBOARD);
-  await settingsRoute(page, 'appearance', 'dashboard', timeout, diagnostic('open analytics appearance settings'));
+  await settingsRoute(page, 'features', 'dashboard', timeout, diagnostic('open analytics appearance settings'));
   const appearanceBefore = await page.evaluate(() => ({
     website: document.documentElement.getAttribute('data-squarecoil-companion-site-theme'),
     companion: document.querySelector('#ussign-job-timer')?.dataset.protoTheme,
@@ -279,7 +453,7 @@ async function verifyDashboardJourney({ page, origin, timeout, readBoundary, scr
   await page.evaluate(() => { history.pushState({}, '', '/dashboard.php?show=2'); window.dispatchEvent(new PopStateEvent('popstate')); });
   await page.waitForSelector(DASHBOARD, { timeout });
   check(await page.locator(DASHBOARD).count() === 1, 'Returning to dashboard duplicated its root');
-  await settingsRoute(page, 'appearance', 'dashboard', timeout);
+  await settingsRoute(page, 'features', 'dashboard', timeout);
   await page.locator(`${ROOT} [data-action="preference-dashboard"][data-value="false"]`).click();
   await page.waitForFunction(() => !document.querySelector('#squarecoil-companion-analytics'), null, { timeout });
   check(JSON.stringify(await nativeDashboardSnapshot(page)) === JSON.stringify(nativeBefore), 'Disabling dashboard failed to restore native page');
@@ -310,7 +484,7 @@ async function verifyDesignProfileJourney({ page, origin, timeout, readBoundary,
   await settingsRoute(page, 'appearance', 'website-theme', timeout);
   await page.locator(`${ROOT} [data-action="preference-site"][data-value="SLEEK_DARK"]`).click();
   await settled(page, timeout);
-  await settingsRoute(page, 'appearance', 'design-dashboard', timeout);
+  await settingsRoute(page, 'features', 'design-dashboard', timeout);
   await page.locator(`${ROOT} [data-action="preference-design-dashboard"][data-value="ON"]`).click();
   await page.waitForFunction(() => document.documentElement.getAttribute('data-squarecoil-companion-dashboard-profile') === 'active' &&
     document.querySelectorAll('#squarecoil-companion-design-dashboard-profile').length === 1, null, { timeout });
@@ -329,7 +503,7 @@ async function verifyDesignProfileJourney({ page, origin, timeout, readBoundary,
   check(await page.locator(profile).count() === 1 && await page.locator(summary).count() === 1,
     'Design Dashboard restyle duplicated on route return');
 
-  await settingsRoute(page, 'appearance', 'design-dashboard', timeout);
+  await settingsRoute(page, 'features', 'design-dashboard', timeout);
   await page.locator(`${ROOT} [data-action="preference-design-dashboard"][data-value="OFF"]`).click();
   await page.waitForFunction(() => !document.querySelector('#squarecoil-companion-design-dashboard-profile') &&
     !document.querySelector('#squarecoil-companion-dashboard-summary'), null, { timeout });
@@ -349,4 +523,4 @@ async function verifyDesignProfileJourney({ page, origin, timeout, readBoundary,
     profileLayerCount: 1, nativeContentUnchanged: true, canonicalBoundaryUnchanged: true };
 }
 
-module.exports = { verifySelectedContext, verifyDashboardJourney, verifyDesignProfileJourney, dashboardSnapshot };
+module.exports = { verifySelectedContext, verifyDashboardJourney, verifyDesignProfileJourney, verifyUiPolish, dashboardSnapshot };

@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { PACKAGE_FILES: REQUIRED_PACKAGE_FILES, CANDIDATE_EMBEDDED_BUNDLES } = require('../../scripts/package-inventory');
 const { verifyDashboardJourney } = require('../../dev/local-lab/prototype-journey');
+const { EVENT_CODES: DIAGNOSTIC_EVENT_CODES } = require('../../src/extension/diagnostic-log');
 
 const CANONICAL_BUILD_ID = 'rebuild-b6-release-candidate';
 const CANONICAL_STAGE = 'B6';
@@ -1383,6 +1384,14 @@ async function clickWorkspaceControl(page, selector, timeoutMs) {
   await control.click({ timeout: timeoutMs });
 }
 
+async function clickMoreTool(page, destination, timeoutMs) {
+  const tools = page.locator(`#${ROOT_ID} .sc-quick-links`);
+  if (!await tools.evaluate(node => node.open)) {
+    await clickWorkspaceControl(page, '.sc-quick-links summary', timeoutMs);
+  }
+  await clickWorkspaceControl(page, `.sc-quick-links [data-action="view"][data-view="${destination}"]`, timeoutMs);
+}
+
 async function revealWorkspaceTab(page, contextId, timeoutMs) {
   const tab = page.locator(`#${ROOT_ID} .sc-tab[data-context="${contextId}"]`);
   await tab.waitFor({ state: 'attached', timeout: timeoutMs });
@@ -1800,6 +1809,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
     context = await playwright.chromium.launchPersistentContext(profileDirectory, {
       executablePath,
       headless: !options.headed,
+      acceptDownloads: true,
       ignoreDefaultArgs: ['--disable-extensions', '--disable-back-forward-cache'],
       viewport: { width: 1280, height: 900 },
       args: [
@@ -1883,6 +1893,80 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         const value = await chrome.storage.local.get('timerEnabled');
         return typeof value.timerEnabled === 'boolean' ? value.timerEnabled : null;
       }), 'the installation default setting', options.timeoutMs);
+      await runCase(result.cases, `A4-LOG-${family === 'chrome' ? 'CH' : 'ED'}-NOLOGIN-DOWNLOAD`,
+        'Packaged popup downloads a bounded privacy-safe diagnostic log without SquareCoil sign-in', async () => {
+          const squarecoilTabs = await setupPage.evaluate(async fixtureOrigin =>
+            (await chrome.tabs.query({ url: `${fixtureOrigin}/*` })).length, FIXTURE_ORIGIN);
+          const squarecoilCookies = await context.cookies(FIXTURE_ORIGIN);
+          assert(squarecoilTabs === 0 && squarecoilCookies.length === 0,
+            'No-login diagnostic fixture inherited a SquareCoil tab or sign-in cookie',
+            { squarecoilTabs, cookieCount: squarecoilCookies.length });
+          const nativeAttempts = [];
+          const observeRequest = request => {
+            const url = new URL(request.url());
+            if (url.origin === FIXTURE_ORIGIN && url.pathname === '/ajax_time_clock.php' &&
+                !(request.method() === 'POST' && request.postData() === 'action=7')) {
+              nativeAttempts.push({ method: request.method(), path: url.pathname });
+            }
+          };
+          context.on('request', observeRequest);
+          try {
+            await setupPage.locator('.technical-card > summary').click();
+            await setupPage.locator('#downloadDiagnosticLog').waitFor({ state: 'visible', timeout: options.timeoutMs });
+            const [download] = await Promise.all([
+              setupPage.waitForEvent('download', { timeout: options.timeoutMs }),
+              setupPage.locator('#downloadDiagnosticLog').click()
+            ]);
+            assert(await download.failure() === null, 'Diagnostic JSON download failed');
+            const stream = await download.createReadStream();
+            assert(stream, 'Diagnostic download did not expose its actual file bytes');
+            const chunks = [];
+            let byteCount = 0;
+            for await (const chunk of stream) {
+              byteCount += chunk.length;
+              assert(byteCount <= 65_536, 'Downloaded diagnostic log exceeded its 64 KiB cap', { byteCount });
+              chunks.push(chunk);
+            }
+            const bytes = Buffer.concat(chunks);
+            const text = bytes.toString('utf8');
+            const log = JSON.parse(text);
+            assert(JSON.stringify(Object.keys(log).sort()) === JSON.stringify(['entries', 'exportedAtMs', 'format', 'retention', 'schemaVersion']) &&
+              log.format === 'squarecoil-companion-diagnostic-log' && log.schemaVersion === 1 &&
+              Number.isSafeInteger(log.exportedAtMs) && log.exportedAtMs >= 0,
+            'Downloaded diagnostic JSON did not have the exact safe export schema', Object.keys(log));
+            assert(JSON.stringify(Object.keys(log.retention).sort()) === JSON.stringify(['maxAgeDays', 'maxBytes', 'maxEntries']) &&
+              log.retention.maxEntries === 200 && log.retention.maxAgeDays === 30 && log.retention.maxBytes === 65_536 &&
+              Array.isArray(log.entries) && log.entries.length > 0 && log.entries.length <= 200,
+            'Downloaded diagnostic log omitted recent app events or exceeded retention bounds',
+            { retention: log.retention, entryCount: log.entries?.length });
+            const earliest = log.exportedAtMs - 30 * 24 * 60 * 60 * 1_000;
+            for (const [index, entry] of log.entries.entries()) {
+              const allowed = DIAGNOSTIC_EVENT_CODES[entry.code];
+              assert(JSON.stringify(Object.keys(entry).sort()) === JSON.stringify(['area', 'atMs', 'code', 'severity']) &&
+                Object.hasOwn(DIAGNOSTIC_EVENT_CODES, entry.code) && allowed.area === entry.area && allowed.severity === entry.severity &&
+                Number.isSafeInteger(entry.atMs) && entry.atMs >= earliest && entry.atMs <= log.exportedAtMs &&
+                (index === 0 || entry.atMs >= log.entries[index - 1].atMs),
+              'Downloaded diagnostic entry contained arbitrary details, an unknown event, or stale time', { index, entry });
+            }
+            assert(!/@|https?:\/\/|private-job|260701 - Design|Northstar|Riverline|Cedar Point|project\.php\?id=/i.test(text),
+              'Downloaded diagnostic log exposed fixture job, page, or account strings');
+            assert(download.suggestedFilename() === `SquareCoil-Companion-diagnostics-${new Date(log.exportedAtMs).toISOString().slice(0, 10)}.json`,
+              'Diagnostic download did not use the expected dated JSON filename', download.suggestedFilename());
+            await waitFor(async () => {
+              const status = await setupPage.locator('#diagnosticDownloadResult').innerText();
+              return status.startsWith('Download started for ') ? status : null;
+            }, 'diagnostic download success status', options.timeoutMs);
+            assert(nativeAttempts.length === 0 && result.network.nativeMutationAttempts.length === 0,
+              'No-login diagnostic download attempted a native SquareCoil mutation', nativeAttempts);
+            return { squarecoilTabs, cookieCount: squarecoilCookies.length, trustedDownloadClick: true,
+              filename: download.suggestedFilename(), bytes: byteCount, sha256: sha256(bytes),
+              retention: log.retention, entryCount: log.entries.length,
+              eventCodes: [...new Set(log.entries.map(entry => entry.code))],
+              exactSafeSchema: true, nativeMutationAttempts: nativeAttempts.length };
+          } finally {
+            context.off('request', observeRequest);
+          }
+        });
       await observeRuntimePermissionRequests(context.serviceWorkers().find(worker => worker.url().startsWith(`chrome-extension://${extensionId}/`)));
       await setupPage.evaluate(() => chrome.storage.local.set({ timerEnabled: false }));
       await waitFor(async () => setupPage.evaluate(async () => {
@@ -2000,8 +2084,8 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             };
           }, ROOT_ID);
           assert(JSON.stringify(disclosureState.labels) === JSON.stringify([
-            'Appearance', 'Time tracking', 'Jobs and watching', 'Notifications',
-            'Privacy and data', 'Help and diagnostics'
+            'Appearance', 'Features', 'Time tracking', 'Jobs', 'Notifications',
+            'Privacy and data', 'Help'
           ]) && disclosureState.expanded.length === 0 && disclosureState.visibleRoutes.length === 0 &&
             disclosureState.companionTitle === 'SquareCoil Companion' && disclosureState.companionLogoCount === 0 &&
             disclosureState.groupBorders.every(value => value === '0px' || value === '1px') &&
@@ -2018,10 +2102,37 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
               .filter(node => node.getClientRects().length > 0)
               .map(node => node.dataset.view);
             return expanded.length === 1 && expanded[0] === 'appearance' &&
-              JSON.stringify(visibleRoutes) === JSON.stringify(['timer-appearance', 'website-theme', 'dashboard', 'design-dashboard'])
+              JSON.stringify(visibleRoutes) === JSON.stringify(['timer-appearance', 'website-theme'])
               ? { expanded, visibleRoutes } : null;
           }, ROOT_ID), 'B5-D nested Appearance disclosure', options.timeoutMs);
 
+          await clickWorkspaceControl(emptyPage, `[data-action="settings-toggle-group"][data-group="features"]`, options.timeoutMs);
+          const featuresDisclosure = await waitFor(async () => emptyPage.evaluate(rootId => {
+            const root = document.getElementById(rootId);
+            const expanded = Array.from(root?.querySelectorAll('[data-action="settings-toggle-group"][aria-expanded="true"]') || [])
+              .map(node => node.dataset.group);
+            const visibleRoutes = Array.from(root?.querySelectorAll('[data-action="settings-route"]') || [])
+              .filter(node => node.getClientRects().length > 0)
+              .map(node => node.dataset.view);
+            const unavailable = Array.from(root?.querySelectorAll('.sc-settings-group[data-group="features"] .sc-unavailable[aria-disabled="true"] strong') || [])
+              .map(node => node.textContent.trim());
+            return expanded.length === 1 && expanded[0] === 'features' &&
+              JSON.stringify(visibleRoutes) === JSON.stringify(['dashboard', 'design-dashboard', 'quick-file-paths', 'quick-clock']) &&
+              JSON.stringify(unavailable) === JSON.stringify(['Design page layout', 'Sidebar menu toggle'])
+              ? { expanded, visibleRoutes, unavailable } : null;
+          }, ROOT_ID), 'B5-D nested Features disclosure', options.timeoutMs);
+          for (const [view, heading, action] of [
+            ['quick-file-paths', 'Quick file paths', 'preference-quick-files'],
+            ['quick-clock', 'Quick clock controls', 'preference-quick-clock']
+          ]) {
+            await clickWorkspaceControl(emptyPage, `[data-action="settings-route"][data-view="${view}"]`, options.timeoutMs);
+            const routeHeading = await emptyPage.locator(`#${ROOT_ID} [data-sc-view-heading]`).innerText();
+            const off = await emptyPage.locator(`#${ROOT_ID} [data-action="${action}"][data-value="false"][data-active="true"]`).count();
+            assert(routeHeading === heading && off === 1,
+              'B5-D zero-history quick feature was unreachable or not off by default', { view, routeHeading, off });
+            await clickWorkspaceControl(emptyPage, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
+          }
+          await clickWorkspaceControl(emptyPage, `[data-action="settings-toggle-group"][data-group="appearance"]`, options.timeoutMs);
           await clickWorkspaceControl(emptyPage, `[data-action="settings-route"][data-view="website-theme"]`, options.timeoutMs);
           const nativeThemeScreenshot = await captureUiEvidence(emptyPage, options, family, 'settings-native-zero-history', `#${ROOT_ID}`);
           const darkStart = await emptyBridge.coreSnapshot();
@@ -2108,7 +2219,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             after.timer.currentContextId === before.currentContextId && after.timer.contextRows.length === 0,
           'B5-D zero-history navigation changed Timer or Ledger authority', { before, after });
           assert(result.network.nativeMutationAttempts.length === 0, 'B5-D zero-history navigation attempted a native SquareCoil mutation', result.network.nativeMutationAttempts);
-          return { home, settings, disclosureState, appearanceDisclosure, before, afterRevision: after.revision, darkTheme, lightTheme, focus, responsive,
+          return { home, settings, disclosureState, appearanceDisclosure, featuresDisclosure, before, afterRevision: after.revision, darkTheme, lightTheme, focus, responsive,
             screenshots: { settingsHomeScreenshot, nativeThemeScreenshot, darkThemeScreenshot, lightThemeScreenshot, diagnosticsScreenshot } };
         } finally {
           if (emptyBridge) {
@@ -2442,16 +2553,14 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         assert(main.selectedContextId === 'job:260701', 'Initial B3 selection did not reflect current Context truth', main);
         assert(main.selectedAria.includes('Today') && main.selectedAria.includes('timer limit') && main.selectedAria.includes('Running'), 'Compact tab omitted Today, threshold, or operational semantics', main);
 
-        await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="home"]`, options.timeoutMs);
-        await clickWorkspaceControl(page, `.sc-home-view [data-action="view"][data-view="overview"]`, options.timeoutMs);
+        await clickMoreTool(page, 'overview', options.timeoutMs);
         const overview = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
         const normalizedOverview = overview.toLowerCase();
         assert(normalizedOverview.includes('time overview') && normalizedOverview.includes('today by job / context') && normalizedOverview.includes('by day') && normalizedOverview.includes('by job / context'), 'B3 Overview destinations were incomplete', overview);
         await page.locator(`#${ROOT_ID} [data-action="view"][data-view="main"]`).click();
-        await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="home"]`, options.timeoutMs);
-        await clickWorkspaceControl(page, `.sc-home-view [data-action="view"][data-view="history"]`, options.timeoutMs);
+        await clickMoreTool(page, 'history', options.timeoutMs);
         const history = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
-        assert(history.includes('History') && history.includes('Current work stays on the Home screen until the session is complete.'),
+        assert(history.includes('History') && history.includes('Current work stays on the timer until the session is complete.'),
           'B3 History did not preserve completed-session semantics', history);
         await page.locator(`#${ROOT_ID} [data-action="view"][data-view="main"]`).click();
 
@@ -2792,8 +2901,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             const observerVisible = await observerPage.locator(`#${ROOT_ID} .sc-tab[data-context="job:260701"]`).count();
             return ownerVisible === 0 && observerVisible === 0 ? true : null;
           }, 'cross-tab B3 hidden-tab synchronization', options.timeoutMs);
-          await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="home"]`, options.timeoutMs);
-          await clickWorkspaceControl(page, `.sc-home-view [data-action="view"][data-view="recent"]`, options.timeoutMs);
+          await clickMoreTool(page, 'recent', options.timeoutMs);
           await page.locator(`#${ROOT_ID} [data-action="show-tab"][data-context="job:260701"]`).click({ force: true });
           await waitFor(async () => {
             const ownerVisible = await page.locator(`#${ROOT_ID} .sc-tab[data-context="job:260701"]`).count();
@@ -2885,8 +2993,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         await page.locator(`#${ROOT_ID} [data-action="settings-close"]`).click({ force: true });
         const mainWorkspaceButton = page.locator(`#${ROOT_ID} [data-action="view"][data-view="main"]`);
         if (await mainWorkspaceButton.count()) await mainWorkspaceButton.click({ force: true });
-        await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="home"]`, options.timeoutMs);
-        await clickWorkspaceControl(page, `.sc-home-view [data-action="view"][data-view="recent"]`, options.timeoutMs);
+        await clickMoreTool(page, 'recent', options.timeoutMs);
         const archiveAuthorityBefore = await bridge.coreSnapshot();
         let mouseHeld = false;
         let eligibleVeil = null;
@@ -3040,8 +3147,8 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           const settingsHome = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
           const settingsCategories = await page.locator(`#${ROOT_ID} [data-action="settings-toggle-group"] strong`).allTextContents();
           assert(JSON.stringify(settingsCategories.map(value => value.trim())) === JSON.stringify([
-            'Appearance', 'Time tracking', 'Jobs and watching', 'Notifications',
-            'Privacy and data', 'Help and diagnostics'
+            'Appearance', 'Features', 'Time tracking', 'Jobs', 'Notifications',
+            'Privacy and data', 'Help'
           ]), 'B5-A Settings Home was incomplete', { settingsHome, settingsCategories });
 
           await openSettingsDestination(page, 'appearance', 'timer-appearance', options.timeoutMs);
@@ -3058,6 +3165,37 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           }, 'B5-A Glass preference commit', options.timeoutMs);
           await waitFor(async () => await page.locator(`#${ROOT_ID} [data-action="preference-finish"][data-value="GLASS"][data-active="true"]`).count() ? true : null, 'B5-A Glass UI settlement', options.timeoutMs);
           assert(['GLASS', 'SOLID_FALLBACK'].includes(glassSnapshot.presentation.panelFinishEffective), 'B5-A Glass did not report its real effective presentation', glassSnapshot.presentation);
+
+          const clearBoundaryBefore = timerLedgerBoundaryIdentity(await bridge.coreSnapshot());
+          await clickWorkspaceControl(page, `[data-action="preference"][data-value="CLEAR"]`, options.timeoutMs);
+          await waitFor(async () => page.evaluate(rootId => {
+            const root = document.getElementById(rootId);
+            return root?.dataset.protoTheme === 'clear' && root.dataset.protoSurface === 'glass' ? true : null;
+          }, ROOT_ID), 'B5-A Clear glass appearance', options.timeoutMs);
+          const transparencyCdp = await context.newCDPSession(page);
+          let clearFallback;
+          try {
+            await transparencyCdp.send('Emulation.setEmulatedMedia', {
+              features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }]
+            });
+            clearFallback = await waitFor(async () => page.evaluate(rootId => {
+              const root = document.getElementById(rootId);
+              const shell = root?.querySelector('.sc-proto-shell');
+              const css = shell ? getComputedStyle(shell) : null;
+              const proof = { reducedTransparency: matchMedia('(prefers-reduced-transparency: reduce)').matches,
+                theme: root?.dataset.protoTheme, surface: root?.dataset.protoSurface,
+                backdrop: css?.backdropFilter || css?.webkitBackdropFilter,
+                background: css?.backgroundColor };
+              return proof.reducedTransparency && proof.theme === 'clear' && proof.surface === 'solid' &&
+                proof.backdrop === 'none' && proof.background === 'rgb(37, 49, 60)' ? proof : null;
+            }, ROOT_ID), 'B5-A Clear readable Solid accessibility fallback', options.timeoutMs);
+          } finally {
+            await transparencyCdp.send('Emulation.setEmulatedMedia', { features: [] });
+            await transparencyCdp.detach();
+          }
+          await clickWorkspaceControl(page, `[data-action="preference"][data-value="AUTO"]`, options.timeoutMs);
+          assert(JSON.stringify(timerLedgerBoundaryIdentity(await bridge.coreSnapshot())) === JSON.stringify(clearBoundaryBefore),
+            'B5-A Clear accessibility fallback changed Timer/Ledger state');
 
           await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
           await openSettingsDestination(page, 'appearance', 'website-theme', options.timeoutMs);
@@ -3147,7 +3285,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
           await clickWorkspaceControl(page, `.sc-proto-topbar [data-action="view"][data-view="settings"]`, options.timeoutMs);
           await openSettingsDestination(page, 'help', 'developer-support', options.timeoutMs);
           const developerSupport = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
-          assert(developerSupport.includes('No approved Buy Me a Coffee URL, Cash App name, or packaged QR is configured'), 'B5-A fabricated a Developer Support destination', developerSupport);
+          assert(developerSupport.includes('Tips aren’t available yet'), 'B5-A fabricated a Developer Support destination', developerSupport);
           await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
           await clickWorkspaceControl(page, `[data-action="settings-close"]`, options.timeoutMs);
 
@@ -3159,6 +3297,7 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
             preferenceRevisionAfter: after.preferences.preferenceRevision,
             autoEffective: autoSnapshot.presentation.timerAppearanceEffective,
             glassEffective: glassSnapshot.presentation.panelFinishEffective,
+            clearFallback,
             darkPresentation,
             lightGlassPresentation,
             refinedPresentation,
@@ -4061,11 +4200,23 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
       const categoryCount = await page.locator(`#${ROOT_ID} [data-action="settings-toggle-group"]`).count();
       await clickWorkspaceControl(page, `[data-action="settings-toggle-group"][data-group="appearance"]`, options.timeoutMs);
       const appearanceRoutes = await page.locator(`#${ROOT_ID} [data-action="settings-route"]:visible`).evaluateAll(nodes => nodes.map(node => node.dataset.view));
-      assert(categoryCount === 6 && JSON.stringify(appearanceRoutes) === JSON.stringify(['timer-appearance', 'website-theme', 'dashboard', 'design-dashboard']),
+      assert(categoryCount === 7 && JSON.stringify(appearanceRoutes) === JSON.stringify(['timer-appearance', 'website-theme']),
         'BFCache restored MAIN health but left Companion Settings noninteractive', { categoryCount, appearanceRoutes });
+      await clickWorkspaceControl(page, `[data-action="settings-toggle-group"][data-group="features"]`, options.timeoutMs);
+      const featureRoutes = await page.locator(`#${ROOT_ID} [data-action="settings-route"]:visible`).evaluateAll(nodes => nodes.map(node => node.dataset.view));
+      const expandedGroups = await page.locator(`#${ROOT_ID} [data-action="settings-toggle-group"][aria-expanded="true"]`).evaluateAll(nodes => nodes.map(node => node.dataset.group));
+      assert(JSON.stringify(featureRoutes) === JSON.stringify(['dashboard', 'design-dashboard', 'quick-file-paths', 'quick-clock']) &&
+        JSON.stringify(expandedGroups) === JSON.stringify(['features']),
+      'BFCache restored Settings but lost separate interactive Features navigation', { featureRoutes, expandedGroups });
+      for (const [view, heading] of [['quick-file-paths', 'Quick file paths'], ['quick-clock', 'Quick clock controls']]) {
+        await clickWorkspaceControl(page, `[data-action="settings-route"][data-view="${view}"]`, options.timeoutMs);
+        const routeHeading = await page.locator(`#${ROOT_ID} [data-sc-view-heading]`).innerText();
+        assert(routeHeading === heading, 'BFCache restored quick-feature route was not interactive', { view, routeHeading });
+        await clickWorkspaceControl(page, `[data-action="settings-back"][data-view="settings"]`, options.timeoutMs);
+      }
       await clickWorkspaceControl(page, `[data-action="settings-close"]`, options.timeoutMs);
       return { events, runtimeInstanceId: restored.runtimeInstanceId, companionBundleParses: tracker.companionCount(),
-        workspaceVisible: true, settingsInteractive: true };
+        workspaceVisible: true, settingsInteractive: true, categoryCount, appearanceRoutes, featureRoutes };
     });
     if (bfcacheCase.status === 'UNSUPPORTED') {
       result.status = 'UNSUPPORTED';

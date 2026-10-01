@@ -189,13 +189,13 @@ async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSee
     } };
 }
 
-test('UT-B4-UI-001 Archives and Backup names the three file products and destructive safety boundary', async () => {
+test('UT-B4-UI-001 Backups and data names the three file products and destructive safety boundary', async () => {
   const h = await harness();
   h.click({ action: 'view', view: 'settings' });
   h.click({ action: 'view', view: 'data-tools' });
-  assert.match(h.root.innerHTML, /Full Backup JSON/);
-  assert.match(h.root.innerHTML, /History CSV/);
-  assert.match(h.root.innerHTML, /Time Report CSV/);
+  assert.match(h.root.innerHTML, /Download backup/);
+  assert.match(h.root.innerHTML, /Download history/);
+  assert.match(h.root.innerHTML, /Download report/);
   assert.match(h.root.innerHTML, /SquareCoil official time is never changed/);
   h.ui.teardown();
 });

@@ -63,7 +63,7 @@ test('IT-B3-WORKSPACE-002 one committed native switch drives read model, tab foc
   assert.match(h.root.innerHTML, /Job 702/);
   assert.deepEqual(h.timerActions, []);
   h.click({ action: 'view', view: 'overview' });
-  assert.match(h.root.innerHTML, /Today by job \/ context/);
+  assert.match(h.root.innerHTML, /Today by job/);
   h.click({ action: 'view', view: 'history' });
   assert.match(h.root.innerHTML, /data-history-session="live-a"/);
   assert.match(h.root.innerHTML, /Job 701/);

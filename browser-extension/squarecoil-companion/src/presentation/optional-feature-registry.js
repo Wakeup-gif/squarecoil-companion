@@ -22,6 +22,20 @@ const OPTIONAL_PRESENTATION_FEATURES = Object.freeze({
     dependencies: Object.freeze(['websiteTheme=SLEEK_DARK']),
     conflicts: Object.freeze(['forced-colors', 'reduced-transparency']),
     storage: Object.freeze(['preferences.dashboardProfile'])
+  }),
+  QUICK_FILE_PATHS: Object.freeze({
+    id: 'squarecoil.optional.quick-file-paths',
+    version: '1.0.0',
+    category: 'job-fields-read-only',
+    defaultPreference: false,
+    routes: Object.freeze([
+      'https://ussignandmill.squarecoil.net/project_designs.php*',
+      'https://ussignandmill.squarecoil.net/project.php*'
+    ]),
+    optionalOrigins: Object.freeze([]),
+    dependencies: Object.freeze(['supported-Description-or-Important-Details-field']),
+    conflicts: Object.freeze([]),
+    storage: Object.freeze(['preferences.quickFilePathsEnabled'])
   })
 });
 

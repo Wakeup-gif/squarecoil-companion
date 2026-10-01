@@ -1,11 +1,29 @@
 # SquareCoil Companion Execution Gate Matrix
 
-**Status:** confirmed Companion prototype and separate analytics dashboard integration in progress. The native SquareCoil account structure was inspected read-only on October 1; extension-on-account visual acceptance, the current exact-package browser gate, and release gates remain open. Earlier Glass navigation acceptance is source-bound to its prior commit.
+**Status:** combined worktree candidate in progress on `codex/squarecoil-combined-2026-10-01`. Original branch evidence below is historical; it does not certify the merged bytes. Live account acceptance and Store activation remain external follow-ups.
 **Execution authority:** `docs/EXECUTION-ENFORCEMENT-PLAN.md`
 
 Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.
 
-## Active local diagnostic history — October 1
+## Active combined worktree integration — October 1
+
+Intent: preserve the completed Main Development and UI Edits feature sets on a separate review branch.
+Inputs: `608ddab4206810788570632518809d22bd345de1` and `9f79a2094da6f2baa04120933ef635126ae2c05b`; common base `99879446352364035904af640845ba6c5a43a570`.
+Impact tags: `LIFECYCLE`, `SHARED_UI_ROOT`, `WORKSPACE_SETTINGS`, `PRESENTATION`, `SUPPORT_PRIVACY`, `PACKAGE_ARTIFACT`, `DOCS_ONLY`.
+Contracts: preserve L0-L8 authority, observation, finalized-time import, preference fencing, accessibility and privacy constraints.
+Files: the two branch diffs, overlap resolutions, browser menu oracles, one combined preference/backup regression, and checkpoint/evidence documentation.
+Targeted gates: B3/B4/B5 renderer, preference, data, theme, quick tools, popup/log, recovery and updater tests; regenerated theme-port freshness.
+Composed journeys: sealed Chrome/Edge layout and quick tools; installed Settings, popup hide/show and photo switch, restore options, lifecycle, clean and v0.7 upgrade on the same ZIP.
+Full candidate gate: required after targeted gates pass. Exact source/package results belong in `implementation/COMBINED-WORKTREE-EVIDENCE.md`.
+Exclusions: original branch edits, real SquareCoil writes, Store submission, production rollout and merge to main.
+
+| ID | Required integration outcome | Evidence | State |
+|---|---|---|---|
+| `MERGE-001` | Schema v3 preserves CLEAR, both quick tools and explicit photo Off through preference persistence and backup restore; imported data creates no live state. | combined preference/backup regression plus aggregate | `MAPPED` |
+| `MERGE-002` | Polished Settings/Details/tabs/quick tools coexist with popup panel controls, diagnostics, photo switch and full-size backup restore options. | focused tests and sealed Chrome/Edge journeys | `MAPPED` |
+| `MERGE-003` | One exact canonical ZIP passes Chrome and Edge clean/upgrade acceptance and remains unchanged. | package validation, round trip and installed matrix | `MAPPED` |
+
+## Source-branch local diagnostic history — October 1
 
 ```text
 Intent: retain a small privacy-safe record of technical events between visits and let the user download it from the toolbar popup without a SquareCoil login.
@@ -88,6 +106,62 @@ Explicit exclusions: no store submission or release-branch promotion now, no liv
 | `STORE-001` | The package has a valid 128px store icon and small browser icons, with no unlisted bundled artwork or missing manifest references. | `PACKAGE_ARTIFACT`, `PRESENTATION` | asset dimension and manifest-policy checks | exact ZIP and installed Chrome/Edge candidate | `OPEN` |
 | `STORE-002` | Store descriptions, permission justifications, and privacy policy accurately disclose the tenant-only workflow, local history, optional Bing image fetch, and user-initiated support email. | `SUPPORT_PRIVACY`, `DOCS_ONLY` | source-to-disclosure audit | reviewer-ready listing and published policy URL | `OPEN` |
 | `STORE-003` | The store package remains lean, locally bundled, and free of remote executable code, credentials, prototype HTML, and legacy Tampermonkey files. | `PACKAGE_ARTIFACT` | package allowlist, size and remote-code checks | exact ZIP round trip and browser acceptance | `OPEN` |
+
+## Active prototype polish repair
+
+Inspected-job timer arrangement (October 1): `SHARED_UI_ROOT`, `WORKSPACE_SETTINGS`, `PRESENTATION`, `DOCS_ONLY`. Lower the “Working now” cue and inspected-job name toward the elapsed time, and place the existing trusted “View current” selection button beside the Job total value with room between them. Preserve operational versus inspected Context, canonical times, status, trusted selection, and compact behavior when no different job is running. Expected files: workspace renderer, dock styles, focused workspace/browser proof, and this matrix. Targeted gates: B3 workspace UI/integration and prototype tests; preview checks at full, 390px, and 320px widths; sealed Chrome/Edge interaction smoke; then aggregate candidate validation. Composed journey: inspect an inactive job, read both times, return to the running job, inspect details and return, with long labels and no horizontal overflow. No Timer, Ledger, Bridge, native SquareCoil, data, package, or release mutation.
+
+Inspected-job timer arrangement proof (October 1): B3 workspace UI/integration and prototype UI checks passed, and `check:b6-candidate` passed on the final code with 48 B3 stable fixtures, 178 B5 stable fixtures, and 15 prototype UI fixtures. The preview was inspected at desktop, 390px, and 320px widths; the button sits beside Job total at desktop and 390px, then stacks above the total at 320px without horizontal overflow. The 320px preview controls were compacted so they no longer overlap the dock. Sealed Chrome and Edge smoke passed the trusted “View current” return action, horizontal alignment, unchanged canonical timer boundary, Details return, and existing navigation and appearance journeys. This is local development evidence, not renewed installed-package release acceptance.
+
+Site-shell and light-theme refinement (October 1): `PRESENTATION`, `DOCS_ONLY`. Close the visible join between the top navigation and left menu, restore the real website logo across Glass themes, give Light Glass and Refined Light a quieter hierarchy, and remove stacked decorative panel strokes and heavy theme focus halos. Keep interactive controls legible, retain keyboard-only focus visibility and forced-colors behavior, and preserve Original-theme teardown. Expected files: the site-theme service, authoritative theme-port generator and regenerated Glass ports, sealed local-lab styles and theme proof, and this matrix. Targeted gates: theme-service and appearance tests, theme-port freshness, sealed Chrome/Edge theme screenshots at desktop and narrow widths, then the aggregate candidate gate. Composed journeys: Light Glass and Refined Light through expanded/collapsed sidebar, keyboard focus, and return to Original. No Timer, Ledger, Bridge, native SquareCoil clock/data, publication, or main-branch mutation.
+
+Site-shell and light-theme refinement proof (October 1): Theme-service and authoritative-port fixtures passed (33/33), generated ports were current, sealed Chrome visual evidence and Chrome/Edge smoke passed with the header/sidebar seam at zero gap, and `check:b6-candidate` passed on the final local build. The Light Glass and Refined Light screenshots are retained in the October 1 visualization folder outside Git. Chrome/Edge smoke exercised Settings navigation and reduced motion without screenshot capture; visual capture freezes finite animations for deterministic images. This is development evidence, not renewed clean-install release acceptance.
+
+Navigation and feature-settings discovery (October 1): `SHARED_UI_ROOT`, `WORKSPACE_SETTINGS`, `PRESENTATION`, `DOCS_ONLY`. Remove the redundant Home control from the dock, place Find a job below Jobs/Overview/History in the expanded More tools tray, and keep long Jobs, Overview, and History content scrollable inside the dock. Separate Appearance choices from optional prototype-derived Design-page features and document the current Design Dashboard visual before deciding whether its existing option is redundant. Quick file paths must be read-only, restricted to the actual Design page's job-detail fields, and validate destinations before exposing quick-open links. Quick clock actions must preserve native SquareCoil authority and require a trusted user action; no automatic clock mutation is introduced by this batch. Targeted gates: B3 workspace navigation/overflow, B5 Settings and presentation, prototype UI, sealed Chrome/Edge journeys, then aggregate candidate validation. No Timer/Ledger/Bridge authority, native page data, or release mutation.
+
+Navigation and feature-settings proof (October 1): `check:b6-candidate` passed on the final local source, including 45 B3 unit fixtures, 177 B5 stable fixtures, and 15 prototype UI fixtures. Sealed Chrome and Edge smoke passed with Quick files on exact Design/Project routes, combined visible Description and Important Details, Copy and validated Open actions, removable off state, and Quick clock focus without a native clock click or Timer/Ledger change. The localhost preview was visually inspected with the new seven-section Settings menu and expanded three-row tools tray. The before/after Design dashboard screenshots are saved outside the repository in the October 1 visualization folder. These are local development checks; exact installed-package release acceptance has not been renewed.
+
+Timer copy and Details navigation refinement (October 1): `SHARED_UI_ROOT`, `WORKSPACE_SETTINGS`, `PRESENTATION`, `DOCS_ONLY`. Put job number and name on one threshold-colored line, remove the visible Today label and current-session row, and remove the More tools chevron. On narrow screens, move the status badge below the job line to preserve title space. Make Details Back return to the view that opened it, especially Main, without passing through Overview. Keep the canonical Today value, Job total, selected-versus-operational boundary, and trusted actions unchanged. Keep horizontal wheel and brief edge-hover movement working across browsers. Targeted gates: B3 workspace UI navigation/copy, prototype UI, live preview, sealed Chrome/Edge interaction smoke, then aggregate candidate validation. No Timer, Ledger, Bridge, official SquareCoil, or release mutation.
+
+Timer copy and Details navigation proof (October 1): B3 unit tests passed (44/44), prototype UI tests passed (15/15), sealed Chrome and Edge smoke passed, and `check:b6-candidate` passed on the final local source. The live fictional-job preview shows the job number/name in the same timer-limit color, no visible Today or session row, and a centered More tools button without a chevron. Clicking Details then Back returns directly to the timer. These are local development checks; exact installed-package release acceptance has not been renewed.
+
+Timer interaction refinement (October 1): `SHARED_UI_ROOT`, `WORKSPACE_SETTINGS`, `PRESENTATION`, `DOCS_ONLY`. Make overflow arrows visible beside the job strip and use them to select adjacent visible jobs without changing operational Timer truth; hovering near an edge moves the strip. Give the job name its own line, keep Today primary and current session tertiary, and let the centered More tools control reveal its tool row behind it. While dragging a tab away from the strip, visually lift its source from the rail, restoring it on cancellation and keeping reorder/archive authority unchanged. Targeted gates: B3 UI/workspace and B4 drag tests, B5 Settings/appearance checks, prototype UI, sealed Chrome/Edge interaction smoke, then aggregate candidate validation. No Timer, Ledger, Bridge, official SquareCoil, or release mutation.
+
+Timer interaction proof (October 1): B3/B4/B5 unit clusters passed (43/44/158 tests), sealed Chrome and Edge smoke passed, and `check:b6-candidate` passed. The browser journey checks visible arrows, adjacent tab selection without operational changes, hover movement in both directions, More tools staying open across a timer refresh, and a drag-away source that disappears until cancellation restores it. The localhost preview was inspected with fictional jobs. This remains local development evidence; exact installed-package release acceptance has not been renewed.
+
+Prototype interaction parity (September 30): `SHARED_UI_ROOT`, `WORKSPACE_SETTINGS`, `PRESENTATION`, `DOCS_ONLY`. Add edge-revealed previous/next controls only when the followed-job strip overflows; keep native horizontal scroll, selection, drag, and archive safety. Animate Settings disclosure height and content on open/close, and carry the prototype's short glimmer through route changes without restarting it on clock ticks. Simplify routine copy and spacing. Targeted checks: B3 UI/interaction, B5 Settings, prototype UI, overflow/keyboard/reduced-motion browser journey; then aggregate candidate and sealed browser smoke. No Timer, Ledger, Bridge, or SquareCoil mutation changes.
+
+Interaction-parity proof (October 1): B3 workspace/UI, B3 integration, B4 data UI, B5 Settings, and prototype UI checks passed. `check:b6-candidate` passed. Sealed Chrome and Edge smoke passed with overflowing tabs, edge cycling, vertical Settings, sliding disclosure, stable motion across clock ticks, and reduced-motion checks. The localhost preview uses six fictional jobs to expose overflow and color limits. This is local development evidence; exact installed-package release acceptance has not been renewed.
+
+Simple timer redesign: SHARED_UI_ROOT, WORKSPACE_SETTINGS, PRESENTATION. Reduce duplicate time and metadata, use labeled icon buttons and a compact tools grid, add persisted CLEAR timer appearance through the existing trusted preference command, and preserve readable fallback/reduced-motion behavior. Targeted gates: preferences and Settings tests, workspace tests, aggregate checks and browser smoke. No timer/ledger mutations or publication.
+
+More tools repair: SHARED_UI_ROOT, PRESENTATION. Preserve the native disclosure's open state across canonical timer refreshes and enlarge its full-row click target. Targeted proof: sealed browser check clicks the disclosure, verifies a 44px target, waits through timer refresh, and confirms tools remain visible. Aggregate gate follows; no Timer or data mutations.
+
+More tools proof: `check:b6-candidate` and sealed Chrome smoke passed. Local preview retained the open disclosure through repeated refreshes; the summary measured 46px high and 638px wide. Changes are local development bytes, not a published or installed release.
+
+Reference fidelity correction: SHARED_UI_ROOT, WORKSPACE_SETTINGS, PRESENTATION. Remove the duplicate current-job card; keep a compact current-job cue only when inspecting another job. Restore narrow vertical Settings geometry, lighter surfaces, visible controls and canonical threshold color accents. Validate workspace and Settings clusters, aggregate checks and sealed browser smoke; preserve trusted actions and Timer authority.
+
+Fidelity proof: final `check:b6-candidate` and sealed Chrome smoke passed. Browser checks verify the vertical menu, visible Close control, no duplicate current-job card, preserved view across ticks, and reduced motion. Visible localhost preview confirms timer actions, threshold accents, vertical Settings and Home/Back/Close controls. Added navigation-only decorative text morph; no Timer writes. Edge smoke and exact packaged release certification are not renewed by this batch.
+
+Copy refinement: PRESENTATION, SHARED_UI_ROOT, WORKSPACE_SETTINGS. Shorten routine labels and remove implementation jargon from everyday views; retain local-versus-official time disclosures and destructive-action explanations. Targeted gate: existing workspace/prototype/Settings checks, followed by the aggregate gate and visible preview inspection.
+
+Copy proof: updated existing wording expectations without changing behavior assertions; `check:b6-candidate` passed. The refreshed localhost preview shows the concise timer view. Earlier browser smoke evidence covers motion behavior before these text-only edits; no new release certification is claimed.
+
+Intent: restore prototype loading and motion polish, correct icon geometry and spacing, and expose the real renderer in a local preview.
+Impact tags: SHARED_UI_ROOT, WORKSPACE_SETTINGS, PRESENTATION, DOCS_ONLY.
+Files: workspace renderer, dock styles, local presentation preview, focused UI tests.
+Targeted gates: workspace/prototype tests, loading and SVG geometry checks, route motion without tick replay, reduced motion, narrow layout, sealed browser smoke.
+Composed journeys: loading -> ready; Home -> Settings -> nested route; compact/expanded; narrow viewport and reduced motion.
+Full candidate gate: required after targeted checks; no production publication claim.
+Exclusions: no Timer/Ledger/Bridge authority changes or live SquareCoil account actions. Preview uses explicitly fictional display data.
+
+| ID | Requirement | Targeted proof | Current state |
+|---|---|---|---|
+| `POLISH-001` | Startup shows loading while a blocked pre-Timer snapshot shows recovery guidance. | `UT-B3-UI-024`, `UT-B3-UI-025`; full `check:b6-candidate` passed | `PASS` |
+| `POLISH-002` | Toolbar SVGs retain square geometry; route reveals do not replay on timer refresh; reduced motion disables motion. | `verifyUiPolish` in the sealed Chrome and Edge smoke checks passed | `PASS` |
+| `POLISH-003` | The real renderer is available in a local, fictional-data preview and fits a narrow viewport. | Visible localhost preview; 390px viewport inspected without page overflow | `PASS` |
+
+Evidence scope: development checks for this branch's polish candidate. Exact packaged clean-install/upgrade release certification has not been rerun for these edits.
 
 ## Active Chrome auto-update delivery integration — September 30
 

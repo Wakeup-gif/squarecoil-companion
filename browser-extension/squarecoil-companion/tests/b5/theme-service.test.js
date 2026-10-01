@@ -189,6 +189,15 @@ test('UT-B5-THEME-003 unsupported Glass retains the preference and reports Solid
   assert.equal(snapshot.panelFinishEffective, 'SOLID_FALLBACK');
 });
 
+test('UT-B5-THEME-100 Clear uses glass and responds to reduced transparency without rewriting the preference', () => {
+  const h = harness();
+  assert.equal(h.service.apply(preferences({ timerAppearance: 'CLEAR', panelFinish: 'SOLID' })).panelFinishEffective, 'GLASS');
+  h.reducedTransparency.set(true);
+  const snapshot = h.service.snapshot();
+  assert.equal(snapshot.timerAppearancePreference, 'CLEAR');
+  assert.equal(snapshot.panelFinishEffective, 'SOLID_FALLBACK');
+});
+
 test('UT-B5-THEME-004 forced colors yields native website presentation without rewriting the durable theme', () => {
   const h = harness();
   h.forced.set(true);
@@ -357,7 +366,7 @@ test('UT-B5-THEME-018 Light Glass owns one pale translucent layer and a same-ori
   assert.equal(h.root.getAttribute(ROOT_THEME_ATTRIBUTE), 'LIGHT_GLASS');
   assert.equal(h.document.querySelectorAll(`#${STYLE_ID}`).length, 1);
   const css = h.document.querySelectorAll(`#${STYLE_ID}`)[0].textContent;
-  for (const marker of ['--sc-site-shell:rgba(248,251,254,.82)', 'data-squarecoil-companion-logo="brand"', '#pmlt>div:has(>#duplicate)', '.fc .fc-event', 'backdrop-filter:none!important']) {
+  for (const marker of ['--sc-site-shell:rgba(250,253,254,.84)', 'data-squarecoil-companion-logo="brand"', '#pmlt>div:has(>#duplicate)', '.fc .fc-event', 'backdrop-filter:none!important']) {
     assert.match(css, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.equal(editor.frame.getAttribute(EDITOR_FRAME_ATTRIBUTE), 'light-glass');
@@ -413,13 +422,16 @@ test('UT-B5-THEME-032 Refined Light owns one coherent canvas panel control and c
   h.service.apply(preferences({ websiteTheme: 'REFINED_LIGHT' }));
   const css = h.document.querySelectorAll(`#${STYLE_ID}`)[0].textContent;
   for (const marker of [
-    '--sc-site-canvas:#e8eef3',
+    '--sc-site-canvas:#f2f5f6',
     ':is(#main,#content_wrapper,#content)',
     ':is(.card,.panel,.panel-default,.well,.modal-content,.dropdown-menu,.tab-content)',
     ':is(input,select,textarea,.form-control,.gui-input,.gui-textarea)',
     'data-squarecoil-companion-logo="brand"',
     'body.sb-l-m :is(header.navbar,.navbar) #toggle_sidemenu_l'
   ]) assert.match(css, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(css, /border-color:transparent!important;box-shadow:0 5px 18px/);
+  assert.match(css, /:focus-visible\{outline:2px solid #33738a!important/);
+  assert.doesNotMatch(css, /:focus-visible\{outline:3px/);
   assert.doesNotMatch(css, /content:"SC"/);
   h.service.teardown();
 });

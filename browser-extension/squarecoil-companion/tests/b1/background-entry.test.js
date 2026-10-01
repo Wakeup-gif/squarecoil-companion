@@ -539,12 +539,34 @@ test('concurrent persistence preflights use isolated probe keys', async () => {
   assert.equal([...values.keys()].some(key => key.startsWith('__scCompanionB1PersistenceProbe:')), false);
 });
 
-test('UT-DIAG-008 worker serves the local log to the exact popup without a SquareCoil tab', async () => {
-  installChromeHarness({ timerEnabled: true });
-  const values = new Map();
+function diagnosticWorkerHarness(entries = []) {
+  const harness = installChromeHarness({ timerEnabled: true });
+  const storageKey = 'scCompanionDiagnosticLogV1';
+  const values = new Map([
+    [storageKey, { schemaVersion: 1, entries }],
+    ['timerEnabled', true],
+    ['unrelated-authority-fixture', { revision: 7, timer: 'preserve', ledger: ['preserve'] }]
+  ]);
+  let failsGet = false;
+  let failsSet = false;
+  let reads = 0;
+  let writes = 0;
+  let tabMessages = 0;
+  global.chrome.tabs.sendMessage = async () => {
+    tabMessages += 1;
+    throw new Error('diagnostics must not message a SquareCoil tab');
+  };
   global.chrome.storage.local = {
-    get: async key => ({ [key]: values.get(key) }),
-    set: async entries => { for (const [key, value] of Object.entries(entries)) values.set(key, value); },
+    get: async key => {
+      reads += 1;
+      if (failsGet) throw new Error('private diagnostic read failure: job 251184');
+      return { [key]: values.get(key) };
+    },
+    set: async batch => {
+      writes += 1;
+      if (failsSet) throw new Error('private diagnostic write failure: account-token');
+      for (const [key, value] of Object.entries(batch)) values.set(key, structuredClone(value));
+    },
     remove: async key => { values.delete(key); }
   };
   let listener;
@@ -552,17 +574,117 @@ test('UT-DIAG-008 worker serves the local log to the exact popup without a Squar
   const background = loadBackground();
   const extensionId = global.chrome.runtime.id;
   const popupSender = { id: extensionId, url: `chrome-extension://${extensionId}/popup/popup.html` };
-  const unauthorized = [];
-  assert.equal(listener({ type: background.GET_DIAGNOSTIC_LOG_MESSAGE },
-    { ...popupSender, url: `chrome-extension://${extensionId}/other.html` },
-    value => unauthorized.push(value)), false);
-  assert.deepEqual(unauthorized, [{ ok: false, reason: 'extension-popup-required' }]);
+  return {
+    background, listener, popupSender, values, storageKey, harness,
+    counts: () => ({ reads, writes, tabMessages }),
+    failGet(value) { failsGet = value; },
+    failSet(value) { failsSet = value; },
+    async request(type) {
+      return new Promise(resolve => {
+        assert.equal(listener({ type }, popupSender, resolve), true);
+      });
+    }
+  };
+}
+
+test('UT-DIAG-008 worker serves a bounded private-data-free log to the exact popup without a SquareCoil tab', async () => {
+  const atMs = Date.now() - 1_000;
+  const entries = Array.from({ length: 205 }, (_, index) => ({
+    atMs: atMs - index * 1_000, code: 'WALLPAPER_FALLBACK',
+    area: 'Private Customer 251184', severity: 'account-token',
+    url: 'https://ussignandmill.squarecoil.net/project.php?id=251184'
+  }));
+  entries.push({ atMs: atMs - 31 * 24 * 60 * 60_000, code: 'NATIVE_CLOCK_OBSERVED' });
+  entries.push({ atMs, code: 'PRIVATE_CUST_251184', message: 'private support message' });
+  const h = diagnosticWorkerHarness(entries);
+  const authorityBefore = structuredClone(h.values.get('unrelated-authority-fixture'));
+  const result = await h.request(h.background.GET_DIAGNOSTIC_LOG_MESSAGE);
+  assert.equal(result.ok, true);
+  assert.equal(result.schemaVersion, 1);
+  assert.deepEqual(result.retention, { maxEntries: 200, maxAgeDays: 30, maxBytes: 65536 });
+  assert.equal(result.entries.length, 200);
+  assert.equal(result.entries.some(entry => entry.code === 'WORKER_STARTED'), true);
+  assert.equal(result.entries.some(entry => entry.code === 'NATIVE_CLOCK_OBSERVED'), false);
+  assert.equal(result.entries.every(entry => Object.keys(entry).sort().join(',') === 'area,atMs,code,severity'), true);
+  assert.doesNotMatch(JSON.stringify(result), /251184|Private Customer|account-token|private support message|project\.php/);
+  assert.ok(Buffer.byteLength(JSON.stringify(h.values.get(h.storageKey)), 'utf8') <= 65536);
+  assert.deepEqual(h.values.get('unrelated-authority-fixture'), authorityBefore);
+  assert.equal(h.values.get('timerEnabled'), true);
+  assert.equal(h.counts().tabMessages, 0);
+  assert.equal(h.harness.fileInjections(), 0);
+  assert.equal(h.harness.enableCalls(), 0);
+});
+
+test('UT-DIAG-009 GET and CLEAR reject every near-match sender without reading or clearing the saved log', async () => {
+  const h = diagnosticWorkerHarness();
+  await h.request(h.background.GET_DIAGNOSTIC_LOG_MESSAGE);
+  const logBefore = structuredClone(h.values.get(h.storageKey));
+  const countsBefore = h.counts();
+  const rejectedSenders = [
+    {},
+    { url: h.popupSender.url },
+    { ...h.popupSender, id: 'another-extension-id' },
+    { ...h.popupSender, url: undefined },
+    { ...h.popupSender, url: 'https://ussignandmill.squarecoil.net/dashboard.php?show=2' },
+    { ...h.popupSender, url: 'chrome-extension://another-extension-id/popup/popup.html' },
+    { ...h.popupSender, url: h.popupSender.url.replace('/popup/popup.html', '/other.html') },
+    { ...h.popupSender, url: `${h.popupSender.url}?source=popup` },
+    { ...h.popupSender, url: `${h.popupSender.url}#diagnostics` },
+    { ...h.popupSender, tab: { id: 72, url: h.popupSender.url }, frameId: 0 }
+  ];
+  for (const type of [h.background.GET_DIAGNOSTIC_LOG_MESSAGE, h.background.CLEAR_DIAGNOSTIC_LOG_MESSAGE]) {
+    for (const sender of rejectedSenders) {
+      const responses = [];
+      assert.equal(h.listener({ type }, sender, value => responses.push(value)), false);
+      assert.deepEqual(responses, [{ ok: false, reason: 'extension-popup-required' }]);
+    }
+  }
+  assert.deepEqual(h.counts(), countsBefore);
+  assert.deepEqual(h.values.get(h.storageKey), logBefore);
+  assert.equal(h.harness.fileInjections(), 0);
+  assert.equal(h.harness.enableCalls(), 0);
+});
+
+test('UT-DIAG-010 trusted popup CLEAR removes only diagnostics and a later GET stays empty', async () => {
+  const h = diagnosticWorkerHarness([{ atMs: Date.now() - 1_000, code: 'WALLPAPER_FAILED' }]);
+  const authorityBefore = structuredClone(h.values.get('unrelated-authority-fixture'));
+  const before = await h.request(h.background.GET_DIAGNOSTIC_LOG_MESSAGE);
+  assert.equal(before.entries.some(entry => entry.code === 'WALLPAPER_FAILED'), true);
+  assert.deepEqual(await h.request(h.background.CLEAR_DIAGNOSTIC_LOG_MESSAGE), { ok: true, cleared: true });
+  assert.deepEqual(h.values.get(h.storageKey), { schemaVersion: 1, entries: [] });
+  const after = await h.request(h.background.GET_DIAGNOSTIC_LOG_MESSAGE);
+  assert.equal(after.ok, true);
+  assert.deepEqual(after.entries, []);
+  assert.deepEqual(h.values.get('unrelated-authority-fixture'), authorityBefore);
+  assert.equal(h.values.get('timerEnabled'), true);
+  assert.equal(h.counts().tabMessages, 0);
+  assert.equal(h.harness.fileInjections(), 0);
+  assert.equal(h.harness.enableCalls(), 0);
+});
+
+test('UT-DIAG-011 trusted popup storage failures return unavailable results without private exception text', async () => {
+  const h = diagnosticWorkerHarness();
+  await h.request(h.background.GET_DIAGNOSTIC_LOG_MESSAGE);
+  const logBefore = structuredClone(h.values.get(h.storageKey));
+  h.failGet(true);
+  const unavailable = await h.request(h.background.GET_DIAGNOSTIC_LOG_MESSAGE);
+  assert.equal(unavailable.ok, false);
+  assert.deepEqual(unavailable.entries, []);
+  assert.doesNotMatch(JSON.stringify(unavailable), /251184|private diagnostic read failure/);
+  h.failGet(false);
+  h.failSet(true);
+  const failedClear = await h.request(h.background.CLEAR_DIAGNOSTIC_LOG_MESSAGE);
+  assert.deepEqual(failedClear, { ok: false, cleared: false });
+  assert.doesNotMatch(JSON.stringify(failedClear), /account-token|private diagnostic write failure/);
+  assert.deepEqual(h.values.get(h.storageKey), logBefore);
+  h.failSet(false);
   const result = await new Promise(resolve => {
-    assert.equal(listener({ type: background.GET_DIAGNOSTIC_LOG_MESSAGE }, popupSender, resolve), true);
+    assert.equal(h.listener({ type: h.background.GET_DIAGNOSTIC_LOG_MESSAGE }, h.popupSender, resolve), true);
   });
   assert.equal(result.ok, true);
-  assert.equal(result.entries.some(entry => entry.code === 'WORKER_STARTED'), true);
-  assert.equal(result.entries.every(entry => Object.keys(entry).sort().join(',') === 'area,atMs,code,severity'), true);
+  assert.equal(h.counts().tabMessages, 0);
+  assert.equal(h.harness.fileInjections(), 0);
+  assert.equal(h.harness.enableCalls(), 0);
 });
 
 test('UT-B1-LC-23 orchestration keeps disabled checks read-only and exposes only explicit cleanup retry', async () => {

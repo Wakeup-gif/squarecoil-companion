@@ -1,6 +1,6 @@
 # SquareCoil Companion Rebuild: Start Here
 
-**Current work: confirmed prototype integration (September 30, 2026).** The isolated branch is `codex/squarecoil-prototype-integration`, based on `07d6b575a7ac908ecff42d425eb245d58341670e`. The original September 9 Companion UI was recovered and ported into the real extension. The analytics dashboard and restored Design Dashboard Enhancements are separate off-by-default options. Bing uses narrow required installation/update host access with no runtime consent request. Aggregate checks, Chrome/Edge sealed labs, and installed clean/upgrade diagnostics pass against dirty development bytes. Exact clean-source Chrome/Edge acceptance remains open. Prior UI/theme/lab/Figma stabilization evidence below is historical and does not certify this change. See [the integration checkpoint](docs/PROTOTYPE-INTEGRATION-2026-09-14.md) for current scope and proof.
+**Current work: combined worktree review candidate (October 1, 2026).** The active branch is `codex/squarecoil-combined-2026-10-01`, combining Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b` at common base `99879446352364035904af640845ba6c5a43a570`. Preserve both feature sets and original worktrees. This integration is authorized for testing, committing, pushing and a review PR; merge to main, Store submission and live SquareCoil writes remain separate actions. The confirmed prototype integration checkpoint remains at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`. Previous implementation evidence below is historical. Combined exact-package evidence is recorded in `implementation/COMBINED-WORKTREE-EVIDENCE.md` when completed.
 
 This is the recovery checkpoint for the active SquareCoil Companion prototype/rebuild.
 
@@ -10,7 +10,7 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 ## Current checkpoint
 
-**Active branch:** `codex/squarecoil-prototype-integration`
+**Active branch:** `codex/squarecoil-combined-2026-10-01`
 
 **Production baseline:** `main` at `9378da24f393b40066816133e7fa0f48063115f0` (`v0.7.1 Chrome Interaction Recovery`)
 
