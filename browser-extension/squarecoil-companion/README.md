@@ -56,6 +56,8 @@ Rotating Bing images use optional exact-origin access. Choose a Glass theme, the
 
 Extract the exact tested ZIP. In `chrome://extensions` or `edge://extensions`, enable Developer mode, choose **Load unpacked**, and select the extracted directory containing `manifest.json`. Do not substitute a working-tree build for an accepted package.
 
+For future automatic updates on Windows Chrome, use a Chrome Web Store installation and the dedicated release workflow described in [Chrome auto-update delivery](docs/AUTO-UPDATE-DELIVERY.md). The current unpacked candidate does not update itself from GitHub.
+
 ## Safety boundary
 
 All automated installed-browser acceptance uses synthetic in-memory SquareCoil fixtures and blocks unexpected network access. B6 does not authorize live SquareCoil mutations, main-branch integration, store publication, rollout, or production release.

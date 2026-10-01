@@ -5,6 +5,26 @@
 
 Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.
 
+## Active Chrome auto-update delivery integration — September 30
+
+```text
+Intent: connect a future Git release-branch version bump to Chrome's supported Web Store update channel.
+Behavior changed or restored: validate a clean, strictly newer canonical package; submit its exact ZIP to an existing Chrome Web Store item only from the dedicated release branch after the candidate gate succeeds.
+Files expected: release workflow, release-version gate and tests, distribution documentation, execution gate matrix.
+Impact tags: PACKAGE_ARTIFACT, DOCS_ONLY.
+Contracts touched: L8 package/candidate identity and release boundary; no extension runtime contract.
+Targeted gates: version-gate tests, workflow syntax, canonical inventory and package validator, exact ZIP round trip.
+Composed journeys: release-branch version bump -> clean B6 gate -> exact validated ZIP -> Web Store upload/publish submission; missing credentials, unchanged version, stale branch tip, or failed gate must stop before upload.
+Full candidate gate required at completion: yes for package-delivery checks; installed-browser behavior remains bound to the unchanged runtime package.
+Explicit exclusions: no GitHub-hosted executable update path, manifest update_url, added extension host permission, Timer/Ledger/Bridge/native mutation, store submission now, or main-branch promotion.
+```
+
+| ID | Requirement | Impact tag | Targeted proof | Composed/candidate proof | Current state |
+|---|---|---|---|---|
+| `UPD-001` | Only a strictly newer, internally consistent package version from the current release-branch head may enter store submission. | `PACKAGE_ARTIFACT` | release-version gate tests and branch-head check | clean release-branch push with version bump | `OPEN` |
+| `UPD-002` | The submitted ZIP is built from the canonical package inventory, validated against the exact source SHA, and is never assembled from prototype or legacy files. | `PACKAGE_ARTIFACT` | package validator and ZIP round trip | release workflow candidate gate and SHA-validated ZIP | `OPEN` |
+| `UPD-003` | Missing Web Store identity/credentials or a failed candidate gate stops before upload; the unpacked development build makes no false auto-update claim. | `PACKAGE_ARTIFACT`, `DOCS_ONLY` | workflow inspection and setup documentation | configured existing store item plus Web Store review and Chrome-delivered update, pending external setup | `OPEN` |
+
 ## Active handoff UI port — September 30
 
 ```text
