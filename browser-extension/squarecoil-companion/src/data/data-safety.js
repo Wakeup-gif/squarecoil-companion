@@ -28,7 +28,10 @@ const BACKUP_SCHEMA_VERSION = 1;
 const HISTORY_CSV_SCHEMA = 'squarecoil-companion-history-csv-v1';
 const LEGACY_HISTORY_CSV_SCHEMA = 'squarecoil-job-timer-csv-v1';
 const REPORT_CSV_SCHEMA = 'squarecoil-companion-time-report-v1';
-const MAX_INPUT_BYTES = 5 * 1024 * 1024;
+// A backup must fit the same bounded importer that restores it. Chrome's
+// extension-local store is capped at 10 MiB without unlimitedStorage; leave
+// room for the backup envelope and CSV representation of a full stored dataset.
+const MAX_INPUT_BYTES = 32 * 1024 * 1024;
 const MAX_RECORDS = 50_000;
 const MAX_STRING_LENGTH = 8_192;
 const MAX_STRUCTURE_DEPTH = 20;

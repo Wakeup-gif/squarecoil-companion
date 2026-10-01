@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ROOT_ID, createWorkspaceUi } = require('../../src/ui/workspace-ui');
+const { MAX_INPUT_BYTES } = require('../../src/data/data-safety');
 
 function timer() {
   return { revision: 4, sourcePreferenceRevision: 1, workdayZone: 'UTC', timeBasis: { disclosed: false },
@@ -87,6 +88,7 @@ async function harness({ confirms = [], clipboardAvailable = true, cinematicPerm
   }
   async function drain() { await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)); }
   return { ui, get root() { return activeRoot; }, core, preferenceCommands, permissionCalls, commandOrder, opens, copied, click, inputLimit, supportField, submit, drain,
+    change(target) { listeners.change({ target }); },
     replaceRoot() { activeRoot = makeRoot(); ui.render(); } };
 }
 
@@ -407,5 +409,22 @@ test('UT-B5-UI-023 Design Dashboard restyle is a separate trusted off-by-default
   assert.equal(h.core.preferences.dashboardEnabled, undefined);
   assert.equal(h.core.preferences.dashboardProfile, 'ON');
   assert.deepEqual({ ...h.core.timer, sourcePreferenceRevision: timerBefore.sourcePreferenceRevision }, timerBefore);
+  h.ui.teardown();
+});
+
+test('UT-B5-UI-026 an oversized import is rejected before reading the file', async () => {
+  const h = await harness();
+  let reads = 0;
+  const input = { value: 'large.csv', files: [{ size: MAX_INPUT_BYTES + 1, async text() { reads += 1; return ''; } }],
+    click() {}, closest(selector) { return selector === '[data-sc-data-file]' ? this : null; } };
+  h.root.querySelector = selector => selector === '[data-sc-data-file]' ? input : null;
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'settings-route', view: 'data-tools' });
+  h.click({ action: 'pick-file', fileMode: 'HISTORY_CSV' });
+  h.root.querySelector = selector => selector === '[data-sc-data-file]' ? input : null;
+  h.change(input);
+  await h.drain();
+  assert.equal(reads, 0);
+  assert.match(h.root.innerHTML, new RegExp(`larger than the ${MAX_INPUT_BYTES / (1024 * 1024)} MiB import limit`));
   h.ui.teardown();
 });

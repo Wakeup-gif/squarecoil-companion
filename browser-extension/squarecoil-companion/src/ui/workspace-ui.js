@@ -1,7 +1,7 @@
 'use strict';
 
 const { TIMER_COMMANDS } = require('../timer/commands');
-const { DATA_COMMANDS } = require('../data/data-safety');
+const { DATA_COMMANDS, MAX_INPUT_BYTES } = require('../data/data-safety');
 const { DEFAULT_PREFERENCES, validLimits } = require('../preferences/preferences');
 const { prototypeDockStyle } = require('./prototype-dock-style');
 const {
@@ -51,6 +51,7 @@ const TIMER_ACTIONS = Object.freeze({
 });
 const REFRESH_MS = 1_000;
 const HISTORY_PAGE_SIZE = 100;
+const PORTABLE_FILE_LIMIT_MIB = Math.round(MAX_INPUT_BYTES / (1024 * 1024));
 const COMPANION_DRAG_MIME = 'application/x-squarecoil-companion-tab';
 
 function escapeHtml(value) {
@@ -985,7 +986,7 @@ ${prototypeDockStyle(ROOT_ID)}
     document.body.appendChild(link);
     link.click();
     link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     dataMessage = `${isBackup ? 'Full Backup' : kind === 'HISTORY_CSV' ? 'History CSV' : 'Time Report CSV'} is ready.`;
     return result;
   }
@@ -1080,9 +1081,11 @@ ${prototypeDockStyle(ROOT_ID)}
     catch (error) {
       const reason = String(error?.message || error || '');
       const friendly = reason === 'backup-export-size-limit-exceeded'
-        ? 'This backup is larger than the 5 MB file limit for this version. Nothing was downloaded or changed.'
+        ? `This backup is larger than the ${PORTABLE_FILE_LIMIT_MIB} MiB file limit for this version. Nothing was downloaded or changed.`
         : reason === 'history-csv-export-size-limit-exceeded'
-        ? 'This history file is larger than the 5 MB import limit for this version. Nothing was downloaded or changed.'
+        ? `This history file is larger than the ${PORTABLE_FILE_LIMIT_MIB} MiB import limit for this version. Nothing was downloaded or changed.`
+        : reason === 'external-file-size-limit-exceeded'
+        ? `This file is larger than the ${PORTABLE_FILE_LIMIT_MIB} MiB import limit for this version. Nothing was imported.`
         : /Bing access was not granted|permission/i.test(reason)
         ? 'The selected theme keeps its readable background while Bing images are unavailable.'
         : 'That change could not be completed. No SquareCoil data was changed. Open Technical details for more information.';
@@ -1408,6 +1411,9 @@ ${prototypeDockStyle(ROOT_ID)}
     pendingFileMode = null;
     withBusy('data-import', async () => {
       try {
+        if (Number.isSafeInteger(file.size) && file.size > MAX_INPUT_BYTES) {
+          throw new Error('external-file-size-limit-exceeded');
+        }
         const text = await file.text();
         if (mode === 'HISTORY_CSV') await stageImport(DATA_COMMANDS.IMPORT_HISTORY_CSV, { input: text });
         else if (mode === 'BACKUP_REPLACE') await stageImport(DATA_COMMANDS.RESTORE_BACKUP, {

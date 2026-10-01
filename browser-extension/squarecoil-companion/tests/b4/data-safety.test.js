@@ -217,6 +217,29 @@ test('UT-B4-BACKUP-010 every offered backup fits the importer, and oversized bac
     /backup-export-size-limit-exceeded/);
 });
 
+test('UT-B4-BACKUP-012 a complete backup above the former 5 MiB limit remains importable', () => {
+  const document = documentFixture();
+  const contextId = addContext(document, '260899');
+  document.contexts[contextId].aliases = Array.from({ length: 900 }, (_, index) =>
+    `alias-${index}-${'x'.repeat(6_000)}`);
+  const backup = createFullBackup(document, { backupId: 'backup-above-former-limit', exportedAtMs: NOW });
+  const downloadedText = `${JSON.stringify(backup)}\n`;
+  assert.ok(Buffer.byteLength(downloadedText) > 5 * 1024 * 1024);
+  assert.ok(Buffer.byteLength(downloadedText) <= MAX_INPUT_BYTES);
+  const imported = normalizeBackup(downloadedText);
+  assert.equal(imported.sourceId, 'backup-above-former-limit');
+  assert.equal(imported.contexts.find(context => context.contextId === contextId).aliases.length, 900);
+});
+
+test('UT-B4-BACKUP-013 larger byte allowance keeps record and depth validation', () => {
+  assert.throws(() => normalizeBackup('x'.repeat(MAX_INPUT_BYTES + 1)), /external-file-size-limit-exceeded/);
+  assert.throws(() => normalizeBackup(JSON.stringify({ nested: Array(50_001).fill(null) })),
+    /external-record-limit-exceeded/);
+  let nested = null;
+  for (let depth = 0; depth < 22; depth += 1) nested = { child: nested };
+  assert.throws(() => normalizeBackup(JSON.stringify(nested)), /external-structure-depth-exceeded/);
+});
+
 test('UT-B4-BACKUP-003 supported schema zero adapts before validation', () => {
   const document = documentFixture();
   const contextId = addContext(document, '260812');
@@ -435,6 +458,20 @@ test('UT-B4-CSV-008 exported History CSV remains within its import limit', () =>
     addContext(oversized, String(260831 + index), { label: 'x'.repeat(7_900), legacyUnattributedMs: 1 });
   }
   assert.throws(() => createHistoryCsv(oversized), /history-csv-export-size-limit-exceeded/);
+});
+
+test('UT-B4-CSV-009 a complete History CSV above the former 5 MiB limit remains importable', () => {
+  const document = documentFixture();
+  for (let index = 0; index < 700; index += 1) {
+    addContext(document, String(270000 + index), { label: `Job ${index} ${'x'.repeat(7_700)}`, legacyUnattributedMs: 1 });
+  }
+  const text = createHistoryCsv(document).text;
+  assert.ok(Buffer.byteLength(text) > 5 * 1024 * 1024);
+  assert.ok(Buffer.byteLength(text) <= MAX_INPUT_BYTES);
+  const imported = normalizeHistoryCsv(text);
+  assert.equal(imported.invalidRows.length, 0);
+  assert.equal(imported.contexts.length, 700);
+  assert.equal(imported.balances.length, 700);
 });
 
 test('UT-B4-DATA-007 stale plan fingerprints and missing destructive confirmations cannot commit', () => {
