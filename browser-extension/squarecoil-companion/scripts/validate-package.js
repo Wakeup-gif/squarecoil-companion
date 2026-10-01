@@ -118,11 +118,22 @@ assert(allowDirty || buildInfo.sourceDirty === false, 'Candidate package was bui
 const references = [
   manifest.background.service_worker,
   manifest.action.default_popup,
+  ...Object.values(manifest.icons || {}),
+  ...Object.values(manifest.action.default_icon || {}),
   ...contentScripts.flatMap(entry => [...(entry.js || []), ...(entry.css || [])])
 ];
 for (const reference of references) {
   assert(PACKAGE_FILES.includes(reference), `Manifest reference is outside the package allowlist: ${reference}`);
   assert(fs.existsSync(path.join(packageRoot, reference)), `Packaged manifest reference is missing: ${reference}`);
+}
+
+for (const [size, relative] of Object.entries(manifest.icons || {})) {
+  const contents = fs.readFileSync(path.join(packageRoot, relative));
+  assert(contents.length < 32768, `Packaged icon ${relative} exceeds the 32 KB budget`);
+  assert(contents.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), `Packaged icon ${relative} is not PNG`);
+  assert(contents.toString('ascii', 12, 16) === 'IHDR', `Packaged icon ${relative} lacks PNG dimensions`);
+  assert(contents.readUInt32BE(16) === Number(size) && contents.readUInt32BE(20) === Number(size),
+    `Packaged icon ${relative} must be ${size}x${size}`);
 }
 
 const popupHtml = fs.readFileSync(path.join(packageRoot, 'popup/popup.html'), 'utf8');

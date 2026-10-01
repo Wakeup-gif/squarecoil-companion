@@ -13,6 +13,10 @@ const PACKAGE_FILES = Object.freeze([
   'dist/presentation-bootstrap.js',
   'dist/themes/dark-glass.css',
   'dist/themes/light-glass.css',
+  'icons/icon-16.png',
+  'icons/icon-32.png',
+  'icons/icon-48.png',
+  'icons/icon-128.png',
   'manifest.json',
   'popup/popup.css',
   'popup/popup.html'

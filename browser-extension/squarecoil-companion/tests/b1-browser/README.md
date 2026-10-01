@@ -4,7 +4,7 @@ This harness loads one exact unpacked package into installed, branded Google Chr
 
 ## Required package
 
-The `--package` directory must contain exactly the eleven allowlisted candidate files:
+The `--package` directory must contain exactly the fifteen allowlisted candidate files:
 
 - `manifest.json`
 - `dist/background.js`
@@ -15,10 +15,14 @@ The `--package` directory must contain exactly the eleven allowlisted candidate 
 - `dist/popup.js`
 - `dist/themes/dark-glass.css`
 - `dist/themes/light-glass.css`
+- `icons/icon-16.png`
+- `icons/icon-32.png`
+- `icons/icon-48.png`
+- `icons/icon-128.png`
 - `popup/popup.html`
 - `popup/popup.css`
 
-`--archive` must name the ZIP from which the directory was extracted. The harness reads each ZIP entry and requires its eleven file hashes and byte counts to match the extracted inventory exactly. It records the ZIP filename, SHA-256, optional single root prefix, and shared inventory digest, then verifies both the ZIP and directory are unchanged after both browsers. Stored and deflated ZIP entries are supported; encrypted, multi-disk, and ZIP64 archives fail closed.
+`--archive` must name the ZIP from which the directory was extracted. The harness reads each ZIP entry and requires its fifteen file hashes and byte counts to match the extracted inventory exactly. It records the ZIP filename, SHA-256, optional single root prefix, and shared inventory digest, then verifies both the ZIP and directory are unchanged after both browsers. Stored and deflated ZIP entries are supported; encrypted, multi-disk, and ZIP64 archives fail closed.
 
 `dist/build-info.json` must contain:
 

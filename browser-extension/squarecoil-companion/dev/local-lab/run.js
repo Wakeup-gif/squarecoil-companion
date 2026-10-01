@@ -41,8 +41,20 @@ const EVIDENCE_FILES = Object.freeze({
   dashboardSidebarRow: '11-dashboard-sidebar-row.png',
   dashboardNarrowRow: '12-dashboard-narrow-row.png',
   designProfile: '13-design-dashboard-profile.png',
+  storeWorkspace: '14-store-workspace-1280x800.png',
+  storeSettings: '15-store-settings-1280x800.png',
   manifest: 'visual-evidence.json'
 });
+
+async function captureStoreScreenshot(page, filename) {
+  const previousViewport = page.viewportSize();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  try {
+    await page.screenshot({ path: filename, fullPage: false, animations: 'disabled', caret: 'hide' });
+  } finally {
+    await page.setViewportSize(previousViewport);
+  }
+}
 
 function parseArguments(argv) {
   const options = { browser: 'chrome', smoke: false, evidenceDir: null, useExistingBuild: false };
@@ -682,7 +694,10 @@ async function verifyThemeEvidence(page, evidence, bingPermissionGranted, timeou
   assertVisualCondition(settings.groupCount === 6 && settings.expandedCount === 1 &&
     JSON.stringify(settings.visibleRoutes) === JSON.stringify(['timer-appearance','website-theme','dashboard','design-dashboard']),
   'Settings did not render as one compact disclosure navigator', settings);
-  if (evidence) await page.screenshot({ path: evidence.files.settings, fullPage: false, animations: 'disabled', caret: 'hide' });
+  if (evidence) {
+    await page.screenshot({ path: evidence.files.settings, fullPage: false, animations: 'disabled', caret: 'hide' });
+    await captureStoreScreenshot(page, evidence.files.storeSettings);
+  }
   await closeSettings(page, timeout);
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   return { darkGlass, lightGlass, refinedLight, settings, sidebar: { dark: darkSidebar, light: lightSidebar, refined: refinedSidebar }, restored: { ...restored, appearance: restoredAppearance }, appearance: { dark: darkAppearance, light: lightAppearance } };
@@ -733,6 +748,7 @@ async function verifyVisualContract(page, evidence, timeout, options = {}) {
   if (evidence) {
     await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important} input,textarea{caret-color:transparent!important}' });
     await page.screenshot({ path: evidence.files.tabs, fullPage: false, animations: 'disabled', caret: 'hide' });
+    await captureStoreScreenshot(page, evidence.files.storeWorkspace);
   }
 
   await page.evaluate(() => { document.querySelector('#ussign-job-timer .sc-tabs').scrollLeft = 0; });
@@ -1355,7 +1371,9 @@ async function main() {
             dashboardSidebar: EVIDENCE_FILES.dashboardSidebar,
             dashboardSidebarRow: EVIDENCE_FILES.dashboardSidebarRow,
             dashboardNarrowRow: EVIDENCE_FILES.dashboardNarrowRow,
-            designProfile: EVIDENCE_FILES.designProfile
+            designProfile: EVIDENCE_FILES.designProfile,
+            storeWorkspace: EVIDENCE_FILES.storeWorkspace,
+            storeSettings: EVIDENCE_FILES.storeSettings
           },
           screenshotDigests,
           visualProof,

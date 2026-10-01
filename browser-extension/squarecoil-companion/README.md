@@ -1,6 +1,6 @@
 # US Sign SquareCoil Companion
 
-Current rebuild state: **v0.7.1 B6 release candidate** on `codex/squarecoil-b2c-migration`.
+Current rebuild state: **v0.7.1 prototype integration candidate** on `codex/squarecoil-prototype-integration`.
 
 This is one Manifest V3 codebase for installed Google Chrome and Microsoft Edge. B6 is a tested candidate gate, not a production promotion, store publication, or claim that `release.json` has been advanced. SquareCoil remains authoritative for the real company clock; the Companion observes native state and keeps its own Timer/Ledger data.
 
@@ -13,7 +13,7 @@ This is one Manifest V3 codebase for installed Google Chrome and Microsoft Edge.
 - canonical Timer, Ledger, Today/Week/Context/History views, archives, backup/restore, and CSV tools;
 - revisioned Settings, Timer Limits, Light/Dark/Auto, Solid/Glass, and bounded website themes;
 - privacy-safe Support/Feedback and fail-closed unavailable Developer Support;
-- Dark Glass and Light Glass each include the rotating Bing background and translucent treatment as one presentation choice; optional exact-origin Bing access is granted only from the toolbar popup, while the exact Design Dashboard profile remains independently off by default.
+- Dark Glass and Light Glass each include a rotating Bing background with a bundled gradient fallback. The analytics dashboard and Design Dashboard Enhancements remain separate, off-by-default choices.
 
 The rebuild does not issue SquareCoil native clock mutations. Duplicate, stale-generation, retired-runtime, and superseded evidence fails closed.
 
@@ -45,12 +45,18 @@ The B6 candidate package contains exactly:
 - `dist/popup.js`
 - `dist/themes/dark-glass.css`
 - `dist/themes/light-glass.css`
+- `icons/icon-16.png`
+- `icons/icon-32.png`
+- `icons/icon-48.png`
+- `icons/icon-128.png`
 - `popup/popup.html`
 - `popup/popup.css`
 
 `dist/build-info.json` binds the package to the source commit, clean/dirty state, build ID, stage, version, and candidate fingerprint. The fingerprint is embedded into all four page/worker runtime bundles.
 
-Rotating Bing images use optional exact-origin access. Choose a Glass theme, then use **Allow rotating images** in the toolbar popup and accept the browser-owned prompt. If access is declined or unavailable, the same Glass theme remains active with its bundled readable gradient; no remote request is made. **Native / Off** removes the permission, cached wallpaper, and every Companion-owned presentation layer.
+Rotating Bing images use the declared exact Bing origin. When a Glass theme is selected, the extension may retrieve a public Bing image without SquareCoil data or credentials. If it is unavailable, the theme uses its bundled readable gradient. **Native / Off** removes cached wallpaper and Companion-owned presentation layers.
+
+Chrome Web Store artwork, listing copy, privacy policy, and submission notes are in [store-assets](store-assets/CHROME-WEB-STORE-LISTING.md). These files stay outside the 15-file extension ZIP.
 
 ## Install the tested candidate
 

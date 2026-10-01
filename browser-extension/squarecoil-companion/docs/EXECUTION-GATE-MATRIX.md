@@ -5,6 +5,26 @@
 
 Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.
 
+## Active Chrome Web Store preparation — September 30
+
+```text
+Intent: prepare the integrated Companion for first Chrome Web Store review and a truthful listing.
+Behavior changed or restored: add required local icon assets and store collateral; document the exact permissions, data handling, support, and release process; keep the executable feature set unchanged.
+Files expected: manifest, canonical package inventory/policy, generated icon assets, store listing and privacy copy, package tests, gate matrix.
+Impact tags: PACKAGE_ARTIFACT, SUPPORT_PRIVACY, PRESENTATION, DOCS_ONLY.
+Contracts touched: L8 A1 package/security/privacy checks and exact installed candidate; no Timer/Ledger/Bridge behavior contract.
+Targeted gates: manifest icon policy, exact inventory/package validation, store asset dimensions, permission/data-flow audit, aggregate candidate gate.
+Composed journeys: clean exact ZIP -> Chrome and Edge installed clean/upgrade profiles; no remote executable code or unexpected host access; listing claims match actual UI and local data flows.
+Full candidate gate required at completion: yes, because manifest/package bytes change.
+Explicit exclusions: no store submission or release-branch promotion now, no live SquareCoil account/clock action, no new runtime network destination or permission, and no changed authoritative Timer/Ledger behavior.
+```
+
+| ID | Requirement | Impact tag | Targeted proof | Composed/candidate proof | Current state |
+|---|---|---|---|---|---|
+| `STORE-001` | The package has a valid 128px store icon and small browser icons, with no unlisted bundled artwork or missing manifest references. | `PACKAGE_ARTIFACT`, `PRESENTATION` | asset dimension and manifest-policy checks | exact ZIP and installed Chrome/Edge candidate | `OPEN` |
+| `STORE-002` | Store descriptions, permission justifications, and privacy policy accurately disclose the tenant-only workflow, local history, optional Bing image fetch, and user-initiated support email. | `SUPPORT_PRIVACY`, `DOCS_ONLY` | source-to-disclosure audit | reviewer-ready listing and published policy URL | `OPEN` |
+| `STORE-003` | The store package remains lean, locally bundled, and free of remote executable code, credentials, prototype HTML, and legacy Tampermonkey files. | `PACKAGE_ARTIFACT` | package allowlist, size and remote-code checks | exact ZIP round trip and browser acceptance | `OPEN` |
+
 ## Active Chrome auto-update delivery integration — September 30
 
 ```text
