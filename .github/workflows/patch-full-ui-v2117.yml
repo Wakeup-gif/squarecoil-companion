@@ -1,9 +1,5 @@
 name: Patch Full UI Theme v2.1.17
 on:
-  push:
-    paths:
-      - "scripts/patch_full_ui_v2117.py"
-      - ".github/workflows/patch-full-ui-v2117.yml"
   workflow_dispatch:
 permissions:
   contents: write

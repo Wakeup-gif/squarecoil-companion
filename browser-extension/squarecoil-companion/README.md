@@ -1,6 +1,6 @@
 # US Sign SquareCoil Companion
 
-Current rebuild state: **v0.7.1 prototype integration candidate** on `codex/squarecoil-prototype-integration`.
+Current review build: **v0.7.1 combined worktree candidate** on `codex/squarecoil-combined-2026-10-01`. See [combined integration evidence](implementation/COMBINED-WORKTREE-EVIDENCE.md) for its exact source and package verification.
 
 This is one Manifest V3 codebase for installed Google Chrome and Microsoft Edge. B6 is a tested candidate gate, not a production promotion, store publication, or claim that `release.json` has been advanced. SquareCoil remains authoritative for the real company clock; the Companion observes native state and keeps its own Timer/Ledger data.
 

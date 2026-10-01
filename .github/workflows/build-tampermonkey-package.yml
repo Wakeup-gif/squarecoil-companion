@@ -1,9 +1,5 @@
 name: Build Tampermonkey Package
 on:
-  push:
-    paths:
-      - "scripts/build_tampermonkey_package.py"
-      - ".github/workflows/build-tampermonkey-package.yml"
   workflow_dispatch:
 permissions:
   contents: write

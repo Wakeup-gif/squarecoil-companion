@@ -1,9 +1,5 @@
 name: Patch Full UI Theme v2.1.26 topbar alignment
 on:
-  push:
-    paths:
-      - "scripts/patch_topbar_alignment_v2126.py"
-      - ".github/workflows/patch-topbar-alignment-v2126.yml"
   workflow_dispatch:
 permissions:
   contents: write

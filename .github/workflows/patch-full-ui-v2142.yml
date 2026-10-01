@@ -1,9 +1,6 @@
 name: Patch Full UI v2.1.42
 on:
-  push:
-    paths:
-      - "scripts/patch_full_ui_v2142.py"
-      - ".github/workflows/patch-full-ui-v2142.yml"
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
