@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   BING_ORIGIN_PATTERN, CACHE_KEY, CACHE_MAX_AGE_MS, FRESH_CACHE_MAX_AGE_MS, MAX_IMAGE_BYTES,
+  RETRY_MEMO_KEY, RETRY_COOLDOWN_MS, BING_MARKETS,
   WALLPAPER_STATUS, metadataUrl, extractBingImageId, canonicalBingImageUrl,
   normalizeBingImageUrl, createWallpaperProvider
 } = require('../../src/extension/wallpaper-provider');
@@ -91,7 +92,7 @@ test('UT-B5-CINE-015 Native clears wallpaper cache without requesting or removin
   assert.equal(provider.removePermission, undefined);
   assert.deepEqual(await provider.clearWallpaper(), { ok: true, cacheCleared: true, reason: null });
   assert.deepEqual(calls, [
-    ['cache-remove', CACHE_KEY]
+    ['cache-remove', [CACHE_KEY, RETRY_MEMO_KEY]]
   ]);
   assert.equal(await provider.hasPermission(), true);
   const providerSource = fs.readFileSync(path.join(root, 'src/extension/wallpaper-provider.js'), 'utf8');
@@ -139,6 +140,72 @@ test('UT-B5-CINE-017 fresh cache is reused without permission or network access'
   const result = await provider.getWallpaper();
   assert.equal(result.ok, true); assert.equal(result.source, 'CACHE_FRESH');
   assert.equal(permissionChecks, 0); assert.equal(fetchCalls, 0);
+});
+
+test('UT-B5-CINE-049 an outage fans out once, then a persisted retry memo pauses requests until expiry', async () => {
+  let clock = 90_000_000;
+  const values = {};
+  const requests = [];
+  const storage = {
+    async get(key) { return Object.hasOwn(values, key) ? { [key]: values[key] } : {}; },
+    async set(items) { Object.assign(values, items); },
+    async remove(keys) { for (const key of Array.isArray(keys) ? keys : [keys]) delete values[key]; }
+  };
+  const options = { permissions: { async contains() { return true; } }, storage, now: () => clock,
+    fetch: async url => { requests.push(String(url)); throw new Error('network-down'); } };
+  const provider = createWallpaperProvider(options);
+  const first = await provider.getWallpaper();
+  assert.equal(first.reason, 'network-unavailable');
+  assert.equal(requests.length, BING_MARKETS.length);
+  assert.deepEqual(Object.keys(values[RETRY_MEMO_KEY]).sort(),
+    ['detail', 'failedAtMs', 'reason', 'retryAfterMs', 'schemaVersion', 'statusCode'].sort());
+  assert.equal(values[RETRY_MEMO_KEY].retryAfterMs, clock + RETRY_COOLDOWN_MS);
+  assert.equal(await provider.getWallpaper().then(result => result.statusCode), WALLPAPER_STATUS.NETWORK_UNAVAILABLE);
+  values[CACHE_KEY] = { schemaVersion: 1, fetchedAtMs: clock - FRESH_CACHE_MAX_AGE_MS - 1,
+    dataUrl: 'data:image/jpeg;base64,AQ==', title: 'Earlier image' };
+  const restartedProvider = createWallpaperProvider(options);
+  clock += RETRY_COOLDOWN_MS - 1;
+  const retained = await restartedProvider.getWallpaper();
+  assert.equal(retained.source, 'CACHE_RETAINED');
+  assert.equal(retained.failureCode, WALLPAPER_STATUS.NETWORK_UNAVAILABLE);
+  assert.equal(requests.length, BING_MARKETS.length, 'a restarted worker should honor the persisted cooldown');
+  clock += 1;
+  assert.equal((await restartedProvider.getWallpaper()).reason, 'network-unavailable');
+  assert.equal(requests.length, 2 * BING_MARKETS.length, 'the provider must retry after the bounded pause');
+  await restartedProvider.clearWallpaper();
+  assert.equal(values[RETRY_MEMO_KEY], undefined);
+  assert.equal(values[CACHE_KEY], undefined);
+});
+
+test('UT-B5-CINE-050 malformed and future retry memos fail open; access denial is never memoized', async () => {
+  const clock = 1_000_000;
+  const invalidMemos = [
+    { schemaVersion: 1, failedAtMs: clock + 1, retryAfterMs: clock + RETRY_COOLDOWN_MS + 1,
+      reason: 'network-unavailable', statusCode: WALLPAPER_STATUS.NETWORK_UNAVAILABLE, detail: 'network-down' },
+    { schemaVersion: 1, failedAtMs: clock, retryAfterMs: clock + RETRY_COOLDOWN_MS * 10,
+      reason: 'network-unavailable', statusCode: WALLPAPER_STATUS.NETWORK_UNAVAILABLE, detail: 'network-down' },
+    { schemaVersion: 1, failedAtMs: clock, retryAfterMs: clock + RETRY_COOLDOWN_MS,
+      reason: 'bing-origin-access-restricted', statusCode: WALLPAPER_STATUS.ACCESS_RESTRICTED, detail: 'access-denied' }
+  ];
+  for (const invalid of invalidMemos) {
+    const values = { [RETRY_MEMO_KEY]: invalid };
+    let requests = 0;
+    const storage = {
+      async get(key) { return Object.hasOwn(values, key) ? { [key]: values[key] } : {}; },
+      async set(items) { Object.assign(values, items); },
+      async remove() {}
+    };
+    const provider = createWallpaperProvider({ permissions: { async contains() { return true; } }, storage,
+      now: () => clock, markets: ['en-US'], fetch: async () => { requests += 1; throw new Error('network-down'); } });
+    assert.equal((await provider.getWallpaper()).reason, 'network-unavailable');
+    assert.equal(requests, 1);
+  }
+  let writes = 0;
+  const denied = createWallpaperProvider({ permissions: { async contains() { return false; } },
+    storage: { async get() { return {}; }, async set() { writes += 1; }, async remove() {} },
+    now: () => clock, fetch: async () => { throw new Error('unexpected-network'); } });
+  assert.equal((await denied.getWallpaper()).statusCode, WALLPAPER_STATUS.ACCESS_RESTRICTED);
+  assert.equal(writes, 0, 'a permission restriction must not create a retry memo');
 });
 
 test('UT-B5-CINE-018 invalid or future-dated cache is removed and fails closed', async () => {
@@ -259,8 +326,8 @@ test('UT-B5-BING-014 Restore Native during metadata aborts the request and preve
 
 test('UT-B5-CINE-027 redirected metadata or image responses never cross the exact Bing boundary', async () => {
   const permissions = { async contains() { return true; }, async request() { return true; }, async remove() { return true; } };
-  let setCalls = 0;
-  const storage = { async get() { return {}; }, async set() { setCalls += 1; }, async remove() {} };
+  let imageCacheWrites = 0;
+  const storage = { async get() { return {}; }, async set(items) { if (Object.hasOwn(items, CACHE_KEY)) imageCacheWrites += 1; }, async remove() {} };
   let calls = 0;
   const fetch = async (url, init) => {
     calls += 1;
@@ -276,13 +343,13 @@ test('UT-B5-CINE-027 redirected metadata or image responses never cross the exac
   assert.equal(result.reason, 'bing-response-rejected');
   assert.equal(result.detail, 'response-origin-policy-rejected');
   assert.equal(result.statusCode, WALLPAPER_STATUS.RESPONSE_REJECTED);
-  assert.equal(setCalls, 0);
+  assert.equal(imageCacheWrites, 0);
 });
 
 test('UT-B5-CINE-028 a lying content length cannot bypass the streamed image byte ceiling', async () => {
   const permissions = { async contains() { return true; }, async request() { return true; }, async remove() { return true; } };
-  let setCalls = 0;
-  const storage = { async get() { return {}; }, async set() { setCalls += 1; }, async remove() {} };
+  let imageCacheWrites = 0;
+  const storage = { async get() { return {}; }, async set(items) { if (Object.hasOwn(items, CACHE_KEY)) imageCacheWrites += 1; }, async remove() {} };
   let calls = 0;
   const fetch = async url => {
     calls += 1;
@@ -297,7 +364,7 @@ test('UT-B5-CINE-028 a lying content length cannot bypass the streamed image byt
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'bing-response-rejected');
   assert.equal(result.detail, 'body-size-rejected');
-  assert.equal(setCalls, 0);
+  assert.equal(imageCacheWrites, 0);
 });
 
 test('UT-B5-CINE-029 the request deadline remains active while a response body is stalled', async () => {

@@ -100,6 +100,21 @@ test('UT-B5-CINE-002 eligible enable displays only after candidate image readine
   assert.equal(h.service.snapshot().state, 'SHOWING'); assert.equal(h.service.snapshot().imageDisplayed, true);
 });
 
+test('UT-B5-CINE-051 unrelated preference revisions keep one in-flight wallpaper request', async () => {
+  let finishFetch;
+  const h = harness({ provider: () => new Promise(resolve => { finishFetch = resolve; }) });
+  h.service.apply(prefs(), sleek);
+  const host = h.document.getElementById(CINEMATIC_HOST_ID);
+  assert.equal(h.calls(), 1);
+  h.service.apply(prefs({ revision: 2 }), sleek);
+  assert.equal(h.calls(), 1);
+  assert.equal(h.document.getElementById(CINEMATIC_HOST_ID), host);
+  finishFetch({ ok: true, source: 'REMOTE', dataUrl: 'data:image/png;base64,AAAA' });
+  await h.service.refresh();
+  assert.equal(h.service.snapshot().state, 'SHOWING');
+  h.service.teardown();
+});
+
 test('UT-B5-CINE-003 current good image stays displayed while a refresh is pending', async () => {
   let secondResolve; const h = harness({ provider: async (_request, count) => count === 1
     ? { ok: true, source: 'REMOTE', dataUrl: 'data:image/png;base64,AAAA' }

@@ -383,8 +383,9 @@ function createCinematicBackground(options = {}) {
   function apply(nextPreferences, nextBasePresentation = {}) {
     if (disposed) throw new Error('cinematic-background-disposed');
     const normalized = normalizePreferenceSnapshot(nextPreferences);
-    const nextSignature = JSON.stringify({ revision: normalized.preferenceRevision,
-      cinematic: normalized.cinematicBackground, theme: nextBasePresentation.websiteThemeEffective,
+    // Timer limits, panel colors, and other preference commits do not change
+    // the wallpaper. Keep an in-flight image request and its painted layer.
+    const nextSignature = JSON.stringify({ cinematic: normalized.cinematicBackground, theme: nextBasePresentation.websiteThemeEffective,
       forced: nextBasePresentation.forcedColors === true, transparency: nextBasePresentation.reducedTransparency === true });
     preferences = normalized;
     basePresentation = nextBasePresentation;

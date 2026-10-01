@@ -1,6 +1,6 @@
 # SquareCoil Companion Execution Gate Matrix
 
-**Status:** confirmed Companion prototype and separate analytics dashboard integration in progress; October 1 Glass navigation performance package passed exact clean-source Chrome/Edge clean and v0.7 upgrade acceptance. Real account-page inspection and release gates remain open.
+**Status:** confirmed Companion prototype and separate analytics dashboard integration in progress. The native SquareCoil account structure was inspected read-only on October 1; extension-on-account visual acceptance, the current exact-package browser gate, and release gates remain open. Earlier Glass navigation acceptance is source-bound to its prior commit.
 **Execution authority:** `docs/EXECUTION-ENFORCEMENT-PLAN.md`
 
 Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.
@@ -9,11 +9,11 @@ Current authorization, impact declaration, and `PI-*` requirement gates: [Protot
 
 ```text
 Intent: use read-only navigation of the actual SquareCoil site to repair Glass rendering and navigation smoothness; make the address-bar popup the simple home for theme, Bing photo, and panel visibility; complete portable Companion-recorded data UX.
-Behavior changed or restored: prepaint the cached wallpaper before CSS loading, avoid repeated marker restyles, flatten live Design/project panel selectors in both Glass ports, allow a separate Bing photo toggle with a gradient when off, and expose clear popup controls without changing Timer/Ledger authority. Keep full JSON backup and importable History CSV distinct from report-only CSV.
+Behavior changed or restored: prepaint the cached wallpaper before CSS loading, avoid repeated marker/logo restyles and unrelated wallpaper refreshes, flatten live Design/project panel selectors in both Glass ports, allow a separate Bing photo toggle with a gradient when off, and expose clear popup controls without changing Timer/Ledger authority. Bound repeated Bing retries during an outage. Keep full JSON backup and importable History CSV distinct from report-only CSV.
 Files expected: sanitized live-site audit, presentation bootstrap/markers/theme generator and tests, preference model and trusted UI command path, popup UI, data safety and import/export UI/tests, sealed lab fixture and browser evidence.
 Impact tags: PRESENTATION, LIFECYCLE, WORKSPACE_SETTINGS, SHARED_UI_ROOT, PACKAGE_ARTIFACT, MIGRATION_STORAGE, TIMER_LEDGER.
 Contracts touched: L7 settings/presentation, L6 data safety, L8 A4/P4; user-directed photo/panel toggle supersedes earlier coupled-Glass UI behavior. SquareCoil remains company-clock authority.
-Targeted gates: exact route/selector checks, marker idempotence, CSS specificity and Dark/Light computed styles, preference migration and revision fencing, popup interaction, data round-trip/invalid-row/size behavior, no native mutation.
+Targeted gates: exact route/selector checks, marker/logo idempotence, CSS specificity and Dark/Light computed styles, cached wallpaper reuse and outage retry bound, preference migration and revision fencing, popup interaction, data round-trip/invalid-row/size behavior, no native mutation.
 Composed journeys: actual site read-only route audit; sealed Chrome/Edge Design and dashboard navigation; popup theme/photo/panel controls; finalized-history CSV import/export; full clean/upgrade installed matrix against one exact candidate.
 Full candidate gate required at completion: yes, because preference, runtime presentation, popup, generated CSS, and package bytes change.
 Explicit exclusions: no live SquareCoil clock-in, form submission, job edit, permission change, credential handling, merge, release, Store submission, or transfer of actual customer/project data into fixtures.
@@ -26,6 +26,7 @@ Explicit exclusions: no live SquareCoil clock-in, form submission, job edit, per
 | `PREF-001` | Bing photo can be turned off independently of a Glass theme; the static gradient remains and prepaint honors the choice. Existing Glass/photo users migrate without surprise. | `WORKSPACE_SETTINGS`, `MIGRATION_STORAGE` | preference/revision/teardown/bootstrap tests | popup plus sealed Glass on/off journeys in Chrome/Edge | `MAPPED` |
 | `POPUP-001` | The address-bar popup presents plain theme, photo, and show/hide panel controls without technical jargon in its primary flow; hiding the panel does not stop recorded time. | `SHARED_UI_ROOT`, `WORKSPACE_SETTINGS` | popup UI/command/visibility tests | installed popup and page checks in Chrome/Edge | `MAPPED` |
 | `DATA-001` | Full Companion backup remains importable, finalized-history CSV round-trips safely, and import errors/options are understandable before any write. | `MIGRATION_STORAGE`, `TIMER_LEDGER` | size, row-review, option and round-trip tests | installed export/import fixture with zero native mutation | `MAPPED` |
+| `BING-004` | Repeated page loads during a Bing outage reuse an expiring failure result instead of starting another 12-market metadata sweep; a later retry and retained-cache fallback remain available. | `PRESENTATION`, `SUPPORT_PRIVACY` | provider failure-cooldown tests and unchanged painted-layer test | sealed Chrome/Edge outage journey and exact installed matrix | `MAPPED` |
 
 ## Active Glass navigation and performance stabilization — September 30
 

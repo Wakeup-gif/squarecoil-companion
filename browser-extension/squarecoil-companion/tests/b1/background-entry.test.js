@@ -276,7 +276,10 @@ test('UT-B5-BING-008 Native background cleanup retains required host access and 
   assert.equal(response?.type, background.B5B_ACK_MESSAGE);
   assert.equal(response?.requestId, message.requestId);
   assert.equal(response?.candidateFingerprint, CANDIDATE_FINGERPRINT);
-  assert.deepEqual(removedKeys, ['squarecoilCompanionB5BWallpaperCacheV1']);
+  assert.deepEqual(removedKeys, [[
+    'squarecoilCompanionB5BWallpaperCacheV1',
+    'squarecoilCompanionB5BWallpaperRetryV1'
+  ]]);
   assert.equal(permissionMutations, 0);
   assert.equal(await global.chrome.permissions.contains(), true);
 });

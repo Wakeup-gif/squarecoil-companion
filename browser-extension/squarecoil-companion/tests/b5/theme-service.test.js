@@ -111,6 +111,19 @@ test('UT-B5-THEME-001 Refined Light reapplication owns exactly one style layer a
   assert.equal(h.head.children.includes(unrelated), true);
 });
 
+test('UT-B5-THEME-041 unrelated preference commits do not rewrite the same site logo', () => {
+  const h = harness();
+  const setAttribute = h.logo.setAttribute.bind(h.logo);
+  let logoWrites = 0;
+  h.logo.setAttribute = (name, value) => { logoWrites += 1; setAttribute(name, value); };
+  h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
+  const initialWrites = logoWrites;
+  assert.ok(initialWrites > 0);
+  h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK', preferenceRevision: 2 }));
+  assert.equal(logoWrites, initialWrites);
+  h.service.teardown();
+});
+
 test('UT-B5-THEME-002 Auto keeps one current color-scheme listener and changes only effective presentation', () => {
   const h = harness();
   const auto = preferences({ timerAppearance: 'AUTO' });

@@ -3197,9 +3197,10 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
         await openSettingsDestination(page, 'appearance', 'website-theme', options.timeoutMs);
         const themeSurface = await page.locator(`#${ROOT_ID} .sc-content`).innerText();
         assert(/Dark Glass/i.test(themeSurface) && /Light Glass/i.test(themeSurface) &&
-          /include the rotating Bing photograph and translucent surfaces as one theme/i.test(themeSurface) &&
+          /turn Bing photos on or off, open Companion from Chrome’s toolbar/i.test(themeSurface) &&
+          /Glass keeps a built-in background when photos are off or unavailable/i.test(themeSurface) &&
           /image requests contain no job, timer, page, or account data/i.test(themeSurface),
-        'B5-B theme surface did not disclose the integrated privacy-fenced Bing background', themeSurface);
+        'B5-B theme surface did not disclose the separate privacy-fenced Bing background', themeSurface);
         await bridge.preferenceAction({ websiteTheme: 'SLEEK_DARK' },
         before.preferences.preferenceRevision);
         const cinematic = await waitFor(async () => {

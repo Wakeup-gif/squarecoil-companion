@@ -4,6 +4,8 @@ const { CACHE_KEY, CACHE_MAX_AGE_MS, FRESH_CACHE_MAX_AGE_MS, cachedWallpaper } =
 
 const BING_ORIGIN_PATTERN = 'https://www.bing.com/*';
 const BING_ORIGIN = 'https://www.bing.com';
+const RETRY_MEMO_KEY = 'squarecoilCompanionB5BWallpaperRetryV1';
+const RETRY_COOLDOWN_MS = 2 * 60 * 1000;
 const ROTATION_INTERVAL_MS = 30 * 60 * 1000;
 const MAX_MARKET_DATE_LAG_DAYS = 1;
 const MAX_METADATA_BYTES = 256_000;
@@ -63,6 +65,17 @@ function failureClassification(error) {
   });
 }
 
+function retryFailure(raw, nowMs) {
+  if (!raw || raw.schemaVersion !== 1 || !Number.isSafeInteger(raw.failedAtMs) ||
+      !Number.isSafeInteger(raw.retryAfterMs) || raw.failedAtMs < 0 || raw.failedAtMs > nowMs ||
+      raw.retryAfterMs <= nowMs || raw.retryAfterMs - raw.failedAtMs !== RETRY_COOLDOWN_MS) return null;
+  const expected = raw.reason === 'network-unavailable' ? WALLPAPER_STATUS.NETWORK_UNAVAILABLE :
+    raw.reason === 'bing-response-rejected' ? WALLPAPER_STATUS.RESPONSE_REJECTED : null;
+  if (!expected || raw.statusCode !== expected ||
+      !/^[A-Za-z0-9_.:+-]{1,120}$/.test(String(raw.detail || ''))) return null;
+  return { reason: raw.reason, statusCode: expected, detail: raw.detail };
+}
+
 function bytesToDataUrl(bytes, contentType) {
   let binary = '';
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {
@@ -87,6 +100,7 @@ function createWallpaperProvider(options = {}) {
   let cacheClearingInProgress = false;
   let clearInFlight = null;
   const activeControllers = new Set();
+  const pendingRetryWrites = new Set();
 
   async function hasPermission() {
     if (cacheClearingInProgress) return false;
@@ -101,7 +115,8 @@ function createWallpaperProvider(options = {}) {
     inFlight = null;
     clearInFlight = (async () => {
       let cacheCleared = false;
-      try { await storage.remove(CACHE_KEY); cacheCleared = true; } catch (_) {}
+      await Promise.allSettled([...pendingRetryWrites]);
+      try { await storage.remove([CACHE_KEY, RETRY_MEMO_KEY]); cacheCleared = true; } catch (_) {}
       return Object.freeze({ ok: cacheCleared, cacheCleared, reason: cacheCleared ? null : 'wallpaper-cache-clear-unavailable' });
     })().finally(() => { cacheClearingInProgress = false; clearInFlight = null; });
     return clearInFlight;
@@ -135,6 +150,27 @@ function createWallpaperProvider(options = {}) {
       statusCode: WALLPAPER_STATUS.RETAINED_CACHE });
     return Object.freeze({ ok: false, source: null, reason: normalized.reason,
       failureCode: normalized.statusCode, detail: normalized.detail, statusCode: normalized.statusCode });
+  }
+
+  async function readRetryFailure() {
+    try {
+      const raw = await storage.get(RETRY_MEMO_KEY);
+      return retryFailure(raw?.[RETRY_MEMO_KEY], now());
+    } catch (_) { return null; }
+  }
+
+  async function failedFetchFallback(failure, requestGeneration) {
+    if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
+    const failedAtMs = now();
+    const write = Promise.resolve().then(() => storage.set({ [RETRY_MEMO_KEY]: {
+      schemaVersion: 1, failedAtMs, retryAfterMs: failedAtMs + RETRY_COOLDOWN_MS,
+      reason: failure.reason, statusCode: failure.statusCode, detail: failure.detail
+    } }));
+    pendingRetryWrites.add(write);
+    try { await write; } catch (_) {}
+    finally { pendingRetryWrites.delete(write); }
+    if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
+    return cacheFallback(failure, requestGeneration);
   }
 
   async function readBoundedBody(response, maxBytes) {
@@ -210,6 +246,9 @@ function createWallpaperProvider(options = {}) {
     if (!await hasPermission()) return cacheFallback({ reason: 'bing-origin-access-restricted',
       statusCode: WALLPAPER_STATUS.ACCESS_RESTRICTED, detail: 'bing-origin-access-restricted' }, requestGeneration);
     if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
+    const retry = await readRetryFailure();
+    if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
+    if (retry) return cacheFallback(retry, requestGeneration);
     try {
       const metadataResults = await Promise.allSettled(markets.map(async market => {
         const { response: metadataResponse, bytes } = await fetchBounded(metadataUrl(market),
@@ -238,7 +277,7 @@ function createWallpaperProvider(options = {}) {
         const classification = failures.length && failures.every(item => item.statusCode === WALLPAPER_STATUS.NETWORK_UNAVAILABLE)
           ? { reason: 'network-unavailable', statusCode: WALLPAPER_STATUS.NETWORK_UNAVAILABLE, detail: 'metadata-network-unavailable' }
           : { reason: 'bing-response-rejected', statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: 'metadata-no-accepted-images' };
-        return cacheFallback(classification, requestGeneration);
+        return failedFetchFallback(classification, requestGeneration);
       }
       const dated = candidates.filter(candidate => /^\d{8}$/.test(String(candidate.startdate || '')));
       const newestDate = dated.reduce((latest, candidate) => String(candidate.startdate) > latest ? String(candidate.startdate) : latest, '');
@@ -253,17 +292,17 @@ function createWallpaperProvider(options = {}) {
       const pool = freshCandidates.length ? freshCandidates : candidates;
       const image = pool[Math.floor(now() / ROTATION_INTERVAL_MS) % pool.length];
       const imageUrl = canonicalBingImageUrl(image?.imageId);
-      if (!imageUrl) return cacheFallback({ reason: 'bing-response-rejected',
+      if (!imageUrl) return failedFetchFallback({ reason: 'bing-response-rejected',
         statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: 'metadata-image-policy-rejected' }, requestGeneration);
       if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
       const { response: imageResponse, bytes } = await fetchBounded(imageUrl,
         { headers: { Accept: 'image/webp,image/png,image/jpeg' } }, MAX_IMAGE_BYTES);
-      if (!imageResponse?.ok) return cacheFallback({ reason: 'bing-response-rejected',
+      if (!imageResponse?.ok) return failedFetchFallback({ reason: 'bing-response-rejected',
         statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: `image-http-${imageResponse?.status || 0}` }, requestGeneration);
       const contentType = String(imageResponse.headers?.get?.('content-type') || '').split(';')[0].toLowerCase();
-      if (!ACCEPTED_IMAGE_TYPES.has(contentType)) return cacheFallback({ reason: 'bing-response-rejected',
+      if (!ACCEPTED_IMAGE_TYPES.has(contentType)) return failedFetchFallback({ reason: 'bing-response-rejected',
         statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: 'image-content-type-rejected' }, requestGeneration);
-      if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return cacheFallback({ reason: 'bing-response-rejected',
+      if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return failedFetchFallback({ reason: 'bing-response-rejected',
         statusCode: WALLPAPER_STATUS.RESPONSE_REJECTED, detail: 'image-size-rejected' }, requestGeneration);
       const dataUrl = bytesToDataUrl(bytes, contentType);
       const cache = { schemaVersion: 1, fetchedAtMs: now(), dataUrl,
@@ -283,7 +322,7 @@ function createWallpaperProvider(options = {}) {
         statusCode: WALLPAPER_STATUS.ACTIVE });
     } catch (error) {
       if (cacheClearingInProgress || requestGeneration !== generation) return invalidatedResult();
-      return cacheFallback(failureClassification(error), requestGeneration);
+      return failedFetchFallback(failureClassification(error), requestGeneration);
     }
   }
 
@@ -299,7 +338,8 @@ function createWallpaperProvider(options = {}) {
   return Object.freeze({ hasPermission, clearWallpaper, getWallpaper });
 }
 
-module.exports = { BING_ORIGIN_PATTERN, BING_ORIGIN, CACHE_KEY, CACHE_MAX_AGE_MS, ROTATION_INTERVAL_MS,
+module.exports = { BING_ORIGIN_PATTERN, BING_ORIGIN, CACHE_KEY, CACHE_MAX_AGE_MS, RETRY_MEMO_KEY,
+  RETRY_COOLDOWN_MS, ROTATION_INTERVAL_MS,
   FRESH_CACHE_MAX_AGE_MS, MAX_MARKET_DATE_LAG_DAYS, BING_MARKETS, MAX_METADATA_BYTES, MAX_IMAGE_BYTES,
   BING_IMAGE_ID_PATTERN, BING_IMAGE_PARAMETERS, WALLPAPER_STATUS, metadataUrl, extractBingImageId,
   canonicalBingImageUrl, normalizeBingImageUrl, cachedWallpaper, bytesToDataUrl, failureClassification,

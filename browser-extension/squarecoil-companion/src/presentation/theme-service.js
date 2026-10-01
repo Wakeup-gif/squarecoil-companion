@@ -377,9 +377,11 @@ function createThemeService(options = {}) {
       src: logo.getAttribute?.('src') ?? null,
       srcset: logo.getAttribute?.('srcset') ?? null
     });
-    logo.setAttribute?.('src', WEBSITE_LOGO_SOURCE);
-    logo.removeAttribute?.('srcset');
-    logo.setAttribute?.('data-squarecoil-companion-logo', 'brand');
+    if (logo.getAttribute?.('src') !== WEBSITE_LOGO_SOURCE) logo.setAttribute?.('src', WEBSITE_LOGO_SOURCE);
+    if (logo.getAttribute?.('srcset') !== null) logo.removeAttribute?.('srcset');
+    if (logo.getAttribute?.('data-squarecoil-companion-logo') !== 'brand') {
+      logo.setAttribute?.('data-squarecoil-companion-logo', 'brand');
+    }
     return 'configured-website-logo';
   }
 
