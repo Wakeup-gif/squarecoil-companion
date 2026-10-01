@@ -766,3 +766,69 @@ test('UT-B5-POPUP-007 unsupported page leaves Appearance safely unavailable but 
   nodes.get('panelVisible').onchange(); await tick(4);
   assert.equal(JSON.stringify(writes), JSON.stringify([{ companionPanelVisible: false }]));
 });
+
+function diagnosticDownloadPopup(response) {
+  const listeners = new Map();
+  const nodes = new Map();
+  for (const id of ['downloadDiagnosticLog', 'diagnosticDownloadResult']) {
+    nodes.set(id, { textContent: '', disabled: false,
+      addEventListener(type, listener) { this[`on${type}`] = listener; } });
+  }
+  const links = [];
+  const objectUrls = [];
+  const document = {
+    body: { dataset: {}, appendChild(link) { links.push(link); } },
+    getElementById: id => nodes.get(id) || null,
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    createElement: tag => {
+      assert.equal(tag, 'a');
+      return { clicked: false, removed: false, click() { this.clicked = true; },
+        remove() { this.removed = true; } };
+    }
+  };
+  const sent = [];
+  const chrome = {
+    tabs: { query: async () => [] },
+    storage: { local: { get: async () => ({ timerEnabled: true, companionPanelVisible: true }) } },
+    runtime: { getManifest: () => ({ version: '0.7.1' }),
+      sendMessage: async message => { sent.push(message); return response; } }
+  };
+  const source = fs.readFileSync(path.resolve(__dirname, '../../src/popup/popup.js'), 'utf8');
+  vm.runInNewContext(source, { chrome, document, Blob, Date, console,
+    URL: { createObjectURL(blob) { objectUrls.push(blob); return 'blob:test-diagnostic-log'; }, revokeObjectURL() {} },
+    setTimeout() { return 1; } }, { filename: 'src/popup/popup.js' });
+  return { document, listeners, nodes, links, objectUrls, sent };
+}
+
+test('UT-DIAG-006 popup downloads a privacy-whitelisted JSON log without a SquareCoil tab', async () => {
+  const h = diagnosticDownloadPopup({ ok: true, schemaVersion: 1,
+    exportedAtMs: Date.parse('2026-10-01T12:00:00Z'),
+    retention: { maxEntries: 200, maxAgeDays: 30, maxBytes: 65536 },
+    entries: [{ atMs: Date.parse('2026-10-01T11:59:00Z'), code: 'WORKER_STARTED',
+      area: 'LIFECYCLE', severity: 'info', customer: 'Private Customer 251184' }],
+    privateData: 'account-token' });
+  await h.listeners.get('DOMContentLoaded')();
+  await h.nodes.get('downloadDiagnosticLog').onclick();
+  assert.deepEqual(h.sent.map(message => message.type), ['SC_COMPANION_GET_DIAGNOSTIC_LOG']);
+  assert.equal(h.links.length, 1);
+  assert.equal(h.links[0].clicked, true);
+  assert.equal(h.links[0].removed, true);
+  assert.equal(h.links[0].download, 'SquareCoil-Companion-diagnostics-2026-10-01.json');
+  assert.equal(h.objectUrls.length, 1);
+  const json = await h.objectUrls[0].text();
+  assert.match(json, /"format": "squarecoil-companion-diagnostic-log"/);
+  assert.match(json, /WORKER_STARTED/);
+  assert.doesNotMatch(json, /Private Customer|251184|account-token/);
+  assert.match(h.nodes.get('diagnosticDownloadResult').textContent, /Download started for 1 saved event/);
+  assert.equal(h.nodes.get('downloadDiagnosticLog').disabled, false);
+});
+
+test('UT-DIAG-007 unavailable log reports failure without creating a download', async () => {
+  const h = diagnosticDownloadPopup({ ok: false, entries: [] });
+  await h.listeners.get('DOMContentLoaded')();
+  await h.nodes.get('downloadDiagnosticLog').onclick();
+  assert.equal(h.links.length, 0);
+  assert.equal(h.objectUrls.length, 0);
+  assert.match(h.nodes.get('diagnosticDownloadResult').textContent, /Could not download the log/);
+  assert.equal(h.nodes.get('downloadDiagnosticLog').disabled, false);
+});

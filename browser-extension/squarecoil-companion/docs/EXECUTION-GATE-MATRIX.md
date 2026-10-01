@@ -5,6 +5,24 @@
 
 Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.
 
+## Active local diagnostic history — October 1
+
+```text
+Intent: retain a small privacy-safe record of technical events between visits and let the user download it from the toolbar popup without a SquareCoil login.
+Behavior changed or restored: record only fixed event codes, timestamps, areas, and severity in local extension storage; cap and age out entries; download JSON only on an explicit popup click.
+Files expected: bounded diagnostic-log service, worker event/message wiring, popup download control, unit/popup tests, support/privacy/listing copy.
+Impact tags: SUPPORT_PRIVACY, LIFECYCLE, SHARED_UI_ROOT, PACKAGE_ARTIFACT, DOCS_ONLY.
+Contracts touched: L7 diagnostics whitelist and L8 support/privacy acceptance; no Timer/Ledger/Bridge or native SquareCoil authority changes.
+Targeted gates: allowlist and sensitive-value rejection, retention/size/dedupe, storage failure, no-login popup download and unavailable feedback, package validation.
+Composed journeys: installed popup download while no SquareCoil tab is open; user reviews and voluntarily shares the saved file.
+Full candidate gate required at completion: yes, because worker, popup, and package bytes change.
+Explicit exclusions: no automatic upload, telemetry endpoint, live SquareCoil mutation, Store submission, main merge, or worktree deletion.
+```
+
+| ID | Requirement | Impact tag | Targeted proof | Composed/candidate proof | Current state |
+|---|---|---|---|---|---|
+| `DIAG-001` | A bounded local event log retains only fixed technical codes, at most 200 entries and 64 KiB; entries older than 30 days are removed on the next read/write, and an explicit popup action downloads the filtered log without site login. Storage failures stay non-blocking. | `SUPPORT_PRIVACY`, `LIFECYCLE`, `SHARED_UI_ROOT` | diagnostic-log unit tests and popup download/error tests | exact package validation and installed no-login download journey | `MAPPED` |
+
 ## Active live-site theme and toolbar refinement — October 1
 
 ```text

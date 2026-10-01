@@ -6,6 +6,7 @@ const RETRY_TEARDOWN_MESSAGE = 'SC_COMPANION_RETRY_TEARDOWN';
 const POPUP_SUMMARY_MESSAGE = 'SC_COMPANION_GET_POPUP_SUMMARY';
 const GET_APPEARANCE_MESSAGE = 'SC_COMPANION_GET_APPEARANCE';
 const SET_APPEARANCE_MESSAGE = 'SC_COMPANION_SET_APPEARANCE';
+const GET_DIAGNOSTIC_LOG_MESSAGE = 'SC_COMPANION_GET_DIAGNOSTIC_LOG';
 const BING_ORIGIN_PATTERN = 'https://www.bing.com/*';
 const SETTLEMENT_RETRY_DELAYS_MS = Object.freeze([50, 150, 450]);
 const WEBSITE_THEMES = new Set(['ORIGINAL', 'SLEEK_DARK', 'LIGHT_GLASS', 'REFINED_LIGHT']);
@@ -36,6 +37,64 @@ function setHidden(id, hidden) {
 function safeDiagnosticToken(value, fallback) {
   const token = String(value ?? '').trim();
   return /^[A-Za-z0-9_.:/+-]{1,160}$/.test(token) ? token : fallback;
+}
+
+function validatedDiagnosticLog(response) {
+  const token = value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value);
+  const retention = response?.retention;
+  if (response?.ok !== true || response.schemaVersion !== 1 ||
+      !Number.isSafeInteger(response.exportedAtMs) || response.exportedAtMs < 0 ||
+      !Number.isSafeInteger(retention?.maxEntries) || retention.maxEntries < 1 ||
+      !Number.isSafeInteger(retention?.maxAgeDays) || retention.maxAgeDays < 1 ||
+      !Number.isSafeInteger(retention?.maxBytes) || retention.maxBytes < 1 ||
+      !Array.isArray(response.entries) || response.entries.length > retention.maxEntries) {
+    throw new Error('diagnostic-log-unavailable');
+  }
+  const entries = response.entries.map(entry => {
+    if (!Number.isSafeInteger(entry?.atMs) || entry.atMs < 0 || !token(entry.code) ||
+        !token(entry.area) || !['info', 'warning', 'error'].includes(entry.severity)) {
+      throw new Error('diagnostic-log-unavailable');
+    }
+    return { atMs: entry.atMs, code: entry.code, area: entry.area, severity: entry.severity };
+  });
+  return {
+    format: 'squarecoil-companion-diagnostic-log',
+    schemaVersion: 1,
+    exportedAtMs: response.exportedAtMs,
+    retention: {
+      maxEntries: retention.maxEntries,
+      maxAgeDays: retention.maxAgeDays,
+      maxBytes: retention.maxBytes
+    },
+    entries
+  };
+}
+
+async function downloadDiagnosticLog() {
+  const button = document.getElementById('downloadDiagnosticLog');
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  setText('diagnosticDownloadResult', 'Preparing your log…');
+  try {
+    const response = await chrome.runtime.sendMessage({ type: GET_DIAGNOSTIC_LOG_MESSAGE });
+    const log = validatedDiagnosticLog(response);
+    const blob = new Blob([`${JSON.stringify(log, null, 2)}\n`], { type: 'application/json' });
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `SquareCoil-Companion-diagnostics-${new Date(log.exportedAtMs).toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      try { link.click(); } finally { link.remove(); }
+      setText('diagnosticDownloadResult', `Download started for ${log.entries.length} saved event${log.entries.length === 1 ? '' : 's'}.`);
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    }
+  } catch (_) {
+    setText('diagnosticDownloadResult', 'Could not download the log. Try again.');
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function isSettlementStartupResult(result) {
@@ -388,5 +447,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       setText('copyResult', 'Copied');
     } catch (_) { setText('copyResult', 'Copy unavailable'); }
   });
+  document.getElementById('downloadDiagnosticLog')?.addEventListener('click', downloadDiagnosticLog);
   await Promise.all([refreshHealth(), refreshAppearance(), renderWallpaperPermission()]);
 });

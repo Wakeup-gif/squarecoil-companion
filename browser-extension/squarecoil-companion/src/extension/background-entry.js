@@ -22,6 +22,7 @@ const { createDefaultAuthorityKernel } = require('./authority-kernel');
 const { createNativeCompletionObserver } = require('./native-completion-observer');
 const { createAuthorityUpdateTransport } = require('./authority-update-transport');
 const { createWallpaperProvider } = require('./wallpaper-provider');
+const { createDiagnosticLog } = require('./diagnostic-log');
 const BING_PERMISSION_ORIGIN = 'https://www.bing.com/*';
 
 const BOOT_MESSAGE = 'SC_COMPANION_BOOT';
@@ -33,6 +34,8 @@ const B5B_CLEAR_WALLPAPER_MESSAGE = 'SC_COMPANION_B5B_CLEAR_WALLPAPER';
 const B5B_PERMISSION_CHANGED_MESSAGE = 'SC_COMPANION_B5B_PERMISSION_CHANGED';
 const B5B_WALLPAPER_MESSAGE = 'SC_COMPANION_B5B_GET_WALLPAPER';
 const B5B_ACK_MESSAGE = 'SC_COMPANION_B5B_ACK';
+const GET_DIAGNOSTIC_LOG_MESSAGE = 'SC_COMPANION_GET_DIAGNOSTIC_LOG';
+const CLEAR_DIAGNOSTIC_LOG_MESSAGE = 'SC_COMPANION_CLEAR_DIAGNOSTIC_LOG';
 const PERSISTENCE_PROBE_KEY = '__scCompanionB1PersistenceProbe';
 const EXPECTED_B1_DEGRADED_REASON = 'coordination-not-implemented-b1';
 const B2_SETTLEMENT_CONTROL_TIMEOUT_MS = 20_000;
@@ -41,6 +44,15 @@ const tabOperationQueues = new Map();
 const wallpaperProvider = chrome.permissions && chrome.storage?.local && typeof globalThis.fetch === 'function'
   ? createWallpaperProvider({ permissions: chrome.permissions, storage: chrome.storage.local, fetch: globalThis.fetch.bind(globalThis) })
   : null;
+const diagnosticLog = createDiagnosticLog({ storage: chrome.storage?.local });
+let lastHealthEventCode = null;
+let workerStartRecorded = false;
+
+function recordWorkerStartOnce() {
+  if (workerStartRecorded) return;
+  workerStartRecorded = true;
+  void diagnosticLog.record('WORKER_STARTED');
+}
 
 function includesBingPermission(change) {
   return Array.isArray(change?.origins) && change.origins.includes(BING_PERMISSION_ORIGIN);
@@ -153,7 +165,17 @@ async function readB2Settlement(request, runtimeInstanceId, settlementMode = B2_
 const authorityRouter = createAuthorityRouter({ publish: publishAuthorityUpdate });
 const nativeCompletionObserver = createNativeCompletionObserver({
   webRequest: chrome.webRequest,
-  onCompletion: evidence => authorityRouter.observeNativeCompletion(evidence)
+  onCompletion: async evidence => {
+    try {
+      const result = await authorityRouter.observeNativeCompletion(evidence);
+      void diagnosticLog.record(result?.accepted === true
+        ? 'NATIVE_CLOCK_OBSERVED' : 'NATIVE_CLOCK_FORWARD_FAILED');
+      return result;
+    } catch (error) {
+      void diagnosticLog.record('NATIVE_CLOCK_FORWARD_FAILED');
+      throw error;
+    }
+  }
 });
 authorityRouter.setNativeObservationAvailable(nativeCompletionObserver.available);
 
@@ -1558,7 +1580,40 @@ async function handleB5BPresentation(request, message) {
   return b5bAcknowledgment(message, { ok: false, reason: 'message-type-unsupported' });
 }
 
-chrome.runtime.onInstalled.addListener(async () => {
+function isPopupDiagnosticSender(sender = {}) {
+  const extensionId = String(chrome.runtime?.id || '');
+  return Boolean(extensionId && sender.id === extensionId && !sender.tab &&
+    sender.url === `chrome-extension://${extensionId}/popup/popup.html`);
+}
+
+function recordDiagnosticOutcome(type, result) {
+  let code = null;
+  if ([BOOT_MESSAGE, HEALTH_MESSAGE, REVALIDATE_MESSAGE].includes(type)) {
+    if (result?.classification === 'NO_ACTIVE_TAB' || result?.reason === 'unsupported-document') return;
+    code = result?.ready === true ? 'COMPANION_READY'
+      : result?.health?.state === 'FAILED' || result?.reloadRequired === true ? 'COMPANION_FAILED'
+      : result?.health?.state === 'DEGRADED' || result?.ok === false ? 'COMPANION_LIMITED' : null;
+    if (code === lastHealthEventCode) return;
+    if (code) lastHealthEventCode = code;
+  } else if (type === ENABLE_MESSAGE && result?.ok === true &&
+      result?.staleRequestIgnored !== true && typeof result?.enabled === 'boolean') {
+    code = result.enabled ? 'COMPANION_ENABLED' : 'COMPANION_DISABLED';
+  } else if (type === B5B_CLEAR_WALLPAPER_MESSAGE && result?.cacheCleared === true) {
+    code = 'WALLPAPER_CLEARED';
+  } else if (type === B5B_WALLPAPER_MESSAGE) {
+    const status = result?.statusCode;
+    code = status === 'BING_IMAGE_ACTIVE' || status === 'RECENT_CACHED_BING_IMAGE_ACTIVE'
+      ? 'WALLPAPER_READY'
+      : status === 'OLDER_CACHED_BING_IMAGE_RETAINED' ? 'WALLPAPER_FALLBACK'
+        : result?.ok === false ? 'WALLPAPER_FAILED' : null;
+  }
+  if (code) void diagnosticLog.record(code);
+}
+
+chrome.runtime.onInstalled.addListener(async details => {
+  recordWorkerStartOnce();
+  if (details?.reason === 'install') void diagnosticLog.record('EXTENSION_INSTALLED');
+  if (details?.reason === 'update') void diagnosticLog.record('EXTENSION_UPDATED');
   try {
     const current = await chrome.storage.local.get('timerEnabled');
     if (typeof current.timerEnabled !== 'boolean') await chrome.storage.local.set({ timerEnabled: true });
@@ -1566,6 +1621,18 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  recordWorkerStartOnce();
+  if ([GET_DIAGNOSTIC_LOG_MESSAGE, CLEAR_DIAGNOSTIC_LOG_MESSAGE].includes(message?.type)) {
+    if (!isPopupDiagnosticSender(sender)) {
+      sendResponse({ ok: false, reason: 'extension-popup-required' });
+      return false;
+    }
+    const diagnosticTask = message.type === GET_DIAGNOSTIC_LOG_MESSAGE
+      ? diagnosticLog.read()
+      : diagnosticLog.clear().then(cleared => ({ ok: cleared, cleared }));
+    diagnosticTask.then(sendResponse).catch(() => sendResponse({ ok: false, reason: 'diagnostic-storage-unavailable' }));
+    return true;
+  }
   const resolved = requestFromMessage(message, sender);
   if (resolved.error) {
     sendResponse({
@@ -1588,7 +1655,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (isAuthorityMessageType(message?.type)) task = handleAuthorityMessage(request, message);
   if (!task) return undefined;
-  task.then(sendResponse).catch(error => sendResponse({ ok: false, reason: String(error?.message || error) }));
+  task.then(result => {
+    recordDiagnosticOutcome(message.type, result);
+    sendResponse(result);
+  }).catch(error => {
+    if ([BOOT_MESSAGE, HEALTH_MESSAGE, REVALIDATE_MESSAGE].includes(message?.type)) {
+      void diagnosticLog.record('COMPANION_FAILED');
+    }
+    sendResponse({ ok: false, reason: String(error?.message || error) });
+  });
   return true;
 });
 
@@ -1603,6 +1678,8 @@ module.exports = {
   B5B_PERMISSION_CHANGED_MESSAGE,
   B5B_WALLPAPER_MESSAGE,
   B5B_ACK_MESSAGE,
+  GET_DIAGNOSTIC_LOG_MESSAGE,
+  CLEAR_DIAGNOSTIC_LOG_MESSAGE,
   BING_PERMISSION_ORIGIN,
   B2_SETTLEMENT_CONTROL_TIMEOUT_MS,
   AUTHORITY_MESSAGES,

@@ -55,5 +55,6 @@ main{padding:12px}
 .technical-card>p,.technical-card>dl,.technical-card>button,.technical-card>.copy-result{margin-left:13px;margin-right:13px}
 .technical-card>button{width:calc(100% - 26px)}
 .technical-card>.copy-result{margin-bottom:10px}
+.technical-card>.diagnostic-note{margin-top:14px;margin-bottom:8px}
 @media(prefers-reduced-motion:reduce){.appearance-card>summary::after,.advanced-card>summary::after,.technical-card>summary::after{transition:none}}
 @media(forced-colors:active){.appearance-body select,.photo-row{border-color:ButtonText}.appearance-card .permission-card{border:0}.appearance-card[open]>summary{border-bottom-color:ButtonText}}

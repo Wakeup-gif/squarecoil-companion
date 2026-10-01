@@ -509,12 +509,16 @@ test('disable rechecks identity when a different runtime wins an orphan-removal 
 test('concurrent persistence preflights use isolated probe keys', async () => {
   installChromeHarness({ timerEnabled: true });
   const values = new Map();
+  const probeKeys = [];
   let writes = 0;
   let releaseWrites;
   const bothWritten = new Promise(resolve => { releaseWrites = resolve; });
   global.chrome.storage.local = {
     set: async entries => {
-      for (const [key, value] of Object.entries(entries)) values.set(key, value);
+      for (const [key, value] of Object.entries(entries)) {
+        values.set(key, value);
+        if (key.startsWith('__scCompanionB1PersistenceProbe:')) probeKeys.push(key);
+      }
       writes += 1;
       if (writes === 2) releaseWrites();
       await bothWritten;
@@ -530,7 +534,35 @@ test('concurrent persistence preflights use isolated probe keys', async () => {
   ]);
 
   assert.deepEqual(results, [true, true]);
-  assert.equal(values.size, 0);
+  assert.equal(probeKeys.length, 2);
+  assert.equal(new Set(probeKeys).size, 2);
+  assert.equal([...values.keys()].some(key => key.startsWith('__scCompanionB1PersistenceProbe:')), false);
+});
+
+test('UT-DIAG-008 worker serves the local log to the exact popup without a SquareCoil tab', async () => {
+  installChromeHarness({ timerEnabled: true });
+  const values = new Map();
+  global.chrome.storage.local = {
+    get: async key => ({ [key]: values.get(key) }),
+    set: async entries => { for (const [key, value] of Object.entries(entries)) values.set(key, value); },
+    remove: async key => { values.delete(key); }
+  };
+  let listener;
+  global.chrome.runtime.onMessage.addListener = value => { listener = value; };
+  const background = loadBackground();
+  const extensionId = global.chrome.runtime.id;
+  const popupSender = { id: extensionId, url: `chrome-extension://${extensionId}/popup/popup.html` };
+  const unauthorized = [];
+  assert.equal(listener({ type: background.GET_DIAGNOSTIC_LOG_MESSAGE },
+    { ...popupSender, url: `chrome-extension://${extensionId}/other.html` },
+    value => unauthorized.push(value)), false);
+  assert.deepEqual(unauthorized, [{ ok: false, reason: 'extension-popup-required' }]);
+  const result = await new Promise(resolve => {
+    assert.equal(listener({ type: background.GET_DIAGNOSTIC_LOG_MESSAGE }, popupSender, resolve), true);
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.entries.some(entry => entry.code === 'WORKER_STARTED'), true);
+  assert.equal(result.entries.every(entry => Object.keys(entry).sort().join(',') === 'area,atMs,code,severity'), true);
 });
 
 test('UT-B1-LC-23 orchestration keeps disabled checks read-only and exposes only explicit cleanup retry', async () => {
@@ -1240,6 +1272,16 @@ test('a stale disable message cannot tear down a runtime after the authoritative
       ui: { rootPresent: true, interactionReady: true }
     }
   });
+  const diagnosticItems = new Map();
+  const ordinaryGet = global.chrome.storage.local.get;
+  global.chrome.storage.local.get = async key => key === 'scCompanionDiagnosticLogV1'
+    ? { [key]: diagnosticItems.get(key) }
+    : ordinaryGet(key);
+  global.chrome.storage.local.set = async values => {
+    for (const [key, value] of Object.entries(values)) diagnosticItems.set(key, value);
+  };
+  let messageListener;
+  global.chrome.runtime.onMessage.addListener = listener => { messageListener = listener; };
   const background = loadBackground();
 
   const result = await background.setPageEnabled({
@@ -1254,6 +1296,23 @@ test('a stale disable message cannot tear down a runtime after the authoritative
   assert.equal(result.reason, 'b2-settlement-required');
   assert.equal(harness.enableCalls(), 0);
   assert.equal(global.window.__squareCoilCompanionRuntime.runtimeInstanceId, runtimeInstanceId);
+
+  const staleResponse = await new Promise(resolve => messageListener({
+    type: background.ENABLE_MESSAGE, enabled: false, documentToken: DOCUMENT_TOKEN,
+    buildId: BUILD_ID, packageVersion: '0.7.1', candidateFingerprint: CANDIDATE_FINGERPRINT
+  }, {
+    tab: { id: 61 }, frameId: 0, documentId: DOCUMENT_ID,
+    url: 'https://ussignandmill.squarecoil.net/dashboard.php?show=2'
+  }, resolve));
+  assert.equal(staleResponse.staleRequestIgnored, true);
+  const history = await new Promise(resolve => messageListener({
+    type: background.GET_DIAGNOSTIC_LOG_MESSAGE
+  }, {
+    id: 'squarecoil-test-extension-id',
+    url: 'chrome-extension://squarecoil-test-extension-id/popup/popup.html'
+  }, resolve));
+  assert.equal(history.ok, true);
+  assert.equal(history.entries.some(entry => entry.code === 'COMPANION_DISABLED' || entry.code === 'COMPANION_ENABLED'), false);
 });
 
 test('content messages reject unsupported frames before any page operation', () => {
