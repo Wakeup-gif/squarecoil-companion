@@ -1,6 +1,6 @@
 # SquareCoil Companion Execution Gate Matrix
 
-**Status:** combined worktree candidate in progress on `codex/squarecoil-combined-2026-10-01`. Original branch evidence below is historical; it does not certify the merged bytes. Live account acceptance and Store activation remain external follow-ups.
+**Status:** combined worktree review candidate accepted on `codex/squarecoil-combined-2026-10-01`, with exact package source `8426b242e26cc418228f66268b6e69040737b532`. Original branch evidence below is historical; it does not certify the merged bytes. Live account acceptance and Store activation remain external follow-ups.
 **Execution authority:** `docs/EXECUTION-ENFORCEMENT-PLAN.md`
 
 Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.
@@ -19,9 +19,9 @@ Exclusions: original branch edits, real SquareCoil writes, Store submission, pro
 
 | ID | Required integration outcome | Evidence | State |
 |---|---|---|---|
-| `MERGE-001` | Schema v3 preserves CLEAR, both quick tools and explicit photo Off through preference persistence and backup restore; imported data creates no live state. | combined preference/backup regression plus aggregate | `MAPPED` |
-| `MERGE-002` | Polished Settings/Details/tabs/quick tools coexist with popup panel controls, diagnostics, photo switch and full-size backup restore options. | focused tests and sealed Chrome/Edge journeys | `MAPPED` |
-| `MERGE-003` | One exact canonical ZIP passes Chrome and Edge clean/upgrade acceptance and remains unchanged. | package validation, round trip and installed matrix | `MAPPED` |
+| `MERGE-001` | Schema v3 preserves CLEAR, both quick tools and explicit photo Off through preference persistence and backup restore; imported data creates no live state. | `IT-B5-MERGE-PREF-001/002/003`, 685 aggregate tests and 16 prototype tests; [combined evidence](../implementation/COMBINED-WORKTREE-EVIDENCE.md) | `PASS` |
+| `MERGE-002` | Polished Settings/Details/tabs/quick tools coexist with popup panel controls, diagnostics, photo switch and full-size backup restore options. | Focused tests, clean Chrome/Edge sealed visual labs, exact installed no-login diagnostic/Settings/backup journeys; [combined evidence](../implementation/COMBINED-WORKTREE-EVIDENCE.md) | `PASS` |
+| `MERGE-003` | One exact canonical ZIP passes Chrome and Edge clean/upgrade acceptance and remains unchanged. | Exact 15-file package validation/ZIP round trip; Chrome and Edge each clean 31/31 plus upgrade 2/2; derived `combined-acceptance-summary.json` records matching immutable hashes; [combined evidence](../implementation/COMBINED-WORKTREE-EVIDENCE.md) | `PASS` |
 
 ## Source-branch local diagnostic history — October 1
 

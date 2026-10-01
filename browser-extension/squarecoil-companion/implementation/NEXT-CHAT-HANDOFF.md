@@ -8,7 +8,7 @@ Branch: `codex/squarecoil-combined-2026-10-01`
 
 ## Combined review candidate
 
-Combine Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b`. Preserve the original worktrees. Integration evidence belongs in `implementation/COMBINED-WORKTREE-EVIDENCE.md`; previous acceptance below remains historical. The current authorization covers integration, testing and a review PR. Main merge, Store submission and live SquareCoil writes remain separate actions.
+Completed integration of Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b`. Exact package source `8426b242e26cc418228f66268b6e69040737b532` passed Chrome and Edge clean 31/31 plus valid v0.7 upgrade 2/2 each, with unchanged ZIP/package hashes and zero native mutation attempts. Tooling-only correction `5efed69` and later documentation preserve the same runtime fingerprint. Both original worktrees remain clean and intact. Integration evidence is in `implementation/COMBINED-WORKTREE-EVIDENCE.md`; [PR #5](https://github.com/Wakeup-gif/squarecoil-companion/pull/5) contains the combined review candidate. Previous acceptance below remains historical. Main merge, Store submission and live SquareCoil writes remain separate actions.
 
 ## Historical accepted gates
 

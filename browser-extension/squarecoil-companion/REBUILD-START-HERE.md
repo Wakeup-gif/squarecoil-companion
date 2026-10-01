@@ -12,6 +12,8 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 **Active branch:** `codex/squarecoil-combined-2026-10-01`
 
+**Combined accepted package source:** `8426b242e26cc418228f66268b6e69040737b532`; Chrome and Edge each passed 31 clean plus 2 valid v0.7 upgrade cases on unchanged bytes. Tooling-only correction `5efed69` and later documentation preserve the same runtime fingerprint. See `implementation/COMBINED-WORKTREE-EVIDENCE.md` and [review PR #5](https://github.com/Wakeup-gif/squarecoil-companion/pull/5).
+
 **Repository main baseline:** `30bacd6f4262623ff9fff363e6d2ea516d02c2d1`; stable extension lineage is `9378da24f393b40066816133e7fa0f48063115f0` (`v0.7.1 Chrome Interaction Recovery`). Main's documentation and legacy workflow changes are included in the review branch.
 
 **Production main changed by prototype work:** No

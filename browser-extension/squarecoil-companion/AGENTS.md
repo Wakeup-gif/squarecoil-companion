@@ -6,6 +6,8 @@ This file scopes only `browser-extension/squarecoil-companion/`.
 
 ## Current task
 
+The combined review candidate is accepted at exact package source `8426b242e26cc418228f66268b6e69040737b532`; Chrome and Edge each passed 31 clean and 2 upgrade cases on one unchanged ZIP. Tooling-only correction `5efed69` and later documentation preserve the same runtime fingerprint. Current proof and PR #5 are in `implementation/COMBINED-WORKTREE-EVIDENCE.md`. Preserve both originals and do not treat this as main merge or Store publication.
+
 B2-C, B3, B4, B5-A, B5-B, B5-C, B5-D, and B6 are accepted on `codex/squarecoil-b2c-migration`. The prior Glass/theme and recovery stabilization remains accepted at exact implementation source `aabdebc87224211b8897a7e1ded7b94ddacdd19a`; its historical evidence remains SHA-bound in `implementation/B6-GLASS-STABILIZATION-EVIDENCE.md`.
 
 The **UI/theme/lab/Figma stabilization** batch is accepted at exact implementation source `4a9368bf4edde8cb10a7a53fcf16512e86b1b623`: a sealed fictional test website, coherent integrated Dark/Light Glass rendering, protruding horizontally scrollable and reorderable Context tabs, fail-closed drag-to-page Archive/Undo behavior, and a code-aligned Figma handoff. The optional live Bing permission grant and comparison against an actual target Figma file remain supplemental/manual gates.
