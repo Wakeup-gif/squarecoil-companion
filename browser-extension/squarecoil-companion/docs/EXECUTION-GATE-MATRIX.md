@@ -1,6 +1,6 @@
 # SquareCoil Companion Execution Gate Matrix
 
-**Status:** confirmed Companion prototype and separate analytics dashboard integration in progress; exact packaged Chrome/Edge acceptance pending
+**Status:** confirmed Companion prototype and separate analytics dashboard integration in progress; October 1 Glass navigation performance package passed exact clean-source Chrome/Edge clean and v0.7 upgrade acceptance. Real account-page inspection and release gates remain open.
 **Execution authority:** `docs/EXECUTION-ENFORCEMENT-PLAN.md`
 
 Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.
@@ -21,10 +21,10 @@ Explicit exclusions: no live SquareCoil clock action, no new host permissions/ne
 
 | ID | Requirement | Impact tag | Targeted proof | Composed/candidate proof | Current state |
 |---|---|---|---|---|
-| `PERF-001` | A stable Glass theme is applied once per document; unrelated Timer/Ledger storage writes do not re-fetch or replace its stylesheet. | `PRESENTATION`, `LIFECYCLE` | `UT-B5-THEME-033` and theme-port freshness | Chrome/Edge sealed navigation passed; exact clean-source installed matrix pending | `MAPPED` |
-| `PERF-002` | A validated cached wallpaper is painted before the page is revealed and adopted without clearing or decoding it a second time; disabled/Original/accessibility removes it. | `PRESENTATION`, `LIFECYCLE` | `UT-B5-THEME-034/035`, `UT-B5-CINE-045/046/047/048`, existing cache/teardown fixtures | Chrome/Edge sealed fallback navigation passed; exact clean-source installed matrix pending | `MAPPED` |
-| `PERF-003` | Glass avoids continuous large-image movement and nested page blur, while native controls and keyboard focus remain usable. | `PRESENTATION`, `WORKSPACE_SETTINGS` | generated CSS, `UT-B5-CINE-009/045/047`, computed-style lab proof | Chrome/Edge sealed Design navigation passed; exact clean-source installed matrix pending | `MAPPED` |
-| `VIS-001` | Decorative outlines on project/page surfaces are removed without erasing status meaning, form boundaries, or keyboard focus. | `PRESENTATION`, `WORKSPACE_SETTINGS` | computed borders/outlines for nine Design/project surfaces, existing focus/forced-colors tests | Chrome/Edge sealed Design screenshots passed; actual account page remains untested | `MAPPED` |
+| `PERF-001` | A stable Glass theme is applied once per document; unrelated Timer/Ledger storage writes do not re-fetch or replace its stylesheet. | `PRESENTATION`, `LIFECYCLE` | `UT-B5-THEME-033` and theme-port freshness | Exact clean-source Chrome/Edge sealed navigation and installed clean/upgrade matrix passed; [proof](../implementation/B6-GLASS-NAVIGATION-PERFORMANCE-EVIDENCE.md) | `PASS` |
+| `PERF-002` | A validated cached wallpaper is painted before the page is revealed and adopted without clearing or decoding it a second time; disabled/Original/accessibility removes it. | `PRESENTATION`, `LIFECYCLE` | `UT-B5-THEME-034/035`, `UT-B5-CINE-045/046/047/048`, existing cache/teardown fixtures | Exact clean-source Chrome/Edge sealed fallback navigation and installed clean/upgrade matrix passed; [proof](../implementation/B6-GLASS-NAVIGATION-PERFORMANCE-EVIDENCE.md) | `PASS` |
+| `PERF-003` | Glass avoids continuous large-image movement and nested page blur, while native controls and keyboard focus remain usable. | `PRESENTATION`, `WORKSPACE_SETTINGS` | generated CSS, `UT-B5-CINE-009/045/047`, computed-style lab proof | Exact clean-source Chrome/Edge sealed Design navigation and installed clean/upgrade matrix passed; [proof](../implementation/B6-GLASS-NAVIGATION-PERFORMANCE-EVIDENCE.md) | `PASS` |
+| `VIS-001` | Decorative outlines on project/page surfaces are removed without erasing status meaning, form boundaries, or keyboard focus. | `PRESENTATION`, `WORKSPACE_SETTINGS` | computed borders/outlines for nine Design/project surfaces, existing focus/forced-colors tests | Exact clean-source Chrome/Edge sealed Design screenshots and installed matrix passed; actual account page remains untested | `MAPPED` |
 
 ## Active Chrome Web Store preparation — September 30
 
