@@ -19,6 +19,14 @@ function prototypeDockStyle(rootId) {
 #${rootId} .sc-loading-heading{display:flex;align-items:center;gap:12px;margin:2px 0 18px}
 #${rootId} .sc-loading-heading strong{display:block;font-size:14px;font-weight:650}
 #${rootId} .sc-loading-heading small{display:block;margin-top:4px;font-size:11px;color:var(--sc-muted)}
+#${rootId} .sc-data-controls{min-width:0;margin:0;padding:0;border:0}
+#${rootId} .sc-data-controls:disabled :is(button,input){opacity:.5;cursor:wait}
+#${rootId} .sc-data-progress{margin:0 0 14px;padding:13px 14px;border-radius:10px;background:var(--sc-panel-2);box-shadow:inset 3px 0 var(--sc-accent)}
+#${rootId} .sc-data-progress strong{display:block;font-size:13px;font-weight:700}
+#${rootId} .sc-data-progress small,#${rootId} .sc-data-progress p{display:block;margin:5px 0 0;font-size:11px;color:var(--sc-muted)}
+#${rootId} .sc-data-progress-meter{height:7px;margin-top:11px;overflow:hidden;border-radius:99px;background:var(--sc-border)}
+#${rootId} .sc-data-progress-meter>span{display:block;height:100%;background:var(--sc-accent)}
+#${rootId} .sc-data-progress-meter>span[data-measured="false"]{width:100%;opacity:.65;background:repeating-linear-gradient(110deg,var(--sc-accent) 0 8px,transparent 8px 13px)}
 #${rootId} .sc-loading-spinner{width:20px;height:20px;flex:0 0 20px;border:2px solid var(--sc-border);border-top-color:var(--sc-accent);border-radius:50%;animation:sc-loading-spin 900ms linear infinite}
 #${rootId} .sc-loading-card{padding:20px;border:1px solid var(--sc-border);border-radius:15px;background:color-mix(in srgb,var(--sc-panel) 58%,transparent)}
 #${rootId} .sc-skeleton{position:relative;display:block;height:16px;border-radius:6px;background:var(--sc-panel-2);overflow:hidden}

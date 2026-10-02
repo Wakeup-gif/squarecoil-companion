@@ -303,6 +303,9 @@ function createWorkspaceUi(options = {}) {
     keepCurrentZone: false
   };
   let dataMessage = null;
+  let dataProgress = null;
+  let cancelFileRead = null;
+  const pendingPaintYields = new Set();
   let legacyPreferenceCandidates = {};
   let preferenceInitializationInFlight = false;
   let settingsReturnView = null;
@@ -1014,11 +1017,33 @@ ${prototypeDockStyle(ROOT_ID)}
     return `<div class="sc-note"><strong>Merge backup options</strong>${choice('mergeWorkspace', 'Also restore saved job tabs and archive organization')}${choice('mergePreferences', 'Also restore saved settings')}</div><div class="sc-note"><strong>Replace backup options</strong>${choice('replaceWorkspace', 'Restore saved job tabs and archive organization')}${choice('replacePreferences', 'Restore saved settings')}${choice('replaceActivity', 'Restore saved activity log')}${choice('keepCurrentZone', 'Keep this device’s current time zone for future time')}</div>`;
   }
 
+  function dataProgressMarkup() {
+    if (!dataProgress) return '';
+    const history = dataProgress.kind === 'HISTORY';
+    const phases = {
+      READING: ['Reading file', 1],
+      CHECKING: [history ? 'Checking history' : 'Checking backup', 2],
+      REVIEW: [history ? 'Review history import' : 'Review backup restore', 3],
+      SAVING: [history ? 'Saving history' : 'Saving backup', 4],
+      FINISHED: [history ? 'History import finished' : dataProgress.kind === 'EXPORT' ? 'File ready' : 'Backup restore finished', 4],
+      EXPORTING: ['Preparing file', null],
+      CANCELED: ['Import canceled', null],
+      FAILED: ['Import needs attention', null]
+    };
+    const [label, step] = phases[dataProgress.phase] || phases.FAILED;
+    const measured = dataProgress.phase === 'READING' && Number.isSafeInteger(dataProgress.loaded) &&
+      Number.isSafeInteger(dataProgress.total) && dataProgress.total > 0;
+    const percent = measured ? Math.min(100, Math.floor(dataProgress.loaded * 100 / dataProgress.total)) : null;
+    const working = busyAction && ['READING', 'CHECKING', 'SAVING', 'EXPORTING'].includes(dataProgress.phase);
+    const meter = working ? `<div class="sc-data-progress-meter" role="progressbar" aria-label="${label}"${measured ? ` aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}" aria-valuetext="${dataProgress.loaded} of ${dataProgress.total} bytes read"` : ''}><span${measured ? ` style="width:${percent}%"` : ''} data-measured="${measured}"></span></div>` : '';
+    return `<section class="sc-data-progress" data-sc-data-progress="${dataProgress.phase}" role="status" aria-live="polite" aria-atomic="true"><strong>${label}</strong>${step && dataProgress.kind !== 'EXPORT' ? `<small>Step ${step} of 4</small>` : ''}${measured ? `<small>${percent}% · ${dataProgress.loaded} of ${dataProgress.total} bytes read</small>` : ''}${dataProgress.detail ? `<p>${escapeHtml(dataProgress.detail)}</p>` : ''}${meter}</section>`;
+  }
+
   function dataToolsView(core) {
     const data = core?.data;
     const archived = data?.archivedRows || [];
     const readiness = data ? (data.quiescent ? 'Cleanup is available' : 'Stop timing before replacing a backup or deleting all history') : 'Your data is not ready yet';
-    return `<div class="sc-view">${viewHeader('Backups and data', 'settings')}${dataMessage ? `<div class="sc-note">${escapeHtml(dataMessage)}</div>` : ''}<div class="sc-eyebrow">Your files</div><div class="sc-actions"><button data-action="data-export" data-export="FULL_BACKUP">Download backup</button><button data-action="data-export" data-export="HISTORY_CSV">Download history</button><button data-action="data-export" data-export="TIME_REPORT_CSV">Download report</button></div><div class="sc-actions"><button data-action="pick-file" data-file-mode="BACKUP_MERGE">Add from backup</button><button data-action="pick-file" data-file-mode="BACKUP_REPLACE" ${data?.quiescent ? '' : 'disabled'}>Replace from backup</button><button data-action="pick-file" data-file-mode="HISTORY_CSV">Import history</button></div>${restoreOptionsMarkup()}<input data-sc-data-file type="file" accept=".json,.csv,application/json,text/csv" hidden><div class="sc-note">Full Backup JSON saves Companion jobs, time history, settings, and the activity log without a live clock state. History CSV can restore finalized time. Time Report CSV is for spreadsheets only and cannot be imported.</div>${conflictMarkup()}<div class="sc-eyebrow" style="margin-top:12px">Archived in Companion</div>${archived.length ? archived.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">Total ${formatDuration(row.totalMs, { compact: true })} · archived ${escapeHtml(formatDateTime(row.archivedAtMs))}</div></div><div class="sc-row-actions"><button data-action="data-context" data-data-type="${DATA_COMMANDS.RESTORE_ARCHIVED}" data-context="${escapeHtml(row.contextId)}">Restore</button><button data-action="data-context" data-data-type="${DATA_COMMANDS.DELETE_CONTEXT}" data-context="${escapeHtml(row.contextId)}" data-label="${escapeHtml(row.label)}" ${row.protected ? 'disabled' : ''}>Delete data</button></div></div>`).join('') : '<div class="sc-empty">No archived jobs.</div>'}<div class="sc-eyebrow" style="margin-top:12px">Clear saved data</div><div class="sc-actions"><button data-action="data-simple" data-data-type="${DATA_COMMANDS.DELETE_ALL_ARCHIVED}" ${archived.length ? '' : 'disabled'}>Delete archived data</button><button data-action="data-simple" data-data-type="${DATA_COMMANDS.WIPE_HISTORY}" ${data?.quiescent ? '' : 'disabled'}>Delete all time history</button></div><div class="sc-note">${escapeHtml(readiness)}. These tools only affect Companion data; SquareCoil official time is never changed.</div></div>`;
+    return `<div class="sc-view">${viewHeader('Backups and data', 'settings')}${dataProgressMarkup()}${dataMessage ? `<div class="sc-note">${escapeHtml(dataMessage)}</div>` : ''}<fieldset class="sc-data-controls" ${busyAction ? 'disabled' : ''}><div class="sc-eyebrow">Your files</div><div class="sc-actions"><button data-action="data-export" data-export="FULL_BACKUP">Download backup</button><button data-action="data-export" data-export="HISTORY_CSV">Download history</button><button data-action="data-export" data-export="TIME_REPORT_CSV">Download report</button></div><div class="sc-actions"><button data-action="pick-file" data-file-mode="BACKUP_MERGE">Add from backup</button><button data-action="pick-file" data-file-mode="BACKUP_REPLACE" ${data?.quiescent ? '' : 'disabled'}>Replace from backup</button><button data-action="pick-file" data-file-mode="HISTORY_CSV">Import history</button></div>${restoreOptionsMarkup()}<input data-sc-data-file type="file" accept=".json,.csv,application/json,text/csv" hidden><div class="sc-note">Full Backup JSON saves Companion jobs, time history, settings, and the activity log without a live clock state. History CSV can restore finalized time. Time Report CSV is for spreadsheets only and cannot be imported.</div>${conflictMarkup()}<div class="sc-eyebrow" style="margin-top:12px">Archived in Companion</div>${archived.length ? archived.map(row => `<div class="sc-row"><div><div class="sc-row-title">${escapeHtml(row.label)}</div><div class="sc-row-meta">Total ${formatDuration(row.totalMs, { compact: true })} · archived ${escapeHtml(formatDateTime(row.archivedAtMs))}</div></div><div class="sc-row-actions"><button data-action="data-context" data-data-type="${DATA_COMMANDS.RESTORE_ARCHIVED}" data-context="${escapeHtml(row.contextId)}">Restore</button><button data-action="data-context" data-data-type="${DATA_COMMANDS.DELETE_CONTEXT}" data-context="${escapeHtml(row.contextId)}" data-label="${escapeHtml(row.label)}" ${row.protected ? 'disabled' : ''}>Delete data</button></div></div>`).join('') : '<div class="sc-empty">No archived jobs.</div>'}<div class="sc-eyebrow" style="margin-top:12px">Clear saved data</div><div class="sc-actions"><button data-action="data-simple" data-data-type="${DATA_COMMANDS.DELETE_ALL_ARCHIVED}" ${archived.length ? '' : 'disabled'}>Delete archived data</button><button data-action="data-simple" data-data-type="${DATA_COMMANDS.WIPE_HISTORY}" ${data?.quiescent ? '' : 'disabled'}>Delete all time history</button></div><div class="sc-note">${escapeHtml(readiness)}. These tools only affect Companion data; SquareCoil official time is never changed.</div></fieldset></div>`;
   }
 
   function unavailableMainView(core) {
@@ -1234,6 +1259,73 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
     };
   }
 
+  function showDataProgress(phase, detail = null) {
+    dataProgress = { ...dataProgress, phase, detail };
+    render();
+  }
+
+  function yieldForDataPaint() {
+    return new Promise(resolve => {
+      let frame = null;
+      let timer = null;
+      let deadline = null;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (frame !== null) window.cancelAnimationFrame?.(frame);
+        if (timer !== null) window.clearTimeout?.(timer);
+        if (deadline !== null) window.clearTimeout?.(deadline);
+        pendingPaintYields.delete(finish);
+        resolve();
+      };
+      pendingPaintYields.add(finish);
+      // A task after rAF lets the status paint before synchronous validation.
+      // Hidden or suspended tabs still settle, and teardown releases this wait.
+      if (document.visibilityState !== 'hidden' && typeof window.requestAnimationFrame === 'function') {
+        deadline = window.setTimeout(finish, 100);
+        frame = window.requestAnimationFrame(() => { timer = window.setTimeout(finish, 0); });
+      } else timer = window.setTimeout(finish, 0);
+    });
+  }
+
+  function readDataFile(file) {
+    return new Promise((resolve, reject) => {
+      let reader = null;
+      let settled = false;
+      const finish = (error, text) => {
+        if (settled) return;
+        settled = true;
+        cancelFileRead = null;
+        if (reader) reader.onload = reader.onerror = reader.onabort = reader.onprogress = null;
+        if (error) reject(error);
+        else if (typeof text !== 'string') reject(new Error('file-read-invalid-result'));
+        else resolve(text);
+      };
+      cancelFileRead = () => {
+        try { reader?.abort(); } catch (_) { /* Teardown still releases a failed reader. */ }
+        finish(new Error('file-read-canceled'));
+      };
+      try {
+        if (typeof window.FileReader !== 'function') {
+          Promise.resolve().then(() => file.text()).then(text => finish(null, text), error => finish(error));
+          return;
+        }
+        reader = new window.FileReader();
+        reader.onprogress = event => {
+          if (settled || disposed || !event.lengthComputable || !Number.isSafeInteger(event.loaded) ||
+              !Number.isSafeInteger(event.total) || event.total <= 0 || event.loaded < 0 || event.loaded > event.total) return;
+          dataProgress = { ...dataProgress, loaded: event.loaded, total: event.total };
+          render();
+        };
+        reader.onload = () => finish(null, reader.result);
+        reader.onerror = () => finish(reader.error || new Error('file-read-failed'));
+        reader.onabort = () => finish(new Error('file-read-canceled'));
+        reader.readAsText(file);
+      } catch (error) { finish(error); }
+    });
+  }
+
   function downloadArtifact(kind) {
     const handle = coreHandle();
     if (!handle || typeof handle.dataExport !== 'function') throw new Error('Data export is not available yet.');
@@ -1291,10 +1383,24 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
     const description = values.description || (confirmations.includes('USE_INCOMING')
       ? 'Use incoming data for the selected conflicts? Existing Companion historical records will be replaced and all overlap rules will be revalidated.'
       : null);
-    if ((confirmations.length || values.confirm === true) && !window.confirm(description || 'Commit this Companion data operation?')) return false;
+    if ((confirmations.length || values.confirm === true) && !window.confirm(description || 'Commit this Companion data operation?')) {
+      if (values.import === true) {
+        pendingImport = null;
+        dataMessage = 'Nothing was imported. Choose a file to try again.';
+        showDataProgress('CANCELED');
+      }
+      return false;
+    }
+    if (values.import === true) {
+      showDataProgress('SAVING', 'Waiting for Companion to confirm the saved data.');
+      await yieldForDataPaint();
+      if (disposed) return false;
+    }
     await handle.commitDataAction(plan.planId, { confirmationTokens: confirmations, preBackupDisposition });
+    if (disposed) return true;
     pendingImport = null;
     dataMessage = `Completed ${plan.operation.replace(/^DATA_/, '').replace(/_/g, ' ').toLowerCase()}.`;
+    if (values.import === true) showDataProgress('FINISHED');
     return true;
   }
 
@@ -1318,6 +1424,9 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
     const request = { ...workspaceData(), ...values };
     invalidCsvRows = null;
     pendingImport = null;
+    showDataProgress('CHECKING', 'Validating records and checking for duplicates and conflicts.');
+    await yieldForDataPaint();
+    if (disposed) return false;
     let plan;
     try { plan = await handle.stageDataAction(type, request); }
     catch (error) {
@@ -1327,16 +1436,21 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
         rows: error.invalidRows.slice(0, 20).map(item => ({ row: Number(item.row), code: String(item.code || 'invalid-row').slice(0, 160) }))
       };
       dataMessage = `The History CSV has ${invalidCsvRows.count} invalid row${invalidCsvRows.count === 1 ? '' : 's'}. Nothing was imported.`;
-      render();
+      showDataProgress('FAILED', 'Correct the rows below, then choose the file again.');
       return;
     }
+    if (disposed) return false;
     pendingImport = { type, values: request, plan, resolutions: { ...(request.resolutions || {}) } };
     if (plan.blocked) {
       dataMessage = 'Import is staged only. Resolve every listed conflict before any write can occur.';
-      render();
+      showDataProgress('REVIEW', 'Resolve the conflicts below. Nothing has been saved.');
       return;
     }
+    showDataProgress('REVIEW', 'Check the confirmation before saving. Nothing has been saved yet.');
+    await yieldForDataPaint();
+    if (disposed) return false;
     await commitDataPlan(plan, {
+      import: true,
       confirm: true,
       description: destructiveDescription(type, values) || `Import ${plan.summary.segmentsAdded || 0} new finalized Segment${plan.summary.segmentsAdded === 1 ? '' : 's'}? Duplicate records add no time.`
     });
@@ -1347,6 +1461,7 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
     busyAction = label;
     errorMessage = null;
     dataMessage = null;
+    if (!['data-import', 'conflict-resolution', 'data-export'].includes(label)) dataProgress = null;
     render();
     try { await task(); }
     catch (error) {
@@ -1360,7 +1475,17 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
         : /Bing access was not granted|permission/i.test(reason)
         ? 'The selected theme keeps its readable background while Bing images are unavailable.'
         : 'That change could not be completed. No SquareCoil data was changed. Open Technical details for more information.';
-      recordTechnicalError(error, friendly);
+      if (label === 'data-import' || label === 'conflict-resolution') {
+        const canceled = reason === 'file-read-canceled';
+        dataProgress = { ...dataProgress, phase: canceled ? 'CANCELED' : 'FAILED', detail: canceled
+          ? 'Nothing was imported. Choose a file to try again.'
+          : 'The import could not be completed or confirmed. Check your saved history before trying again.' };
+        if (canceled) dataMessage = dataProgress.detail;
+        else recordTechnicalError(error, friendly);
+      } else {
+        if (label === 'data-export') dataProgress = null;
+        recordTechnicalError(error, friendly);
+      }
     }
     finally { busyAction = null; render(); }
   }
@@ -1474,6 +1599,7 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
   function onClick(event) {
     const button = event.target.closest?.('[data-action]'); if (!button || !root?.contains(button)) return;
     const action = button.dataset.action;
+    if (['data-import', 'data-export', 'conflict-resolution'].includes(busyAction)) return;
     if (action === 'open-native-clock' && event.isTrusted === true) {
       const visible = element => {
         if (!element || root.contains(element)) return false;
@@ -1650,7 +1776,13 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
       return;
     }
     if (action === 'data-export' && event.isTrusted === true) {
-      withBusy('data-export', async () => { downloadArtifact(button.dataset.export); });
+      dataProgress = { kind: 'EXPORT', phase: 'EXPORTING' };
+      withBusy('data-export', async () => {
+        await yieldForDataPaint();
+        if (disposed) return;
+        downloadArtifact(button.dataset.export);
+        showDataProgress('FINISHED');
+      });
       return;
     }
     if (action === 'data-context' && event.isTrusted === true) {
@@ -1671,6 +1803,7 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
       return;
     }
     if (action === 'pick-file' && event.isTrusted === true) {
+      if (busyAction || pendingFileMode) return;
       const input = root.querySelector?.('[data-sc-data-file]');
       if (!input) {
         errorMessage = 'The file picker is not available. Reopen Local data and backups and try again.';
@@ -1699,6 +1832,7 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
   function onChange(event) {
     const restoreOption = event.target?.closest?.('[data-restore-option]');
     if (restoreOption && root?.contains(restoreOption)) {
+      if (busyAction) return;
       const key = restoreOption.dataset.restoreOption;
       if (Object.prototype.hasOwnProperty.call(backupRestoreOptions, key)) backupRestoreOptions[key] = restoreOption.checked === true;
       return;
@@ -1721,7 +1855,7 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
       return;
     }
     const input = event.target?.closest?.('[data-sc-data-file]');
-    if (!input || !root?.contains(input) || !pendingFileMode) return;
+    if (!input || !root?.contains(input) || !pendingFileMode || busyAction) return;
     if (!input.files?.[0]) {
       pendingFileMode = null;
       input.value = '';
@@ -1730,23 +1864,29 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
     }
     const file = input.files[0];
     const mode = pendingFileMode;
+    const restoreOptions = mode === 'BACKUP_REPLACE' ? {
+      mode: 'REPLACE', importWorkspace: backupRestoreOptions.replaceWorkspace,
+      importPreferences: backupRestoreOptions.replacePreferences, restoreActivity: backupRestoreOptions.replaceActivity,
+      keepCurrentZone: backupRestoreOptions.keepCurrentZone
+    } : {
+      mode: 'MERGE', importWorkspace: backupRestoreOptions.mergeWorkspace,
+      importPreferences: backupRestoreOptions.mergePreferences
+    };
     pendingFileMode = null;
+    pendingImport = null;
+    invalidCsvRows = null;
+    dataProgress = { kind: mode === 'HISTORY_CSV' ? 'HISTORY' : 'BACKUP', phase: 'READING', loaded: null, total: null };
     withBusy('data-import', async () => {
       try {
         if (Number.isSafeInteger(file.size) && file.size > MAX_INPUT_BYTES) {
           throw new Error('external-file-size-limit-exceeded');
         }
-        const text = await file.text();
+        await yieldForDataPaint();
+        if (disposed) return;
+        const text = await readDataFile(file);
+        if (disposed) return;
         if (mode === 'HISTORY_CSV') await stageImport(DATA_COMMANDS.IMPORT_HISTORY_CSV, { input: text });
-        else if (mode === 'BACKUP_REPLACE') await stageImport(DATA_COMMANDS.RESTORE_BACKUP, {
-          input: text, mode: 'REPLACE', importWorkspace: backupRestoreOptions.replaceWorkspace,
-          importPreferences: backupRestoreOptions.replacePreferences, restoreActivity: backupRestoreOptions.replaceActivity,
-          keepCurrentZone: backupRestoreOptions.keepCurrentZone
-        });
-        else await stageImport(DATA_COMMANDS.RESTORE_BACKUP, {
-          input: text, mode: 'MERGE', importWorkspace: backupRestoreOptions.mergeWorkspace,
-          importPreferences: backupRestoreOptions.mergePreferences
-        });
+        else await stageImport(DATA_COMMANDS.RESTORE_BACKUP, { input: text, ...restoreOptions });
       } finally { input.value = ''; }
     });
   }
@@ -1779,6 +1919,10 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
   }
 
   function onKeyDown(event) {
+    if (['data-import', 'data-export', 'conflict-resolution'].includes(busyAction)) {
+      event.stopPropagation?.();
+      return;
+    }
     const focusedTab = event.target?.closest?.('.sc-tab[data-context]');
     if (focusedTab && root?.contains(focusedTab) && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
       const tabs = Array.from(root.querySelectorAll?.('.sc-tab[data-context]') || []);
@@ -1799,6 +1943,7 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
   }
 
   function onDoubleClick(event) {
+    if (['data-import', 'data-export', 'conflict-resolution'].includes(busyAction)) return;
     const tab = event.target.closest?.('.sc-tab[data-context]'); if (!tab || !root?.contains(tab)) return;
     selectContext(tab.dataset.context); collapsed = false; savePreferences(); render();
   }
@@ -1893,6 +2038,7 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
   }
 
   function onDragStart(event) {
+    if (['data-import', 'data-export', 'conflict-resolution'].includes(busyAction)) return;
     const tab = event.target.closest?.('.sc-tab[data-context]');
     if (!tab || !root?.contains(tab) || event.isTrusted !== true || !event.dataTransfer) return;
     draggedContextId = tab.dataset.context || null;
@@ -2138,6 +2284,8 @@ const markup = `${styleBlock()}<div class="sc-archive-veil" data-visible="false"
   function teardown() {
     if (disposed) return;
     disposed = true;
+    cancelFileRead?.();
+    for (const finish of [...pendingPaintYields]) finish();
     stopCycleHover();
     cancelDockMorph();
     viewHeightAnimation?.cancel();

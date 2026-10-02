@@ -1,6 +1,8 @@
 # SquareCoil Companion Rebuild: Start Here
 
-**Current work: combined worktree review candidate (October 1, 2026).** The active branch is `codex/squarecoil-combined-2026-10-01`, combining Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b` at common base `99879446352364035904af640845ba6c5a43a570`. Preserve both feature sets and original worktrees. This integration is authorized for testing, committing, pushing and a review PR; merge to main, Store submission and live SquareCoil writes remain separate actions. The confirmed prototype integration checkpoint remains at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`. Previous implementation evidence below is historical. Combined exact-package evidence is recorded in `implementation/COMBINED-WORKTREE-EVIDENCE.md` when completed.
+**Current work: large-history import responsiveness (October 1, 2026).** The user requested faster imports and visible loading/progress. Work continues on `codex/squarecoil-import-progress` from merged main `1cc27cc55dee3f62b1f04f30f462232c94fed7ef`, preserving all recorded time, atomic validation/fencing and the original development worktrees. See the active declaration in `docs/EXECUTION-GATE-MATRIX.md` and new `implementation/IMPORT-PROGRESS-EVIDENCE.md`.
+
+**Historical combined integration:** `codex/squarecoil-combined-2026-10-01` combined Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b` at common base `99879446352364035904af640845ba6c5a43a570`. PR #5 was merged at the user's request. Its proof remains in `implementation/COMBINED-WORKTREE-EVIDENCE.md`; `docs/PROTOTYPE-INTEGRATION-2026-09-14.md` is historical. This responsiveness fix does not authorize a new main merge, Store submission or live company-clock write.
 
 This is the recovery checkpoint for the active SquareCoil Companion prototype/rebuild.
 
@@ -10,13 +12,13 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 ## Current checkpoint
 
-**Active branch:** `codex/squarecoil-combined-2026-10-01`
+**Active branch:** `codex/squarecoil-import-progress`
 
 **Combined accepted package source:** `8426b242e26cc418228f66268b6e69040737b532`; Chrome and Edge each passed 31 clean plus 2 valid v0.7 upgrade cases on unchanged bytes. Tooling-only correction `5efed69` and later documentation preserve the same runtime fingerprint. See `implementation/COMBINED-WORKTREE-EVIDENCE.md` and [review PR #5](https://github.com/Wakeup-gif/squarecoil-companion/pull/5).
 
-**Repository main baseline:** `30bacd6f4262623ff9fff363e6d2ea516d02c2d1`; stable extension lineage is `9378da24f393b40066816133e7fa0f48063115f0` (`v0.7.1 Chrome Interaction Recovery`). Main's documentation and legacy workflow changes are included in the review branch.
+**Repository main baseline:** `1cc27cc55dee3f62b1f04f30f462232c94fed7ef`, including merged PR #5 and both completed development branches.
 
-**Production main changed by prototype work:** No
+**Production main changed by combined integration:** PR #5 merged at the user's request; the active responsiveness branch is not merged.
 
 **Framework status:** Reconciled after full legacy feature mine
 
@@ -30,7 +32,7 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 **Logic delta authority:** `logic/L5A-TAB-PARITY-FOCUS-DELTA.md`
 
-**Next canonical build action:** finish the confirmed prototype integration and its exact candidate gates; prior accepted batches remain source-bound evidence. Production publication/promotion is not authorized.
+**Next canonical build action:** finish the import responsiveness fix, focused regressions, aggregate and exact installed-browser package gates. Prior accepted batches remain source-bound evidence; Store publication and another main merge are not authorized.
 
 The user explicitly authorized sequential B3 through B6 work on this existing branch. That authorization does not promote the branch to production, authorize a release/store upload, or authorize new live SquareCoil mutations.
 

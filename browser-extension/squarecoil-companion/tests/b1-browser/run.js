@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { PACKAGE_FILES: REQUIRED_PACKAGE_FILES, CANDIDATE_EMBEDDED_BUNDLES } = require('../../scripts/package-inventory');
 const { verifyDashboardJourney } = require('../../dev/local-lab/prototype-journey');
+const { verifyLargeImportJourney } = require('../../dev/local-lab/import-journey');
 const { EVENT_CODES: DIAGNOSTIC_EVENT_CODES } = require('../../src/extension/diagnostic-log');
 
 const CANONICAL_BUILD_ID = 'rebuild-b6-release-candidate';
@@ -1347,6 +1348,23 @@ async function capturePageEvidence(page, options, family, name) {
   const outputPath = path.join(directory, `${family}-${name}.png`);
   await page.screenshot({ path: outputPath, fullPage: true, animations: 'disabled' });
   return outputPath;
+}
+
+async function captureImportProgressEvidence(bridge, options, family) {
+  if (!options.evidencePath) return null;
+  const evidenceBase = path.basename(options.evidencePath, path.extname(options.evidencePath));
+  const directory = path.join(path.dirname(options.evidencePath), `${evidenceBase}-screenshots`);
+  fs.mkdirSync(directory, { recursive: true });
+  const outputPath = path.join(directory, `${family}-large-import-review.png`);
+  // Native confirmation pauses page JavaScript. Capture through CDP without
+  // actionability/animation waits so the painted review status remains visible.
+  const result = await withHarnessDeadline(() => bridge.session.send('Page.captureScreenshot', {
+    format: 'png', captureBeyondViewport: false
+  }), `${family}-large-import-review-screenshot`, Math.min(options.timeoutMs, 5_000));
+  assert(result?.data, 'Large-import progress screenshot returned no image');
+  const bytes = Buffer.from(result.data, 'base64');
+  fs.writeFileSync(outputPath, bytes);
+  return { path: outputPath, bytes: bytes.length, sha256: sha256(bytes), phase: 'REVIEW' };
 }
 
 async function inspectVisibleCinematicPhoto(page, expectedTheme) {
@@ -4529,6 +4547,44 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
       };
     });
 
+    await runCase(result.cases, `A4-IMPORT-PERF-${family === 'chrome' ? 'CH' : 'ED'}-001`,
+      'Trusted large backup import shows phases, preserves active time, and rejects duplicate, malformed and cancelled writes',
+      async () => {
+        // This runs after every dataset-sensitive legacy case. Lifecycle probes
+        // immediately above restarted the shell; settle its observational core
+        // before exercising the real data UI, without changing native clocks.
+        await bridge.setEnabled(true);
+        await waitFor(async () => {
+          const snapshot = await bridge.coreSnapshot();
+          return snapshot?.initialized && !snapshot.blocked ? snapshot : null;
+        }, 'large import initialized trusted core', options.timeoutMs);
+        await bridge.syncBridge();
+        let core = await waitFor(async () => {
+          const snapshot = await bridge.coreSnapshot();
+          return ['ACTIVE', 'PENDING'].includes(snapshot?.timer?.timerState) &&
+            snapshot.bridge?.verificationInFlight === false ? snapshot : null;
+        }, 'large import synthetic native observation', options.timeoutMs);
+        if (core.timer.timerState === 'PENDING') {
+          await bridge.timerAction('TIMER_START_FRESH');
+          core = await waitFor(async () => {
+            const snapshot = await bridge.coreSnapshot();
+            return snapshot?.timer?.timerState === 'ACTIVE' ? snapshot : null;
+          }, 'large import Companion fresh start', options.timeoutMs);
+        }
+        const health = await waitFor(async () => {
+          const snapshot = await bridge.send({ type: MESSAGES.HEALTH });
+          return snapshot?.ready === true && snapshot?.health?.state === 'READY' ? snapshot : null;
+        }, 'large import final READY settlement', options.timeoutMs);
+        await page.bringToFront();
+        await openSettingsDestination(page, 'privacy', 'data-tools', options.timeoutMs);
+        const journey = await verifyLargeImportJourney({ page, family, rootId: ROOT_ID, timeoutMs: options.timeoutMs,
+          readDocument: async () => (await bridge.getStorage([AUTHORITY_STORAGE_KEY]))?.[AUTHORITY_STORAGE_KEY]?.document,
+          nativeMutationCount: () => result.network.nativeMutationAttempts.length,
+          captureReviewScreenshot: () => captureImportProgressEvidence(bridge, options, family) });
+        return { readyBeforeImport: health.ready, currentContextId: core.timer.currentContextId, ...journey };
+      }, { importPerformanceFixtureIds: ['IMPORT-PERF-001', 'IMPORT-PERF-002', 'IMPORT-PERF-003'],
+        importPerformanceScope: 'TRUSTED_SYNTHETIC_LARGE_BACKUP_FILE_UI' });
+
     await runB2TransitionBrowserCase(
       result.cases,
       family,
@@ -4600,6 +4656,18 @@ async function runBrowserSuite({ playwright, family, executablePath, packageDire
       assert(result.console.pageErrors.length === 0, 'Fixture page emitted uncaught errors', result.console.pageErrors);
       return { network: result.network, console: result.console };
     });
+    const requiredImportPerformanceFixtureIds = ['IMPORT-PERF-001', 'IMPORT-PERF-002', 'IMPORT-PERF-003'];
+    const observedImportPerformanceFixtureIds = [...new Set(result.cases.flatMap(testCase => testCase.importPerformanceFixtureIds || []))].sort();
+    result.importPerformanceFixtureCoverage = {
+      scope: 'TRUSTED_SYNTHETIC_LARGE_BACKUP_FILE_UI', required: requiredImportPerformanceFixtureIds,
+      observed: observedImportPerformanceFixtureIds,
+      missing: requiredImportPerformanceFixtureIds.filter(fixtureId => !observedImportPerformanceFixtureIds.includes(fixtureId))
+    };
+    if (result.importPerformanceFixtureCoverage.missing.length) {
+      result.cases.push({ id: `A4-IMPORT-PERF-${family === 'chrome' ? 'CH' : 'ED'}-FIXTURE-COVERAGE`,
+        name: 'Mandatory large-import responsiveness fixture coverage', status: 'FAIL',
+        error: `Missing import fixture IDs: ${result.importPerformanceFixtureCoverage.missing.join(', ')}` });
+    }
     const requiredFixtureIds = REQUIRED_A4_STABLE_FIXTURE_IDS.filter(fixtureId =>
       family === 'chrome' ? fixtureId !== 'B1-LC-018' : fixtureId !== 'B1-LC-017'
     );

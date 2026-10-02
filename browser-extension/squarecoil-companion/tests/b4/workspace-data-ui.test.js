@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ROOT_ID, archiveGestureEligibility, createWorkspaceUi } = require('../../src/ui/workspace-ui');
-const { DATA_COMMANDS } = require('../../src/data/data-safety');
+const { DATA_COMMANDS, MAX_INPUT_BYTES } = require('../../src/data/data-safety');
 
 function timer() {
   return {
@@ -37,7 +37,9 @@ function timer() {
 }
 
 async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSeed = {}, includeSecondRecent = false,
-  deferArchiveCommit = false, initialRevisionMismatch = false, stageError = null } = {}) {
+  deferArchiveCommit = false, initialRevisionMismatch = false, stageError = null, stagePlan = null,
+  deferImportStage = false, deferImportCommit = false, importCommitError = null, controlledPaint = false,
+  FileReader = null, animationFrames = true, visibilityState = 'visible', exportError = null } = {}) {
   const listeners = {};
   const documentListeners = {};
   const staged = [];
@@ -46,16 +48,33 @@ async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSee
   const confirms = [];
   const timeoutCalls = [];
   const storageSetCalls = [];
+  const stageMarkup = [];
+  const commitMarkup = [];
+  const confirmationMarkup = [];
+  const exports = [];
+  const downloads = [];
+  const paintFrames = new Map();
+  let nextFrame = 0;
+  let resolveImportStage = null;
+  let resolveImportCommit = null;
+  const importStageGate = deferImportStage ? new Promise(resolve => { resolveImportStage = resolve; }) : null;
+  const importCommitGate = deferImportCommit ? new Promise(resolve => { resolveImportCommit = resolve; }) : null;
   let resolveArchiveCommit = null;
   const archiveCommitGate = deferArchiveCommit ? new Promise(resolve => { resolveArchiveCommit = resolve; }) : null;
   let coreSnapshotReads = 0;
-  const fileInput = { insideRoot: true, files: null, value: '', click() {},
+  let filePickerClicks = 0;
+  const fileInput = { insideRoot: true, files: null, value: '', click() { filePickerClicks += 1; },
     closest(selector) { return selector === '[data-sc-data-file]' ? this : null; } };
   const root = { dataset: {}, attributes: {}, innerHTML: '', isConnected: true, classList: { add() {} }, contains(node) { return node?.insideRoot === true; }, querySelector() { return null; }, querySelectorAll() { return []; },
     setAttribute(name, value) { this.attributes[name] = String(value); },
     addEventListener(type, listener) { listeners[type] = listener; }, removeEventListener(type, listener) { if (listeners[type] === listener) delete listeners[type]; } };
   let mountedRoot = root;
-  const document = { visibilityState: 'visible', getElementById(id) { return id === ROOT_ID ? mountedRoot : null; },
+  const document = { visibilityState, getElementById(id) { return id === ROOT_ID ? mountedRoot : null; },
+    body: { appendChild() {} },
+    createElement(tag) {
+      assert.equal(tag, 'a');
+      return { click() { downloads.push({ filename: this.download, href: this.href }); }, remove() {} };
+    },
     addEventListener(type, listener) { documentListeners[type] = listener; },
     removeEventListener(type, listener) { if (documentListeners[type] === listener) delete documentListeners[type]; } };
   const core = {
@@ -76,19 +95,34 @@ async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSee
     coreSnapshot() { coreSnapshotReads += 1; return structuredClone(core); },
     async timerAction(type) { timerActions.push(type); },
     async syncBridge() {},
+    dataExport(kind) {
+      exports.push({ kind, markup: root.innerHTML });
+      const failure = typeof exportError === 'function' ? exportError() : exportError;
+      if (failure) throw failure;
+      return { text: 'finalized history', filename: 'history.csv', mimeType: 'text/csv' };
+    },
     async stageDataAction(type, values) {
+      stageMarkup.push(root.innerHTML);
       staged.push({ type, values: structuredClone(values) });
+      if (deferImportStage && [DATA_COMMANDS.IMPORT_HISTORY_CSV, DATA_COMMANDS.RESTORE_BACKUP].includes(type)) await importStageGate;
       const failure = typeof stageError === 'function' ? stageError(type, values) : stageError;
       if (failure) throw failure;
       const requiredConfirmations = type === DATA_COMMANDS.DELETE_CONTEXT ? [`DELETE:${values.contextId}`]
         : type === DATA_COMMANDS.WIPE_HISTORY ? ['WIPE_ALL_TIME_HISTORY'] : [];
       return { operation: type, planId: `plan-${staged.length}`, stagedRevision: 7, blocked: false,
-        conflicts: [], requiredConfirmations, summary: { segmentsAdded: 0 } };
+        conflicts: [], requiredConfirmations, summary: { segmentsAdded: 0 },
+        ...(typeof stagePlan === 'function' ? stagePlan(type, values) : stagePlan) };
     },
     async commitDataAction(planId, values) {
+      commitMarkup.push(root.innerHTML);
       committed.push({ planId, values: structuredClone(values) });
       const stagedAction = staged[Number(planId.replace('plan-', '')) - 1];
       if (deferArchiveCommit && stagedAction?.type === DATA_COMMANDS.ARCHIVE_CONTEXT) await archiveCommitGate;
+      if ([DATA_COMMANDS.IMPORT_HISTORY_CSV, DATA_COMMANDS.RESTORE_BACKUP].includes(stagedAction?.type)) {
+        if (deferImportCommit) await importCommitGate;
+        const failure = typeof importCommitError === 'function' ? importCommitError() : importCommitError;
+        if (failure) throw failure;
+      }
       if (!mutateOnCommit) return;
       if (stagedAction?.type === DATA_COMMANDS.ARCHIVE_CONTEXT) {
         const contextId = stagedAction.values.contextId;
@@ -107,10 +141,24 @@ async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSee
   };
   const windowListeners = {};
   const window = { location: new URL('https://ussignandmill.squarecoil.net/'), open() {},
-    setInterval() { return 1; }, clearInterval() {}, setTimeout(callback, delay) { timeoutCalls.push({ callback, delay }); return timeoutCalls.length + 1; }, clearTimeout() {},
+    FileReader,
+    setInterval() { return 1; }, clearInterval() {}, setTimeout(callback, delay) {
+      timeoutCalls.push({ callback, delay });
+      if (delay === 0) setImmediate(callback);
+      return timeoutCalls.length + 1;
+    }, clearTimeout() {},
     addEventListener(type, listener) { windowListeners[type] = listener; },
     removeEventListener(type, listener) { if (windowListeners[type] === listener) delete windowListeners[type]; },
-    confirm(message) { confirms.push(message); return confirmAnswers.length ? confirmAnswers.shift() : true; } };
+    confirm(message) { confirms.push(message); confirmationMarkup.push(root.innerHTML); return confirmAnswers.length ? confirmAnswers.shift() : true; } };
+  if (animationFrames) {
+    window.requestAnimationFrame = callback => {
+      const id = ++nextFrame;
+      if (controlledPaint) paintFrames.set(id, callback);
+      else setImmediate(callback);
+      return id;
+    };
+    window.cancelAnimationFrame = id => paintFrames.delete(id);
+  }
   const storageState = structuredClone(storageSeed);
   const storage = {
     async get(defaults) { return { ...defaults, ...structuredClone(storageState) }; },
@@ -157,21 +205,33 @@ async function harness({ confirmAnswers = [], mutateOnCommit = false, storageSee
     listeners.dragover({ target: slot, isTrusted: true, dataTransfer: drag.dataTransfer, clientX, preventDefault() {} });
     listeners.drop({ target: slot, isTrusted: true, dataTransfer: drag.dataTransfer, preventDefault() {} });
   }
-  async function drain() { await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)); }
+  async function drain() { for (let index = 0; index < 16; index += 1) await new Promise(resolve => setImmediate(resolve)); }
   root.querySelector = selector => selector === '[data-sc-data-file]' ? fileInput : null;
   function changeRestoreOption(key, checked) {
     const target = { insideRoot: true, dataset: { restoreOption: key }, checked,
       closest(selector) { return selector === '[data-restore-option]' ? this : null; } };
     listeners.change({ target });
   }
-  function importFile(mode, text) {
+  function importFile(mode, text, file = null) {
     click({ action: 'pick-file', fileMode: mode }, true);
-    fileInput.files = [{ text: async () => text }];
+    fileInput.files = [file || { text: async () => text }];
     fileInput.value = 'selected';
     listeners.change({ target: fileInput });
   }
   return { get ui() { return ui; }, get coreSnapshotReads() { return coreSnapshotReads; }, root, core, staged, committed, confirms, timerActions,
     storageState, storageSetCalls, timeoutCalls, click, changeRestoreOption, importFile, beginDrag, dragOverOutside, dropOutside, dragOutside, reorder,
+    stageMarkup, commitMarkup, confirmationMarkup, exports, downloads,
+    doubleClickTab(contextId) {
+      const target = { dataset: { context: contextId }, insideRoot: true,
+        closest(selector) { return selector === '.sc-tab[data-context]' ? this : null; } };
+      listeners.dblclick({ target });
+    },
+    get filePickerClicks() { return filePickerClicks; },
+    get pendingPaintCount() { return paintFrames.size; },
+    async paint() { const [id, callback] = paintFrames.entries().next().value || []; if (callback) { paintFrames.delete(id); callback(); } await drain(); },
+    cancelFilePicker() { listeners.cancel?.({ target: fileInput }); },
+    resolveImportStage() { resolveImportStage?.(); },
+    resolveImportCommit() { resolveImportCommit?.(); },
     dropExternal(event) { documentListeners.drop(event); },
     storageChange(changes, areaName = 'local') {
       for (const [key, change] of Object.entries(changes)) {
@@ -497,6 +557,334 @@ test('UT-B4-UI-017 a bare refresh cannot replace the tab subtree during a native
   await h.drain();
   assert.equal(h.staged.length, 1);
   assert.equal(h.committed.length, 1);
+  assert.deepEqual(h.timerActions, []);
+  h.ui.teardown();
+});
+
+function openDataTools(h) {
+  h.click({ action: 'view', view: 'settings' });
+  h.click({ action: 'view', view: 'data-tools' });
+}
+
+function readerFixture() {
+  const readers = [];
+  class FileReader {
+    constructor() { readers.push(this); }
+    readAsText(file) { this.file = file; }
+    progress(loaded, total, lengthComputable = true) { this.onprogress?.({ loaded, total, lengthComputable }); }
+    finish(text) { this.result = text; this.onload?.(); }
+    fail(error = new Error('file-read-failed')) { this.error = error; this.onerror?.(); }
+    abort() { this.onabort?.(); }
+  }
+  return { FileReader, readers };
+}
+
+test('UT-B4-UI-020 import status paints before synchronous checking, confirmation, and atomic save', async () => {
+  const h = await harness({ controlledPaint: true, deferImportCommit: true });
+  openDataTools(h);
+  h.importFile('HISTORY_CSV', 'history');
+  assert.match(h.root.innerHTML, /data-sc-data-progress="READING"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(h.root.innerHTML, /Step 1 of 4/);
+  assert.match(h.root.innerHTML, /<fieldset class="sc-data-controls" disabled>/);
+  assert.equal(h.staged.length, 0);
+  assert.equal(h.committed.length, 0);
+
+  await h.paint();
+  assert.match(h.root.innerHTML, /data-sc-data-progress="CHECKING"/);
+  assert.match(h.root.innerHTML, /Checking history/);
+  assert.equal(h.staged.length, 0, 'Validation must wait for its status paint opportunity');
+  await h.paint();
+  assert.match(h.stageMarkup[0], /data-sc-data-progress="CHECKING"/);
+  assert.match(h.root.innerHTML, /data-sc-data-progress="REVIEW"/);
+  assert.equal(h.confirms.length, 0, 'Confirmation must wait for the review status to paint');
+  await h.paint();
+  assert.match(h.confirmationMarkup[0], /data-sc-data-progress="REVIEW"/);
+  assert.match(h.root.innerHTML, /data-sc-data-progress="SAVING"/);
+  assert.match(h.root.innerHTML, /Saving history/);
+  assert.equal(h.committed.length, 0, 'Atomic commit must wait for the saving status to paint');
+  await h.paint();
+  assert.match(h.commitMarkup[0], /data-sc-data-progress="SAVING"/);
+  assert.equal(h.committed.length, 1);
+  assert.equal(h.root.dataset.busy, 'true');
+  assert.doesNotMatch(h.root.innerHTML, /data-sc-data-progress="FINISHED"/);
+  assert.doesNotMatch(h.root.innerHTML, /data-action="cancel.*sav/i);
+  h.click({ action: 'view', view: 'main' });
+  h.doubleClickTab('job:401');
+  h.beginDrag('job:401');
+  assert.equal(h.root.dataset.dragging, 'false', 'A new tab drag cannot suppress progress rendering');
+  assert.match(h.root.innerHTML, /Backups and data/, 'The terminal result must remain reachable');
+  h.resolveImportCommit();
+  await h.drain();
+  assert.match(h.root.innerHTML, /data-sc-data-progress="FINISHED"/);
+  assert.equal(h.root.dataset.busy, 'false');
+  assert.doesNotMatch(h.root.innerHTML, /<fieldset class="sc-data-controls" disabled>/);
+  assert.deepEqual(h.timerActions, []);
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-021 FileReader reports measured bytes only, while checking remains indeterminate', async () => {
+  const fixture = readerFixture();
+  const h = await harness({ FileReader: fixture.FileReader, deferImportStage: true });
+  openDataTools(h);
+  h.importFile('HISTORY_CSV', null, { size: 8_192, name: 'private-customer-history.csv' });
+  await h.drain();
+  assert.doesNotMatch(h.root.innerHTML, /aria-valuenow=/);
+  fixture.readers[0].progress(4_096, 8_192);
+  assert.match(h.root.innerHTML, /aria-valuenow="50"/);
+  assert.match(h.root.innerHTML, /50% · 4096 of 8192 bytes read/);
+  assert.doesNotMatch(h.root.innerHTML, /private-customer-history/);
+  fixture.readers[0].finish('history');
+  await h.drain();
+  assert.match(h.root.innerHTML, /data-sc-data-progress="CHECKING"/);
+  assert.doesNotMatch(h.root.innerHTML, /aria-valuenow=|\d+% ·/);
+  assert.equal(h.committed.length, 0);
+  h.resolveImportStage();
+  await h.drain();
+  assert.match(h.root.innerHTML, /History import finished/);
+  assert.deepEqual(h.timerActions, []);
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-022 a pending fallback read blocks duplicate file selection and restore-option changes', async () => {
+  let finishRead;
+  const reading = new Promise(resolve => { finishRead = resolve; });
+  const h = await harness();
+  openDataTools(h);
+  h.importFile('BACKUP_MERGE', null, { size: 12_000_000, text: () => reading });
+  await h.drain();
+  assert.match(h.root.innerHTML, /Reading file/);
+  assert.doesNotMatch(h.root.innerHTML, /aria-valuenow=/);
+  h.click({ action: 'pick-file', fileMode: 'HISTORY_CSV' });
+  h.changeRestoreOption('mergeWorkspace', true);
+  h.changeRestoreOption('mergePreferences', true);
+  assert.equal(h.filePickerClicks, 1);
+  assert.match(h.root.innerHTML, /<fieldset class="sc-data-controls" disabled>/);
+  finishRead('{}');
+  await h.drain();
+  assert.equal(h.staged.length, 1);
+  assert.equal(h.staged[0].values.importWorkspace, false);
+  assert.equal(h.staged[0].values.importPreferences, false);
+  assert.equal(h.committed.length, 1);
+  assert.equal(h.root.dataset.busy, 'false');
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-023 a failed save has no success state and a new import can retry', async () => {
+  let failure = new Error('plan-stale-revision');
+  const h = await harness({ importCommitError: () => failure });
+  openDataTools(h);
+  h.importFile('HISTORY_CSV', 'history');
+  await h.drain();
+  assert.match(h.root.innerHTML, /data-sc-data-progress="FAILED"/);
+  assert.match(h.root.innerHTML, /could not be completed or confirmed/);
+  assert.doesNotMatch(h.root.innerHTML, /data-sc-data-progress="FINISHED"|Completed import/);
+  assert.equal(h.root.dataset.busy, 'false');
+  failure = null;
+  h.importFile('HISTORY_CSV', 'history');
+  await h.drain();
+  assert.equal(h.staged.length, 2);
+  assert.equal(h.committed.length, 2);
+  assert.match(h.root.innerHTML, /data-sc-data-progress="FINISHED"/);
+  assert.deepEqual(h.timerActions, []);
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-024 canceling review or the file picker leaves retry available without any commit', async () => {
+  const h = await harness({ confirmAnswers: [false, true] });
+  openDataTools(h);
+  h.click({ action: 'pick-file', fileMode: 'HISTORY_CSV' });
+  h.cancelFilePicker();
+  assert.equal(h.staged.length, 0);
+  assert.equal(h.root.dataset.busy, 'false');
+  h.importFile('HISTORY_CSV', 'history');
+  await h.drain();
+  assert.match(h.root.innerHTML, /Import canceled/);
+  assert.match(h.root.innerHTML, /Nothing was imported/);
+  assert.equal(h.committed.length, 0);
+  assert.equal(h.root.dataset.busy, 'false');
+  h.importFile('HISTORY_CSV', 'history');
+  await h.drain();
+  assert.equal(h.committed.length, 1);
+  assert.match(h.root.innerHTML, /History import finished/);
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-025 FileReader failure and abort clear busy and allow a fresh read', async () => {
+  const fixture = readerFixture();
+  const h = await harness({ FileReader: fixture.FileReader });
+  openDataTools(h);
+  h.importFile('HISTORY_CSV', null, { size: 500 });
+  await h.drain();
+  fixture.readers[0].fail();
+  await h.drain();
+  assert.match(h.root.innerHTML, /Import needs attention/);
+  assert.equal(h.root.dataset.busy, 'false');
+  h.importFile('HISTORY_CSV', null, { size: 500 });
+  await h.drain();
+  fixture.readers[1].abort();
+  await h.drain();
+  assert.match(h.root.innerHTML, /Import canceled/);
+  assert.equal(h.committed.length, 0);
+  assert.equal(h.root.dataset.busy, 'false');
+  h.importFile('HISTORY_CSV', null, { size: 500 });
+  await h.drain();
+  fixture.readers[2].finish('history');
+  await h.drain();
+  assert.equal(h.committed.length, 1);
+  assert.match(h.root.innerHTML, /History import finished/);
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-026 oversized files fail before reading, staging, or save', async () => {
+  let reads = 0;
+  const h = await harness();
+  openDataTools(h);
+  h.importFile('HISTORY_CSV', null, { size: MAX_INPUT_BYTES + 1, text() { reads += 1; return 'history'; } });
+  await h.drain();
+  assert.equal(reads, 0);
+  assert.equal(h.staged.length, 0);
+  assert.equal(h.committed.length, 0);
+  assert.equal(h.root.dataset.busy, 'false');
+  assert.match(h.root.innerHTML, /32 MiB import limit/);
+  assert.match(h.root.innerHTML, /data-sc-data-progress="FAILED"/);
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-027 blocked plans show review and recover through the existing conflict restage', async () => {
+  const h = await harness({ stagePlan: (type, values) => values.resolutions?.conflict === 'KEEP_CURRENT' ? {} : {
+    blocked: true, conflicts: [{ id: 'conflict', code: 'SEGMENT_ID_CONFLICT', resolvable: true }]
+  } });
+  openDataTools(h);
+  h.importFile('HISTORY_CSV', 'history');
+  await h.drain();
+  assert.match(h.root.innerHTML, /data-sc-data-progress="REVIEW"/);
+  assert.match(h.root.innerHTML, /Resolve the conflicts below/);
+  assert.equal(h.root.dataset.busy, 'false');
+  assert.equal(h.committed.length, 0);
+  h.click({ action: 'resolve-conflict', conflict: 'conflict', resolution: 'KEEP_CURRENT' });
+  await h.drain();
+  assert.equal(h.staged.length, 2);
+  assert.equal(h.committed.length, 1);
+  assert.match(h.root.innerHTML, /History import finished/);
+  assert.deepEqual(h.timerActions, []);
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-028 hidden and non-rAF environments settle import paint waits using tasks', async () => {
+  for (const options of [{ visibilityState: 'hidden', controlledPaint: true }, { animationFrames: false }]) {
+    const h = await harness(options);
+    openDataTools(h);
+    h.importFile('HISTORY_CSV', 'history');
+    await h.drain();
+    assert.equal(h.committed.length, 1);
+    assert.match(h.root.innerHTML, /History import finished/);
+    assert.equal(h.pendingPaintCount, 0);
+    h.ui.teardown();
+  }
+});
+
+test('UT-B4-UI-029 suspended rAF has a bounded fallback and teardown cannot start validation', async () => {
+  const h = await harness({ controlledPaint: true });
+  openDataTools(h);
+  h.importFile('HISTORY_CSV', 'history');
+  const fallback = h.timeoutCalls.find(item => item.delay > 0 && item.delay <= 250);
+  assert.ok(fallback, 'A paused frame must not leave an unbounded paint wait');
+  fallback.callback();
+  await h.drain();
+  assert.match(h.root.innerHTML, /Checking history/);
+  assert.equal(h.staged.length, 0);
+  h.ui.teardown();
+  await h.drain();
+  assert.equal(h.pendingPaintCount, 0);
+  assert.equal(h.staged.length, 0);
+  assert.equal(h.committed.length, 0);
+});
+
+test('UT-B4-UI-030 teardown cancels pending reads and does not pretend an atomic save was canceled', async () => {
+  let finishRead;
+  const h = await harness();
+  openDataTools(h);
+  h.importFile('HISTORY_CSV', null, { text: () => new Promise(resolve => { finishRead = resolve; }) });
+  await h.drain();
+  h.ui.teardown();
+  finishRead('history');
+  await h.drain();
+  assert.equal(h.staged.length, 0);
+  assert.equal(h.committed.length, 0);
+
+  const reader = await harness({ FileReader: class {
+    readAsText() {}
+    abort() { throw new Error('reader-already-gone'); }
+  } });
+  openDataTools(reader);
+  reader.importFile('HISTORY_CSV', null, { size: 100 });
+  await reader.drain();
+  assert.doesNotThrow(() => reader.ui.teardown());
+  await reader.drain();
+  assert.equal(reader.staged.length, 0);
+  assert.equal(reader.committed.length, 0);
+
+  const saving = await harness({ deferImportCommit: true });
+  openDataTools(saving);
+  saving.importFile('HISTORY_CSV', 'history');
+  await saving.drain();
+  assert.match(saving.root.innerHTML, /Saving history/);
+  const markupAtTeardown = saving.root.innerHTML;
+  saving.ui.teardown();
+  saving.resolveImportCommit();
+  await saving.drain();
+  assert.equal(saving.committed.length, 1);
+  assert.equal(saving.root.innerHTML, markupAtTeardown);
+  assert.deepEqual(saving.timerActions, []);
+});
+
+test('UT-B4-UI-031 exports paint a busy status before file preparation and failed exports permit retry', async () => {
+  let failure = new Error('history-csv-export-size-limit-exceeded');
+  const h = await harness({ controlledPaint: true, exportError: () => failure });
+  openDataTools(h);
+  h.click({ action: 'data-export', export: 'HISTORY_CSV' });
+  assert.match(h.root.innerHTML, /data-sc-data-progress="EXPORTING"/);
+  assert.match(h.root.innerHTML, /Preparing file/);
+  assert.match(h.root.innerHTML, /<fieldset class="sc-data-controls" disabled>/);
+  assert.equal(h.exports.length, 0);
+  h.click({ action: 'data-export', export: 'HISTORY_CSV' });
+  await h.paint();
+  assert.equal(h.exports.length, 1);
+  assert.match(h.exports[0].markup, /data-sc-data-progress="EXPORTING"/);
+  assert.equal(h.downloads.length, 0);
+  assert.equal(h.root.dataset.busy, 'false');
+  assert.doesNotMatch(h.root.innerHTML, /data-sc-data-progress="FINISHED"/);
+  failure = null;
+  h.click({ action: 'data-export', export: 'HISTORY_CSV' });
+  await h.paint();
+  assert.equal(h.exports.length, 2);
+  assert.equal(h.downloads.length, 1);
+  assert.equal(h.downloads[0].filename, 'history.csv');
+  assert.match(h.root.innerHTML, /data-sc-data-progress="FINISHED"/);
+  assert.match(h.root.innerHTML, /File ready/);
+  assert.equal(h.root.dataset.busy, 'false');
+  assert.deepEqual(h.timerActions, []);
+  for (const timeout of h.timeoutCalls.filter(item => item.delay === 60_000)) timeout.callback();
+  h.ui.teardown();
+});
+
+test('UT-B4-UI-032 a new file supersedes an older review plan even if its read fails', async () => {
+  const h = await harness({ stagePlan: {
+    blocked: true, conflicts: [{ id: 'old-conflict', code: 'SEGMENT_ID_CONFLICT', resolvable: true }]
+  } });
+  openDataTools(h);
+  h.importFile('HISTORY_CSV', 'history');
+  await h.drain();
+  assert.match(h.root.innerHTML, /data-action="resolve-conflict"/);
+  h.importFile('BACKUP_MERGE', null, { text: async () => { throw new Error('file-not-readable'); } });
+  assert.doesNotMatch(h.root.innerHTML, /data-action="resolve-conflict"/);
+  await h.drain();
+  assert.match(h.root.innerHTML, /data-sc-data-progress="FAILED"/);
+  assert.equal(h.root.dataset.busy, 'false');
+  h.click({ action: 'resolve-conflict', conflict: 'old-conflict', resolution: 'KEEP_CURRENT' });
+  await h.drain();
+  assert.equal(h.staged.length, 1, 'An abandoned review cannot be restaged after choosing a different file');
+  assert.equal(h.committed.length, 0);
   assert.deepEqual(h.timerActions, []);
   h.ui.teardown();
 });

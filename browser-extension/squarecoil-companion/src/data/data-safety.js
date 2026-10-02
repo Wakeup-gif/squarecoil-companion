@@ -22,6 +22,7 @@ const {
   createQueryService
 } = require('./ledger');
 const { restoredPreferenceStorage } = require('../preferences/preferences');
+const { createIntervalIndex } = require('./interval-index');
 
 const BACKUP_FORMAT = 'squarecoil-companion-backup';
 const BACKUP_SCHEMA_VERSION = 1;
@@ -257,15 +258,13 @@ function isQuiescent(document) {
   return timerKind(document.timer) === 'IDLE' && !document.timer?.active?.safetyHold && !unresolvedRecovery(document);
 }
 
-function contextTotal(document, contextId) {
-  const query = createQueryService(() => document, { now: () => document.updatedAtMs });
-  return query.getContextTotal(contextId, document.updatedAtMs);
-}
+const { createQuerySummary } = require('./query-summary');
 
 function createDataSafetyReadModel(document) {
   const normalized = readableDocument(document);
   validateDocument(normalized);
   ensureDataSafety(normalized);
+  const queries = createQuerySummary(normalized, normalized.updatedAtMs, { totalsOnly: true });
   const protectedIds = protectedContextIds(normalized);
   const rows = Object.values(normalized.contexts).map(context => ({
     contextId: context.contextId,
@@ -276,7 +275,7 @@ function createDataSafetyReadModel(document) {
     workspaceMembership: context.workspaceMembership || 'INACTIVE_NON_RECENT',
     archivedAtMs: context.archivedAtMs ?? null,
     lastSeenAtMs: context.lastSeenAtMs ?? null,
-    totalMs: contextTotal(normalized, context.contextId),
+    totalMs: queries.getContextTotal(context.contextId),
     protected: protectedIds.has(context.contextId)
   }));
   const archivedRows = rows.filter(row => row.workspaceMembership === 'ARCHIVED' || row.archivedAtMs !== null)
@@ -855,6 +854,7 @@ function mergeIncoming(document, incoming, request, summary) {
       startAtMs: candidate.checkpoint.startedAtMs, endAtMs: candidate.checkpoint.lastVerifiedAtMs,
       durationMs: candidate.checkpoint.lastVerifiedAtMs - candidate.checkpoint.startedAtMs });
   }
+  const overlapIndex = createIntervalIndex(candidate.ledger, activeIntervals);
 
   for (const segment of incoming.segments) {
     if (!candidate.contexts[segment.contextId]) continue;
@@ -862,28 +862,35 @@ function mergeIncoming(document, incoming, request, summary) {
     const sameFingerprint = byFingerprint.get(intervalFingerprint(segment));
     if (sameId && materialEqual(sameId, segment)) { summary.duplicates += 1; continue; }
     if (!sameId && sameFingerprint) { summary.duplicates += 1; continue; }
-    const overlaps = [...candidate.ledger, ...activeIntervals].filter(existing => intervalsOverlap(existing, segment));
+    const overlaps = overlapIndex.overlaps(segment);
     const code = sameId ? 'SEGMENT_ID_CONFLICT' : overlaps.length ? 'TEMPORAL_OVERLAP_CONFLICT' : null;
     if (code) {
       const existing = sameId || overlaps[0];
       const id = conflictId(code, segment, existing);
       const resolution = resolutions[id];
       if (resolution === 'KEEP_CURRENT') { summary.conflictsResolved += 1; continue; }
-      if (resolution === 'USE_INCOMING' && existing.segmentId !== 'LIVE_ACTIVE' && existing.segmentId !== 'UNRESOLVED_RECOVERY') {
+      const protectedOverlap = overlaps.some(value => value.segmentId === 'LIVE_ACTIVE' || value.segmentId === 'UNRESOLVED_RECOVERY');
+      // Replacing one matching ID cannot leave another overlapping row behind,
+      // and a finalized row must never mask a later live/recovery overlap.
+      const remainingOverlap = sameId && overlaps.some(value => value.segmentId !== sameId.segmentId);
+      if (resolution === 'USE_INCOMING' && !protectedOverlap && !remainingOverlap &&
+          existing.segmentId !== 'LIVE_ACTIVE' && existing.segmentId !== 'UNRESOLVED_RECOVERY') {
         const removeIds = new Set((sameId ? [sameId] : overlaps).map(value => value.segmentId));
         candidate.ledger = candidate.ledger.filter(value => !removeIds.has(value.segmentId));
-        for (const idToRemove of removeIds) byId.delete(idToRemove);
+        for (const idToRemove of removeIds) { byId.delete(idToRemove); overlapIndex.remove(idToRemove); }
         for (const [fingerprint, value] of byFingerprint) if (removeIds.has(value.segmentId)) byFingerprint.delete(fingerprint);
         summary.conflictsResolved += 1;
         summary.recordsReplaced += removeIds.size;
         requiredConfirmations.add('USE_INCOMING');
       } else {
         conflicts.push({ id, code, contextId: segment.contextId, incomingSegmentId: segment.segmentId,
-          existingSegmentId: existing.segmentId, resolvable: existing.segmentId !== 'LIVE_ACTIVE' && existing.segmentId !== 'UNRESOLVED_RECOVERY' });
+          existingSegmentId: existing.segmentId, resolvable: !protectedOverlap && existing.segmentId !== 'LIVE_ACTIVE' && existing.segmentId !== 'UNRESOLVED_RECOVERY' });
         continue;
       }
     }
-    candidate.ledger.push(deepClone(segment));
+    const accepted = deepClone(segment);
+    candidate.ledger.push(accepted);
+    overlapIndex.add(accepted);
     byId.set(segment.segmentId, segment);
     byFingerprint.set(intervalFingerprint(segment), segment);
     summary.segmentsAdded += 1;
