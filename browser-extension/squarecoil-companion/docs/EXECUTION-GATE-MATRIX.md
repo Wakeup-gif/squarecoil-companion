@@ -383,4 +383,4 @@ Targeted gates: migration/preflight/command/recovery, real kernel/router/client/
 Composed journey: leading-zero source + unrelated history -> COMPLETE_MATCH -> fresh Bridge observation; conflicting numeric aliases/session IDs -> rollback; explicit retry -> import once.
 Full candidate gate: yes after targeted gates pass.
 Exclusions: no source-key writes, guessed identity, imported live state, native mutation, main merge or stable publication.
-Proof: UT-B2-MIG-PAD-001/002, IT-B2-MIG-PAD-001. State: MAPPED; installed/live profile proof remains unverified.
+Proof: UT-B2-MIG-PAD-001/002, IT-B2-MIG-PAD-001. State: BLOCKED for installed-browser/live-profile proof; all targeted and aggregate automated checks and exact package validation passed. See `implementation/LEADING-ZERO-MIGRATION-REPAIR-2026-10-02.md`.
