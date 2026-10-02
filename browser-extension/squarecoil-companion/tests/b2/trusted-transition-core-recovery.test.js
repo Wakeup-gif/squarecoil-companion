@@ -63,6 +63,7 @@ function authoritativeStore(initialDocument) {
 
   function client(runtimeInstanceId, options = {}) {
     let remainingPreferenceFailures = options.preferenceFailures || 0;
+    const migrationFailures = [...(options.migrationFailures || [])];
     const runtimeStats = { migrationCommands: 0, preferenceCommands: 0 };
     const authoritySnapshot = Object.freeze({
       healthy: true,
@@ -87,6 +88,7 @@ function authoritativeStore(initialDocument) {
         stats.migrationCommands += 1;
         runtimeStats.migrationCommands += 1;
         assert.equal(command.expectedRevision, document.revision);
+        if (migrationFailures.length) throw migrationFailures.shift();
         const result = migrateV07(document, command.legacySources, { nowMs: NOW_MS });
         if (result.migrated) {
           const next = structuredClone(result.document);
@@ -301,6 +303,90 @@ test('UT-B2-MIG-031 fresh runtime rederives retained preferences without re-runn
   assert.equal(legacy.state.raw, retainedRaw);
 
   await retryCore.teardown();
+});
+
+test('UT-B2-MIG-033 migration exposes a fixed router reason and fresh-runtime retry preserves retained hours', async () => {
+  const retainedRaw = preferenceLegacyRaw();
+  const legacy = legacyStorage(retainedRaw);
+  const initialDocument = emptyDocument();
+  const store = authoritativeStore(initialDocument);
+  const failure = new Error('authority-command-failed');
+  failure.response = { reason: 'authority-command-failed', detail: 'legacy-local-pause-context-missing' };
+  const firstAuthority = store.client('runtime-migration-diagnostic-001', { migrationFailures: [failure] });
+  const firstCore = createTrustedTransitionCore({
+    authorityClient: firstAuthority.value, legacyStorage: legacy.storage,
+    now: () => NOW_MS, randomId: ids('migration-diagnostic'), createBridge: bridgeFactory()
+  });
+
+  const failed = await firstCore.ensure();
+  assert.equal(failed.blocked, true);
+  assert.equal(failed.preflight.disposition, 'FAILED');
+  assert.equal(failed.status, 'legacy-preflight-failed');
+  assert.equal(failed.lastError, 'legacy-local-pause-context-missing');
+  assert.equal(failed.bridge, null);
+  assert.deepEqual(store.document(), initialDocument);
+  assert.equal(legacy.state.raw, retainedRaw);
+  await firstCore.teardown();
+
+  const retryAuthority = store.client('runtime-migration-diagnostic-retry-002');
+  const retryCore = createTrustedTransitionCore({
+    authorityClient: retryAuthority.value, legacyStorage: legacy.storage,
+    now: () => NOW_MS, randomId: ids('migration-diagnostic-retry'), createBridge: bridgeFactory()
+  });
+  const recovered = await retryCore.ensure();
+  assert.equal(recovered.blocked, false);
+  assert.equal(recovered.preflight.disposition, 'COMPLETE_MATCH');
+  assert.equal(recovered.lastError, null);
+  assert.notEqual(recovered.bridge, null);
+  assert.equal(store.document().ledger.length, 1);
+  assert.equal(store.document().ledger[0].durationMs, SESSION_END_MS - SESSION_START_MS);
+  assert.equal(store.stats.migrationCommands, 2);
+  assert.equal(retryAuthority.stats.migrationCommands, 1);
+  assert.equal(Object.keys(store.document().migration.completedSources).length, 1);
+  assert.equal(legacy.state.raw, retainedRaw);
+  await retryCore.teardown();
+});
+
+test('UT-B2-MIG-034 migration diagnostics whitelist fixed reasons and strip private validator suffixes', async () => {
+  const privateValue = 'Private Customer / job:260899 / secret-session';
+  const cases = [
+    [{ response: { detail: 'legacy-session-id-conflict' } }, 'legacy-session-id-conflict'],
+    [{ response: { detail: 'stale-revision' } }, 'stale-revision'],
+    [{ message: 'authority-transport-timeout' }, 'authority-transport-timeout'],
+    [{ message: 'authority-read-failed' }, 'authority-read-failed'],
+    [{ message: 'authority-response-envelope-invalid' }, 'authority-response-envelope-invalid'],
+    [{ message: 'trusted-transition-migration-command-unavailable' }, 'trusted-transition-migration-command-unavailable'],
+    [{ code: 'legacy-active-context-missing' }, 'legacy-active-context-missing'],
+    [{ message: 'legacy-context-identity-invalid' }, 'legacy-context-identity-invalid'],
+    [{ response: { detail: `segment-duration-mismatch:${privateValue}` } }, 'segment-duration-mismatch'],
+    [{ response: { detail: `invalid-context:${privateValue}` } }, 'invalid-context'],
+    [{ response: { detail: 'segment-duration-mismatch' } }, 'segment-duration-mismatch'],
+    [{ response: { detail: privateValue } }, 'authority-command-failed'],
+    [{ response: { detail: `legacy-session-id-conflict:${privateValue}` } }, 'authority-command-failed'],
+    [{ code: privateValue, message: privateValue }, 'authority-command-failed']
+  ];
+  for (const [index, [fields, expected]] of cases.entries()) {
+    const retainedRaw = preferenceLegacyRaw();
+    const legacy = legacyStorage(retainedRaw);
+    const initialDocument = emptyDocument();
+    const store = authoritativeStore(initialDocument);
+    const failure = Object.assign(new Error('authority-command-failed'), fields);
+    const authority = store.client(`runtime-migration-private-${index}`, { migrationFailures: [failure] });
+    const statuses = [];
+    const core = createTrustedTransitionCore({
+      authorityClient: authority.value, legacyStorage: legacy.storage,
+      now: () => NOW_MS, randomId: ids(`migration-private-${index}`),
+      onStatusChange: value => statuses.push(value), createBridge: bridgeFactory()
+    });
+    const failed = await core.ensure();
+    assert.equal(failed.lastError, expected);
+    assert.equal(failed.blocked, true);
+    assert.equal(failed.bridge, null);
+    assert.equal(JSON.stringify(statuses).includes(privateValue), false);
+    assert.deepEqual(store.document(), initialDocument);
+    assert.equal(legacy.state.raw, retainedRaw);
+    await core.teardown();
+  }
 });
 
 function preferenceRaceHarness(options = {}) {

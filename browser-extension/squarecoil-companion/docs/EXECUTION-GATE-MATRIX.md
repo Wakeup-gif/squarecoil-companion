@@ -1,5 +1,26 @@
 # SquareCoil Companion Execution Gate Matrix
 
+## Live migration startup blocker (October 2, 2026)
+
+Intent: diagnose and repair the actual v0.7.2 startup blocker reported by the user, without changing or discarding retained legacy hours.
+Observed evidence: exact candidate `a1456165ee4881dfff37c14d4270f552d5104d0c89c045b58119753bd36ba999` is installed; migration reports FAILED/legacy-preflight-failed and Last internal error is authority-command-failed; Bridge generation is absent and core is blocked. This identifies a failed authoritative migration before clock observation, but the generic error does not identify the underlying data/commit cause.
+Behavior restored: preserve a finite privacy-safe migration reason through the authoritative command wrapper; reproduce actual legacy producer shapes and correct deterministic compatible conversion defects if demonstrated. Never bypass required migration or discard source evidence.
+Expected files: trusted-core error projection and its tests; migration normalizer and composed tests only where a reproduced source compatibility defect warrants a correction; support copy if necessary; exact package metadata and evidence.
+Impact tags: `LIFECYCLE`, `MIGRATION_STORAGE`, `TIMER_LEDGER`, `AUTHORITY_FENCING`, `SUPPORT_PRIVACY`, `PACKAGE_ARTIFACT`.
+Contracts touched: L2 source retention, atomic/idempotent migration, non-live legacy state; L1 startup recovery; existing authority fencing; L7 opt-in privacy-safe diagnostics.
+Targeted gates: migration/preflight/core recovery, actual kernel/router/client composed migration, error-code privacy, preserved source/ledger and no duplicate migration. Full candidate gate after impacted clusters are green: yes. Installed-browser/live-profile acceptance remains a separate pending requirement.
+Composed journeys: compatible real producer shape -> migration -> Bridge start; rejected legacy source -> reason disclosed without private values or partial commit -> corrected cause -> explicit safe retry.
+Exclusions: deletion/rewrite of retained localStorage, fabricated hours or live state, bypassing migration safety, native clock writes, production release/main promotion.
+
+| Requirement | Expected result | Evidence | State |
+|---|---|---|---|
+| `MIG-LIVE-001` | A failed migration retains the specific fixed technical reason without exposing retained values, IDs or raw exceptions. | `UT-B2-MIG-033/034`, 29 focused tests and 727 aggregate/prototype test executions pass; source-only, uninstalled | `MAPPED` |
+| `MIG-LIVE-002` | Actual legacy producer shapes migrate atomically and idempotently, or a real unsafe source stays blocked with an actionable reason. | Authentic orphan manual-pause flow reproduced through kernel/router/client/core; compatibility correction handed off, not implemented | `OPEN` |
+
+Current continuation: [Cloud Codex migration handoff](../implementation/CLOUD-CODEX-MIGRATION-HANDOFF-2026-10-02.md). The user's actual migration remains blocked; exact underlying reason is not yet captured from their profile. Automated diagnostic-projection evidence does not establish that the user's retained data migrates successfully.
+
+The prior clock/logo automated pass did not validate this user's retained migration dataset or unblock the user's actual runtime.
+
 ## Clock detection and custom dark logo repair (October 2, 2026)
 
 Intent: correct the user's reported missing initial clock detection and restore the approved custom dark logo in a review/test build.

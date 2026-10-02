@@ -42,6 +42,56 @@ const USER_TIMER_COMMANDS = new Set([
   TIMER_COMMANDS.LOCAL_RESUME
 ]);
 
+// Router errors retain their underlying reason in response.detail. Migration
+// validators can append private Context/Session IDs, so only these fixed codes
+// may reach the existing diagnostic projection.
+const MIGRATION_FAILURE_CODES = new Set([
+  'legacy-source-json-invalid', 'legacy-source-shape-invalid', 'legacy-sources-invalid',
+  'legacy-contexts-shape-invalid', 'legacy-context-key-conflict', 'legacy-context-invalid',
+  'legacy-context-identity-invalid', 'legacy-sessions-shape-invalid',
+  'legacy-context-identity-conflict', 'legacy-session-invalid', 'legacy-session-unreadable',
+  'legacy-session-id-conflict', 'rebuilt-context-identity-conflict', 'legacy-segment-id-conflict',
+  'legacy-active-invalid', 'legacy-active-context-missing', 'legacy-pending-invalid',
+  'legacy-pending-context-missing', 'legacy-local-pause-context-missing',
+  'migration-time-invalid', 'migration-command-time-invalid', 'stale-revision',
+  'coordination-owner-unavailable', 'stale-requester-coordination-epoch',
+  'stale-requester-disposition', 'authority-command-owner-required',
+  'authority-transport-timeout', 'authority-read-failed', 'authority-response-envelope-invalid',
+  'trusted-transition-migration-command-unavailable',
+  'authority-command-mutated-protected-metadata', 'persistence-readback-identity-mismatch',
+  'data-revision-exhausted', 'checkpoint-invalid', 'checkpoint-schema-unsupported',
+  'checkpoint-time-invalid', 'checkpoint-ownership-evidence-invalid',
+  'checkpoint-start-invalid', 'checkpoint-verification-invalid',
+  'checkpoint-verification-before-start', 'checkpoint-before-verification',
+  'checkpoint-clean-disposition-unsupported', 'checkpoint-created-at-invalid',
+  'interval-invalid', 'interval-created-at-invalid', 'timestamp-invalid',
+  'workday-boundary-not-found', 'invalid-ledger-segment'
+]);
+
+const MIGRATION_VALIDATOR_PREFIXES = Object.freeze([
+  'invalid-context', 'context-key-mismatch', 'invalid-context-kind', 'invalid-project-id',
+  'invalid-legacy-balance', 'invalid-context-created-at', 'invalid-context-last-seen-at',
+  'invalid-context-archived-at', 'invalid-context-aliases', 'segment-time-invalid',
+  'segment-reversed', 'segment-duration-mismatch', 'segment-local-date-mismatch',
+  'segment-crosses-workday', 'segment-created-at-invalid', 'segment-context-missing',
+  'segment-id-conflict', 'duplicate-segment-id', 'duplicate-segment-interval',
+  'workday-zone-offset-only', 'workday-zone-invalid', 'local-date-invalid',
+  'migration-completed-source-unsupported', 'migration-marker-fields-invalid',
+  'migration-marker-invalid', 'migration-source-identity-invalid',
+  'migration-source-checksum-invalid', 'migration-authority-source-checksums-invalid',
+  'migration-activity-source-checksum-invalid'
+]);
+
+function migrationFailureReason(error) {
+  for (const value of [error?.response?.detail, error?.code, error?.message]) {
+    if (typeof value !== 'string') continue;
+    if (MIGRATION_FAILURE_CODES.has(value)) return value;
+    const prefix = MIGRATION_VALIDATOR_PREFIXES.find(code => value === code || value.startsWith(code + ':'));
+    if (prefix) return prefix;
+  }
+  return 'authority-command-failed';
+}
+
 function defaultId(prefix) {
   try {
     return `${prefix}-${globalThis.crypto.randomUUID()}`;
@@ -352,7 +402,7 @@ function createTrustedTransitionCore(options = {}) {
           reason: 'legacy-preflight-failed', disposition: MIGRATION_DISPOSITIONS.FAILED,
           presentKeys: preflight.presentKeys });
         blocked = true;
-        publishStatus(preflight.reason, migrationError);
+        publishStatus(preflight.reason, new Error(migrationFailureReason(migrationError)));
         return snapshot();
       }
     }
