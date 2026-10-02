@@ -1,6 +1,8 @@
 # SquareCoil Companion Rebuild: Start Here
 
-**Current work: combined worktree review candidate (October 1, 2026).** The active branch is `codex/squarecoil-combined-2026-10-01`, combining Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b` at common base `99879446352364035904af640845ba6c5a43a570`. Preserve both feature sets and original worktrees. This integration is authorized for testing, committing, pushing and a review PR; merge to main, Store submission and live SquareCoil writes remain separate actions. The confirmed prototype integration checkpoint remains at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`. Previous implementation evidence below is historical. Combined exact-package evidence is recorded in `implementation/COMBINED-WORKTREE-EVIDENCE.md` when completed.
+**Current work: v0.7.3 migration startup repair (October 2, 2026).** Active branch: `fix/clock-detection-custom-dark-logo`. Follow `implementation/CLOUD-CODEX-MIGRATION-HANDOFF-2026-10-02.md`. The test candidate preserves retained source bytes and saved hours, ignores only orphan manual-pause metadata, and keeps strict atomic authority validation plus the existing clock-parser/custom dark-logo fixes. Historical acceptance below certifies only its named bytes. No main merge, stable release, Store submission, or live native clock writes are authorized.
+
+**Historical checkpoint: combined worktree review candidate (October 1, 2026).** The active branch is `codex/squarecoil-combined-2026-10-01`, combining Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b` at common base `99879446352364035904af640845ba6c5a43a570`. Preserve both feature sets and original worktrees. This integration is authorized for testing, committing, pushing and a review PR; merge to main, Store submission and live SquareCoil writes remain separate actions. The confirmed prototype integration checkpoint remains at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`. Previous implementation evidence below is historical. Combined exact-package evidence is recorded in `implementation/COMBINED-WORKTREE-EVIDENCE.md` when completed.
 
 This is the recovery checkpoint for the active SquareCoil Companion prototype/rebuild.
 
@@ -10,7 +12,7 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 ## Current checkpoint
 
-**Active branch:** `codex/squarecoil-combined-2026-10-01`
+**Active branch:** `fix/clock-detection-custom-dark-logo`
 
 **Combined accepted package source:** `8426b242e26cc418228f66268b6e69040737b532`; Chrome and Edge each passed 31 clean plus 2 valid v0.7 upgrade cases on unchanged bytes. Tooling-only correction `5efed69` and later documentation preserve the same runtime fingerprint. See `implementation/COMBINED-WORKTREE-EVIDENCE.md` and [review PR #5](https://github.com/Wakeup-gif/squarecoil-companion/pull/5).
 
@@ -30,7 +32,7 @@ If chat context is lost or implementation direction becomes unclear, start here 
 
 **Logic delta authority:** `logic/L5A-TAB-PARITY-FOCUS-DELTA.md`
 
-**Next canonical build action:** finish the confirmed prototype integration and its exact candidate gates; prior accepted batches remain source-bound evidence. Production publication/promotion is not authorized.
+**Next canonical build action:** targeted migration recovery gates, one aggregate B6 gate, clean committed v0.7.3 test package, then available exact-package browser validation. Live profile and unavailable browser gates must remain explicitly unverified.
 
 The user explicitly authorized sequential B3 through B6 work on this existing branch. That authorization does not promote the branch to production, authorize a release/store upload, or authorize new live SquareCoil mutations.
 

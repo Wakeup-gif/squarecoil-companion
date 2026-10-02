@@ -52,7 +52,7 @@ const MIGRATION_FAILURE_CODES = new Set([
   'legacy-context-identity-conflict', 'legacy-session-invalid', 'legacy-session-unreadable',
   'legacy-session-id-conflict', 'rebuilt-context-identity-conflict', 'legacy-segment-id-conflict',
   'legacy-active-invalid', 'legacy-active-context-missing', 'legacy-pending-invalid',
-  'legacy-pending-context-missing', 'legacy-local-pause-context-missing',
+  'legacy-pending-context-missing', 'legacy-local-pause-context-missing', 'legacy-local-pause-invalid',
   'migration-time-invalid', 'migration-command-time-invalid', 'stale-revision',
   'coordination-owner-unavailable', 'stale-requester-coordination-epoch',
   'stale-requester-disposition', 'authority-command-owner-required',

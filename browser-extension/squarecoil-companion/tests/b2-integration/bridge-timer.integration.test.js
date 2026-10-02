@@ -47,7 +47,13 @@ function createFixture(options = {}) {
   const values = {};
   const area = {
     async get(key) { return { [key]: values[key] === undefined ? undefined : structuredClone(values[key]) }; },
-    async set(patch) { Object.assign(values, structuredClone(patch)); },
+    async set(patch) {
+      if (options.failMigrationWrite && Object.keys(patch[AUTHORITY_STORAGE_KEY]?.document?.migration?.completedSources || {}).length) {
+        options.failMigrationWrite = false;
+        throw new Error('fictional-persistence-failure');
+      }
+      Object.assign(values, structuredClone(patch));
+    },
     read() { return structuredClone(values[AUTHORITY_STORAGE_KEY]); }
   };
   let lockQueue = Promise.resolve();
@@ -860,4 +866,171 @@ test('IT-B2-BRIDGE-TIMER-010 expired same-principal OWNER reacquisition rotates 
 
   await core.teardown();
   await client.teardown();
+});
+
+
+// Historical producers: workspace.pauseSelected writes manualPausedKey + Pending;
+// runtime.observe(out) removes Pending, then onClick(clear-all) removes the Context
+// without clearing manualPausedKey. Archive history is unaffected by that journey.
+function orphanPauseJourney() {
+  const current = { schema: 3, contexts: { 'job:123': { key: 'job:123', projectId: '123' } },
+    active: null, pending: { key: 'job:123', detectedAt: 100 },
+    meta: { manualPausedKey: 'job:123', observedClockKey: 'job:123' } };
+  current.pending = null;
+  current.meta.observedClockKey = null;
+  current.contexts = {};
+  return current;
+}
+
+function migration073Sources(current = orphanPauseJourney()) {
+  return {
+    [LEGACY_KEYS[0]]: JSON.stringify(current),
+    [LEGACY_KEYS[1]]: JSON.stringify({ contexts: { 'job:456': {
+      key: 'job:456', type: 'job', projectId: '456', label: 'Fictional retained history',
+      accumulatedMs: 3_600_000, sessions: [{ id: 'retained-session', cycleId: 'retained-cycle',
+        startAt: 10_000, endAt: 3_610_000, durationMs: 3_600_000 }]
+    } } }),
+    [LEGACY_KEYS[2]]: JSON.stringify([{ type: 'fictional-activity' }])
+  };
+}
+
+function readonly073Storage(sources) {
+  return {
+    getItem(key) { return sources[key] ?? null; },
+    setItem() { assert.fail('retained source write'); },
+    removeItem() { assert.fail('retained source removal'); },
+    clear() { assert.fail('retained source clear'); }
+  };
+}
+
+function assert073History(document) {
+  assert.equal(document.ledger.length, 1);
+  assert.equal(document.ledger[0].durationMs, 3_600_000);
+  assert.equal(document.contexts['job:456'].legacyUnattributedMs, 0);
+  assert.equal(document.contexts['job:123'], undefined);
+  assert.equal(Object.keys(document.migration.completedSources).length, 1);
+  assert.equal(document.timer.pending, null);
+  assert.equal(document.timer.localPause, null);
+  assert.equal(document.migration.recoveryCandidates?.localPause, undefined);
+}
+
+test('IT-B2-MIG-COMPAT-001 authentic orphan hint preserves hours and bytes before fresh real Bridge timing', async () => {
+  const fixture = createFixture();
+  const client = fixture.client(730, 'runtime-orphan-pause-073');
+  const sources = migration073Sources();
+  const retained = structuredClone(sources);
+  const bridge = {};
+  const page = { clockedOut: true, fetches: 0 };
+  const core = createTrustedTransitionCore({ authorityClient: client,
+    legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+    randomId: ids('orphan-073'), bridgeEnvironment: nativeBridgeEnvironment(fixture.clock, page),
+    createBridge: nativeBridgeFactory(bridge) });
+  try {
+    const settled = await core.ensure();
+    assert.equal(settled.blocked, false);
+    assert.equal(settled.preflight.disposition, 'COMPLETE_MATCH');
+    assert.equal(page.fetches, 1);
+    const migrated = fixture.area.read().document;
+    assert073History(migrated);
+    assert.equal(migrated.timer.active, null);
+    assert.deepEqual(migrated.migration.diagnostics.filter(row => row.code === 'LEGACY_ORPHAN_MANUAL_PAUSE_IGNORED')
+      .map(({ code }) => ({ code })), [{ code: 'LEGACY_ORPHAN_MANUAL_PAUSE_IGNORED' }]);
+    const revision = migrated.revision;
+    await core.settle();
+    assert.equal(fixture.area.read().document.revision, revision);
+    page.clockedOut = false;
+    fixture.clock.value = 2_000;
+    await core.verifyNow('fresh-current-clock');
+    const current = fixture.area.read().document;
+    assert073History(current);
+    assert.equal(current.timer.active.contextId, 'job:260801');
+    assert.equal(current.timer.active.startedAtMs, 2_000);
+    fixture.clock.value = 3_000;
+    await core.verifyNow('fresh-clock-verification');
+    fixture.clock.value = 4_000;
+    await core.prepareDisable();
+    const finalized = fixture.area.read().document;
+    assert.equal(finalized.timer.active, null);
+    assert.deepEqual(finalized.ledger.map(row => row.durationMs), [3_600_000, 2_000]);
+    assert.equal(finalized.ledger[1].contextId, 'job:260801');
+    assert.equal(bridge.value.snapshot().nativeMutationRequestCount, 0);
+    assert.deepEqual(sources, retained);
+  } finally { await core.teardown(); await client.teardown(); }
+});
+
+test('IT-B2-MIG-COMPAT-002 strict real router failures preserve authority and recover on explicit same-core retry', async () => {
+  const cases = [
+    [current => { current.localPause = { key: 'job:123' }; }, 'legacy-local-pause-context-missing'],
+    [current => { current.localPause = 'malformed-private-pause'; }, 'legacy-local-pause-invalid'],
+    [current => { current.active = { key: 'job:123' }; }, 'legacy-active-context-missing'],
+    [current => { current.pending = { key: 'job:123' }; }, 'legacy-pending-context-missing'],
+    [current => { current.contexts = { 'job:789': { key: 'job:789', projectId: '789', sessions: [
+      { id: 'same-private-id', startAt: 100, endAt: 200 },
+      { id: 'same-private-id', startAt: 300, endAt: 400 }
+    ] } }; }, 'legacy-session-id-conflict']
+  ];
+  for (const [index, [breakSource, reason]] of cases.entries()) {
+    const fixture = createFixture();
+    const client = fixture.client(740 + index, `runtime-strict-migration-073-${index}`);
+    await client.ensure();
+    const before = fixture.area.read().document;
+    const current = orphanPauseJourney();
+    breakSource(current);
+    const sources = migration073Sources(current);
+    const original = structuredClone(sources);
+    const statuses = [];
+    const core = createTrustedTransitionCore({ authorityClient: client,
+      legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+      randomId: ids(`strict-073-${index}`), createBridge: bridgeFactory({}),
+      onStatusChange: status => statuses.push(status) });
+    try {
+      const failed = await core.ensure();
+      assert.equal(failed.blocked, true);
+      assert.equal(failed.lastError, reason);
+      assert.equal(failed.bridge, null);
+      assert.deepEqual(fixture.area.read().document, before);
+      assert.deepEqual(sources, original);
+      assert.equal(JSON.stringify(statuses).includes('same-private-id'), false);
+      assert.equal(JSON.stringify(statuses).includes('malformed-private-pause'), false);
+      // Repair only this fictional fixture; never mutate a real retained profile.
+      sources[LEGACY_KEYS[0]] = JSON.stringify(orphanPauseJourney());
+      const recovered = await core.settle();
+      assert.equal(recovered.blocked, false);
+      assert.equal(recovered.preflight.disposition, 'COMPLETE_MATCH');
+      assert.equal(recovered.lastError, null);
+      assert.notEqual(recovered.bridge, null);
+      assert073History(fixture.area.read().document);
+      assert.equal(fixture.area.read().document.timer.active, null);
+      const revision = fixture.area.read().document.revision;
+      await core.settle();
+      assert.equal(fixture.area.read().document.revision, revision);
+    } finally { await core.teardown(); await client.teardown(); }
+  }
+});
+
+test('IT-B2-MIG-COMPAT-003 failed migration persistence rolls back and imports once on same-core retry', async () => {
+  const fixture = createFixture({ failMigrationWrite: true });
+  const client = fixture.client(750, 'runtime-persistence-migration-073');
+  await client.ensure();
+  const before = fixture.area.read().document;
+  const sources = migration073Sources();
+  const retained = structuredClone(sources);
+  const core = createTrustedTransitionCore({ authorityClient: client,
+    legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+    randomId: ids('persistence-073'), createBridge: bridgeFactory({}) });
+  try {
+    const failed = await core.ensure();
+    assert.equal(failed.blocked, true);
+    assert.equal(failed.lastError, 'authority-command-failed');
+    assert.equal(failed.bridge, null);
+    assert.deepEqual(fixture.area.read().document, before);
+    const retry = await core.settle();
+    assert.equal(retry.blocked, false);
+    assert.equal(retry.preflight.disposition, 'COMPLETE_MATCH');
+    assert073History(fixture.area.read().document);
+    const revision = fixture.area.read().document.revision;
+    await core.settle();
+    assert.equal(fixture.area.read().document.revision, revision);
+    assert.deepEqual(sources, retained);
+  } finally { await core.teardown(); await client.teardown(); }
 });

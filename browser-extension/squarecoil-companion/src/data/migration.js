@@ -786,6 +786,9 @@ function noteLegacyPending(candidate, current, groups, keyToContextId, diagnosti
 
 function migrateLegacyLocalPause(candidate, current, groups, keyToContextId, diagnostics) {
   if (!current) return null;
+  if (current.localPause !== null && current.localPause !== undefined && !isRecord(current.localPause)) {
+    throw migrationError('legacy-local-pause-invalid');
+  }
   let localPause = isRecord(current.localPause) ? current.localPause : null;
   if (!localPause && isRecord(current.meta) && legacyText(current.meta.manualPausedKey)) {
     const pending = isRecord(current.pending) && current.pending.key === current.meta.manualPausedKey
@@ -796,7 +799,15 @@ function migrateLegacyLocalPause(candidate, current, groups, keyToContextId, dia
       groups,
       keyToContextId
     );
-    const group = legacyContextId && groups.get(legacyContextId);
+    // The historical pause -> clock-out -> Clear all journey leaves this metadata
+    // hint orphaned. It owns no live state or time, so retain the original source
+    // and ignore only this absent-context hint. Explicit pause/Active/Pending
+    // references still fail closed through their own validation paths.
+    if (!legacyContextId) {
+      appendDiagnostic(diagnostics, 'LEGACY_ORPHAN_MANUAL_PAUSE_IGNORED');
+      return null;
+    }
+    const group = groups.get(legacyContextId);
     const contextRecord = group && group.records[0] && group.records[0].raw;
     localPause = {
       key: current.meta.manualPausedKey,

@@ -1,9 +1,9 @@
 {
   "channel": "test",
-  "latestVersion": "0.7.2",
+  "latestVersion": "0.7.3",
   "releasedAt": "2026-10-02",
   "minimumVersion": "0.5.3",
-  "releaseNotes": "Test build: restore safe clock response fragment and general department detection, disclose failed clock reads, and restore the approved custom dark logo. Requires browser validation before release promotion.",
+  "releaseNotes": "Test only: repair orphan legacy manual-pause startup compatibility while preserving saved hours and retained source bytes; retain clock-parser and custom dark-logo fixes. Live-profile and branded browser verification remain required.",
   "distribution": {
     "recommended": "developer-mode",
     "browsers": [
@@ -12,12 +12,12 @@
     ],
     "edge": {
       "branch": "release/squarecoil-companion-edge",
-      "artifact": "SquareCoil-Companion-v0.7.2-TEST-EDGE.zip",
+      "artifact": "SquareCoil-Companion-v0.7.3-TEST-EDGE.zip",
       "storeUrl": null
     },
     "chrome": {
       "branch": "release/squarecoil-companion",
-      "artifact": "SquareCoil-Companion-v0.7.2-TEST-CHROME.zip",
+      "artifact": "SquareCoil-Companion-v0.7.3-TEST-CHROME.zip",
       "storeUrl": null
     },
     "stableBranch": "release/squarecoil-companion",

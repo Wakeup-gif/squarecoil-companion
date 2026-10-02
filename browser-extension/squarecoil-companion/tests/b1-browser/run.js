@@ -4983,6 +4983,11 @@ async function runUpgradeProfileSuite({ playwright, family, executablePath, pack
             }
           }
         };
+        // Old pause -> clock-out -> Clear all leaves a non-live orphan hint;
+        // unrelated saved history must still migrate through installed startup.
+        legacy.active = null;
+        legacy.pending = null;
+        legacy.meta = { manualPausedKey: 'job:654321', observedClockKey: null };
         const rawLegacy = JSON.stringify(legacy);
         const stateBefore = await pageState(page);
         const storageBefore = await bridge.getStorage(['timerEnabled', AUTHORITY_STORAGE_KEY]);
@@ -5027,6 +5032,15 @@ async function runUpgradeProfileSuite({ playwright, family, executablePath, pack
         const markerBefore = authorityBefore?.migration?.completedSources?.['squarecoil-v07-localstorage-v1'];
 
         assert(markerBefore?.completionState === 'COMPLETE', 'Valid v0.7 migration completion marker is missing', markerBefore);
+        assert(authorityBefore?.contexts?.['job:654321'] === undefined,
+          'Orphan metadata fabricated a Context');
+        assert(authorityBefore?.migration?.recoveryCandidates?.localPause === undefined,
+          'Orphan metadata fabricated pause recovery evidence');
+        assert(authorityBefore?.migration?.diagnostics?.some(row => row.code === 'LEGACY_ORPHAN_MANUAL_PAUSE_IGNORED'),
+          'Orphan metadata did not record its fixed diagnostic');
+        assert(authorityBefore?.timer?.active?.contextId === 'job:260701' &&
+          authorityBefore.timer.active.startedAtMs > baseMs + 2 * hourMs,
+          'Migration did not reach fresh current clock observation', authorityBefore?.timer?.active);
         assert(sourceAfterMigration === rawLegacy, 'Migration modified or removed the legacy source');
         assert(importedLedgerBefore.length === 2, 'Valid v0.7 sessions did not become exactly two Ledger segments', importedLedgerBefore);
         assert(importedLedgerBefore.reduce((sum, row) => sum + row.durationMs, 0) === 2 * hourMs, 'Imported Ledger duration is not exactly two hours', importedLedgerBefore);

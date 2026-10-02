@@ -1,12 +1,16 @@
 # SquareCoil Companion Rebuild — Current Handoff
 
-**Current work: combined worktree integration (October 1, 2026).** See the combined review candidate below for current branch and authorization. The confirmed prototype integration checkpoint is historical at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`; previous UI/theme/lab/Figma stabilization evidence remains source-bound.
+**Current work: v0.7.3 migration startup repair.** Follow `implementation/CLOUD-CODEX-MIGRATION-HANDOFF-2026-10-02.md` on `fix/clock-detection-custom-dark-logo`. Test-only package; retain hours and legacy bytes, existing clock-parser and custom dark-logo repairs. Exact browser/live-profile verification remains required. No main merge or stable publication.
 
-Updated: 2026-10-01
+**Historical checkpoint: combined worktree integration (October 1, 2026).** The combined review candidate below is historical evidence. The confirmed prototype integration checkpoint is historical at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`; previous UI/theme/lab/Figma stabilization evidence remains source-bound.
+
+Updated: 2026-10-02
 Repository: `Wakeup-gif/squarecoil-companion`
-Branch: `codex/squarecoil-combined-2026-10-01`
+Branch: `fix/clock-detection-custom-dark-logo`
 
-## Combined review candidate
+## Historical combined review candidate
+
+Historical branch: `codex/squarecoil-combined-2026-10-01`.
 
 Completed integration of Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b`. Exact package source `8426b242e26cc418228f66268b6e69040737b532` passed Chrome and Edge clean 31/31 plus valid v0.7 upgrade 2/2 each, with unchanged ZIP/package hashes and zero native mutation attempts. Tooling-only correction `5efed69` and later documentation preserve the same runtime fingerprint. Both original worktrees remain clean and intact. Integration evidence is in `implementation/COMBINED-WORKTREE-EVIDENCE.md`; [PR #5](https://github.com/Wakeup-gif/squarecoil-companion/pull/5) contains the combined review candidate. Previous acceptance below remains historical. Main merge, Store submission and live SquareCoil writes remain separate actions.
 

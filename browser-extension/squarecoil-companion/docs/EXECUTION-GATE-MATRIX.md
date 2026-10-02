@@ -348,3 +348,23 @@ For each active batch:
 3. mark `MAPPED` only after the owner and tests are identified;
 4. mark `PASS` only after the exact candidate evidence exists;
 5. never carry `PASS` forward automatically after affected source bytes change.
+
+
+## Active v0.7.3 migration compatibility repair — October 2
+
+Branch: `fix/clock-detection-custom-dark-logo`.
+Intent: restore startup for the authentic pause -> clock-out -> Clear all orphan hint.
+Behavior: discard only a missing-context meta.manualPausedKey hint, preserve retained bytes and saved hours, keep explicit authority-sensitive failures atomic.
+Files: migration, composed Bridge/Timer tests, test release metadata and evidence.
+Impact tags: MIGRATION_STORAGE, TIMER_LEDGER, BRIDGE_OBSERVATION, SUPPORT_PRIVACY, PACKAGE_ARTIFACT, DOCS_ONLY.
+Contracts: L1 startup, L2 non-live atomic migration, L3 read-only observation, L4 fresh timing, L6 data safety, L7 diagnostic privacy.
+Targeted gates: migration/preflight/command/recovery tests, composed real kernel/router/client/core/Bridge tests, support privacy, clock parser and dark-logo regressions.
+Composed journeys: stale pause plus unrelated completed hours -> COMPLETE_MATCH -> fresh clock observation; strict failure -> fictional repaired cause -> explicit same-core retry; persistence failure -> retry without duplicates.
+Full candidate gate: yes, once after targeted gates pass.
+Exclusions: no retained-key writes, fallback authority, native clock mutations, changed clock parser/logo policy, main merge or stable publication.
+
+| ID | Requirement | Targeted proof | Candidate proof | State |
+|---|---|---|---|---|
+| MIG-073-001 | Only orphan metadata pause hints are ignored with a fixed diagnostic; saved hours and all retained bytes survive. | IT-B2-MIG-COMPAT-001 | exact test package, upgrade profile | MAPPED |
+| MIG-073-002 | Explicit pause, Active/Pending, sessions and persistence failures remain atomic; router reasons remain private and safe. | IT-B2-MIG-COMPAT-002/003, UT-B2-MIG-034 | exact upgrade/recovery profile | MAPPED |
+| MIG-073-003 | Same-core retry and repeat settlement import once and start Bridge only after COMPLETE_MATCH; fresh clock evidence owns new time. | IT-B2-MIG-COMPAT-001/002/003 | installed Chrome/Edge | MAPPED |
