@@ -365,6 +365,8 @@ Exclusions: no retained-key writes, fallback authority, native clock mutations, 
 
 | ID | Requirement | Targeted proof | Candidate proof | State |
 |---|---|---|---|---|
-| MIG-073-001 | Only orphan metadata pause hints are ignored with a fixed diagnostic; saved hours and all retained bytes survive. | IT-B2-MIG-COMPAT-001 | exact test package, upgrade profile | MAPPED |
-| MIG-073-002 | Explicit pause, Active/Pending, sessions and persistence failures remain atomic; router reasons remain private and safe. | IT-B2-MIG-COMPAT-002/003, UT-B2-MIG-034 | exact upgrade/recovery profile | MAPPED |
-| MIG-073-003 | Same-core retry and repeat settlement import once and start Bridge only after COMPLETE_MATCH; fresh clock evidence owns new time. | IT-B2-MIG-COMPAT-001/002/003 | installed Chrome/Edge | MAPPED |
+| MIG-073-001 | Only orphan metadata pause hints are ignored with a fixed diagnostic; saved hours and all retained bytes survive. | IT-B2-MIG-COMPAT-001 | exact test package, upgrade profile | BLOCKED: installed browsers unavailable; automated proof passed |
+| MIG-073-002 | Explicit pause, Active/Pending, sessions and persistence failures remain atomic; router reasons remain private and safe. | IT-B2-MIG-COMPAT-002/003, UT-B2-MIG-034 | exact upgrade/recovery profile | BLOCKED: installed browsers unavailable; automated proof passed |
+| MIG-073-003 | Same-core retry and repeat settlement import once and start Bridge only after COMPLETE_MATCH; fresh clock evidence owns new time. | IT-B2-MIG-COMPAT-001/002/003 | installed Chrome/Edge | BLOCKED: installed browsers unavailable; automated proof passed |
+
+Exact v0.7.3 automated/package proof and installed-browser limitations: `implementation/MIGRATION-STARTUP-REPAIR-2026-10-02.md`. REC-001/002 and affected migration startup evidence are reopened for this candidate; historical PASS remains source-bound.
