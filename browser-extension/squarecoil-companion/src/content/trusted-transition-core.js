@@ -190,12 +190,14 @@ function createTrustedTransitionCore(options = {}) {
   let prepareDisablePromise = null;
   let initializationPromise = null;
   let migrationInFlight = false;
+  let failedMigration = null;
   let pendingLegacyPreferences = null;
   let lastStatus = 'not-initialized';
   let lastError = null;
   const stagedDataPlans = new Map();
 
   function adopt(value) {
+    if (disposed) return false;
     const documentValue = value?.document || null;
     if (documentValue && typeof documentValue === 'object') {
       const priorRevision = authorityDocument?.revision;
@@ -275,6 +277,7 @@ function createTrustedTransitionCore(options = {}) {
   }
 
   function publishStatus(status, error = null) {
+    if (disposed && status !== 'trusted-core-torn-down') return;
     lastStatus = status;
     lastError = error ? String(error?.message || error) : null;
     try { onStatusChange(snapshot()); } catch (_) {}
@@ -293,7 +296,9 @@ function createTrustedTransitionCore(options = {}) {
   }
 
   async function refreshDocument() {
+    if (disposed) throw new Error('trusted-transition-core-disposed');
     const read = await authorityClient.read();
+    if (disposed) throw new Error('trusted-transition-core-disposed');
     if (!adopt(read)) throw new Error('trusted-transition-document-unavailable');
     return authorityDocument;
   }
@@ -311,9 +316,11 @@ function createTrustedTransitionCore(options = {}) {
   }
 
   async function commit(type, values = {}) {
+    if (disposed) throw new Error('trusted-transition-core-disposed');
     const envelope = commandEnvelope(type, values);
     try {
       const result = await authorityClient.command(envelope);
+      if (disposed) throw new Error('trusted-transition-core-disposed');
       await refreshDocument();
       return result;
     } catch (error) {
@@ -369,6 +376,7 @@ function createTrustedTransitionCore(options = {}) {
   }
 
   async function resolveMigrationAndBridge() {
+    if (disposed) return snapshot();
     if (migrationInFlight) {
       publishStatus('legacy-migration-in-progress');
       return snapshot();
@@ -378,6 +386,21 @@ function createTrustedTransitionCore(options = {}) {
     // runtime is stopped and the exact retained bytes are restored. The
     // positive disposition allowlist below remains the only unblock path.
     preflight = inspectLegacyMigration(legacyStorage, authorityDocument);
+    if (failedMigration && (preflight.disposition !== MIGRATION_DISPOSITIONS.REQUIRED ||
+        Object.keys(failedMigration.sources).length !== Object.keys(preflight.sources || {}).length ||
+        Object.entries(failedMigration.sources).some(([key, value]) => preflight.sources?.[key] !== value))) {
+      failedMigration = null;
+    }
+    if (!authorityOwner && failedMigration) {
+      // Losing ownership cannot repair the exact source that just failed. Keep
+      // its finite reason visible until changed bytes or an OWNER retry.
+      preflight = Object.freeze({ checked: false, blocked: true,
+        reason: 'legacy-preflight-failed', disposition: MIGRATION_DISPOSITIONS.FAILED,
+        presentKeys: preflight.presentKeys });
+      blocked = true;
+      publishStatus(preflight.reason, new Error(failedMigration.reason));
+      return snapshot();
+    }
     if (preflight.disposition === MIGRATION_DISPOSITIONS.REQUIRED && authorityOwner) {
       const legacySources = preflight.sources;
       const legacyPreferences = legacyPreferencesFromSources(legacySources);
@@ -394,17 +417,27 @@ function createTrustedTransitionCore(options = {}) {
       } catch (error) {
         migrationError = error;
       }
+      if (disposed) { migrationInFlight = false; return snapshot(); }
       try { await refreshDocument(); } catch (error) { migrationError = migrationError || error; }
+      if (disposed) { migrationInFlight = false; return snapshot(); }
       preflight = inspectLegacyMigration(legacyStorage, authorityDocument);
       migrationInFlight = false;
+      const currentAuthority = authorityClient.snapshot();
+      authorityOwner = currentAuthority?.healthy === true && currentAuthority.disposition === 'OWNER';
+      authorityTenure = normalizeAuthorityTenure(currentAuthority);
       if (migrationError && preflight.disposition !== MIGRATION_DISPOSITIONS.COMPLETE_MATCH) {
         preflight = Object.freeze({ checked: false, blocked: true,
           reason: 'legacy-preflight-failed', disposition: MIGRATION_DISPOSITIONS.FAILED,
           presentKeys: preflight.presentKeys });
         blocked = true;
-        publishStatus(preflight.reason, new Error(migrationFailureReason(migrationError)));
+        const reason = migrationFailureReason(migrationError);
+        if (!failedMigration || authorityOwner || reason !== 'authority-command-owner-required') {
+          failedMigration = { sources: legacySources, reason };
+        }
+        publishStatus(preflight.reason, new Error(failedMigration.reason));
         return snapshot();
       }
+      failedMigration = null;
     }
     blocked = preflight.blocked;
     if (blocked) {
@@ -444,13 +477,26 @@ function createTrustedTransitionCore(options = {}) {
           legacyPreferences: pendingLegacyPreferences,
           expectedPreferenceRevision: preferenceSnapshot.preferenceRevision
         });
+        if (disposed) return snapshot();
         pendingLegacyPreferences = null;
       } catch (error) {
+        if (disposed) return snapshot();
         // Timer/Ledger migration is already proven COMPLETE_MATCH. A settings
         // initialization failure may retry later, but must not relabel the
         // completed migration as FAILED or import it twice.
         publishStatus('legacy-preferences-initialization-deferred', error);
       }
+    }
+    if (disposed) return snapshot();
+    // A successful import/read may finish after the client disconnects. Only
+    // its current positive state may attach a new Bridge or own observations.
+    const currentAuthority = authorityClient.snapshot();
+    authorityOwner = currentAuthority?.healthy === true && currentAuthority.disposition === 'OWNER';
+    authorityTenure = normalizeAuthorityTenure(currentAuthority);
+    if (currentAuthority?.enabled === false || currentAuthority?.healthy !== true ||
+        !['OWNER', 'OBSERVER_CONNECTED'].includes(currentAuthority.disposition)) {
+      publishStatus('trusted-core-authority-unavailable');
+      return snapshot();
     }
     if (!bridge) {
       // Recovery classification belongs to a fresh Bridge attachment (or an
@@ -461,6 +507,7 @@ function createTrustedTransitionCore(options = {}) {
     } else {
       await bridge.setOwner(authorityOwner, authorityTenure);
     }
+    if (disposed) return snapshot();
     publishStatus(authorityOwner ? 'trusted-core-owner-active' : 'trusted-core-observer-active');
     return snapshot();
   }
@@ -479,7 +526,11 @@ function createTrustedTransitionCore(options = {}) {
           bridge.observeNativeCompletion(event.nativeEvidence).catch(error => publishStatus('bridge-evidence-rejected', error));
           return;
         }
+        const priorRevision = authorityDocument?.revision;
         if (!adopt(event)) return;
+        // Coordination-only publications carry the same document revision.
+        // They cannot repair a failed source and must not retry or clear it.
+        if (authorityDocument.revision === priorRevision) return;
         if (!initialized || initializationPromise || disposed) {
           publishStatus('authority-document-updated');
           return;
@@ -494,12 +545,14 @@ function createTrustedTransitionCore(options = {}) {
         });
       });
       const connected = connection || await authorityClient.ensure();
+      if (disposed) return snapshot();
       adopt(connected?.initialRead);
       await refreshDocument();
       const authority = authorityClient.snapshot();
       authorityOwner = authority.healthy === true && authority.disposition === 'OWNER';
       authorityTenure = normalizeAuthorityTenure(authority);
       await serializeReconciliation(resolveMigrationAndBridge);
+      if (disposed) return snapshot();
       initialized = true;
       try { onStatusChange(snapshot()); } catch (_) {}
       return snapshot();
@@ -513,6 +566,7 @@ function createTrustedTransitionCore(options = {}) {
     if (initializationPromise) await initializationPromise;
     if (!initialized || disposed) return snapshot();
     return serializeReconciliation(async () => {
+      if (disposed) return snapshot();
       // Health callbacks may wait behind initialization or another settlement.
       // Their captured disposition cannot overwrite the client's newer tenure.
       const currentAuthority = authorityClient.snapshot();
@@ -542,6 +596,7 @@ function createTrustedTransitionCore(options = {}) {
         determineRecoveryMode(true);
       }
       await bridge.setOwner(authorityOwner, authorityTenure);
+      if (disposed) return snapshot();
       publishStatus(authorityOwner ? 'trusted-core-owner-active' : 'trusted-core-observer-active');
       return snapshot();
     });
@@ -550,8 +605,11 @@ function createTrustedTransitionCore(options = {}) {
   async function settle(connection = null) {
     if (disposed) throw new Error('trusted-transition-core-disposed');
     const connected = connection || await authorityClient.ensure();
+    if (disposed) return snapshot();
     await ensure(connected);
+    if (disposed) return snapshot();
     return serializeReconciliation(async () => {
+      if (disposed) return snapshot();
       // The connection read may have waited behind initialization or another
       // reconciliation.  Re-read inside this critical section so settlement
       // can never replace a newer subscribed document with that stale value.
@@ -730,9 +788,12 @@ function createTrustedTransitionCore(options = {}) {
   async function teardown() {
     if (disposed) return snapshot();
     disposed = true;
-    if (bridge) await bridge.teardown();
+    authorityOwner = false;
+    authorityTenure = null;
     if (unsubscribe) unsubscribe();
     unsubscribe = null;
+    failedMigration = null;
+    if (bridge) await bridge.teardown();
     stagedDataPlans.clear();
     publishStatus('trusted-core-torn-down');
     return snapshot();

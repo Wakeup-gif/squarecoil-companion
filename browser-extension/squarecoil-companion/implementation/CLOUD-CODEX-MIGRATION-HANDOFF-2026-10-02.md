@@ -1,5 +1,9 @@
 # Cloud Codex handoff: SquareCoil startup and hour tracking
 
+## Current continuation — v0.7.7 test
+
+The current refinement compares the exact pinned tracking prototype and repairs reproduced General/padded identities, remembered history, rejected-event recovery and delayed shutdown/error boundaries. See `implementation/PROTOTYPE-TRACKING-REPAIR-2026-10-02.md` for exact source IDs, automated-versus-live limits and the next installed check. The original handoff below remains historical context; do not reimplement completed repairs.
+
 ## Start here
 
 Repository: `Wakeup-gif/squarecoil-companion`.

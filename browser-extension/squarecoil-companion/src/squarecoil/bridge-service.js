@@ -6,6 +6,7 @@ const {
   parseDomSnapshot
 } = require('./bridge-parser');
 const {
+  EVENT_TYPES,
   createBridgeEngineState,
   beginVerification,
   acceptVerification,
@@ -23,6 +24,14 @@ const DEFAULT_CLICK_VERIFY_DELAY_MS = 900;
 const DEFAULT_FOLLOW_UP_MS = 300;
 const DEFAULT_VERIFICATION_TIMEOUT_MS = 8_000;
 const NATIVE_ACTIONS = new Set([2, 3, 4]);
+const CONTEXT_EVENT_TYPES = new Set([
+  EVENT_TYPES.CONTEXT_DETECTED, EVENT_TYPES.CONTEXT_CHANGED,
+  EVENT_TYPES.CONTEXT_VERIFIED, EVENT_TYPES.CONTEXT_METADATA_UPDATED
+]);
+const REJECTED_IDENTITY_DETAILS = new Set([
+  'timer-observation-general-identity-invalid',
+  'timer-observation-job-identity-invalid'
+]);
 const UNUSABLE_EVIDENCE_REASONS = new Set([
   'SERVER_UNAVAILABLE', 'EMPTY_OR_MALFORMED_SERVER_SNAPSHOT', 'MALFORMED_HTML',
   'AUDITED_CLOCK_ELEMENT_MISSING', 'DUPLICATE_AUDITED_CLOCK_ELEMENT',
@@ -320,7 +329,30 @@ function createSquareCoilBridgeService(options = {}) {
   async function flushEvents(expectedTenure = ownerTenure) {
     while (pendingEvents.length && currentOwnerTenure(expectedTenure)) {
       const event = pendingEvents[0];
-      await onEvents([event]);
+      try {
+        await onEvents([event]);
+      } catch (error) {
+        const response = error?.response;
+        // These exact validator acknowledgments prove the Context was never
+        // committed. Storage, transport and fencing errors retain the event
+        // and its original time for retry, regardless of retryable:false.
+        if (currentOwnerTenure(expectedTenure) && pendingEvents[0] === event &&
+            CONTEXT_EVENT_TYPES.has(event.type) && response?.ok === false &&
+            response.reason === 'authority-command-failed' &&
+            REJECTED_IDENTITY_DETAILS.has(response.detail)) {
+          pendingEvents.shift();
+          // A rejected Context cannot be the prior Context of the next valid
+          // observation. Keep counters, native candidates and other pending
+          // transitions; Timer retains the last committed Context and hours.
+          if (engineState.lastConfirmed?.context?.contextId === event.context?.contextId) {
+            engineState = Object.freeze({ ...engineState, lastConfirmed: null });
+          }
+          ownerInitialObservationCompleted = false;
+          lastReason = 'bridge-observation-identity-rejected';
+          lastError = response.detail;
+        }
+        throw error;
+      }
       if (!currentOwnerTenure(expectedTenure)) return;
       pendingEvents.shift();
       lastEventType = event.type;

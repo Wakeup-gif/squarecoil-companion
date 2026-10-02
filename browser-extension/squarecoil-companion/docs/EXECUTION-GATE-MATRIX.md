@@ -405,3 +405,17 @@ Contracts: L1 exact current settlement; L2 OWNER-only fenced atomic migration, n
 Targeted gates: trusted-core integration takeover/race/rollback, authority-client, full built content/background journey, then check:b6-candidate.
 Proof: IT-B2-MIG-SYNC-001/002/003 (delayed callbacks, strict failure retention, disconnected fencing and read-time ownership transfer); installed live-profile verification pending.
 No main merge, stable release, retained source writes or native clock mutations.
+
+## Active v0.7.7 prototype tracking repair — October 2
+
+Intent: compare the exact supplied v1.1.4 wrapper and pinned v1.1.2/v1.1.3 dependencies, reproduce reported parser/Timer identity divergences and asynchronous shutdown hazards, and repair only demonstrated cases.
+Behavior: all supported General contexts must survive the real Timer validator; padded href/clock-label IDs must agree; bare project-zero labels must reuse the original producer's stable identity and saved history; disposed cores cannot resume migration or create a Bridge; genuine unchanged-source failures remain visible across actual ownership loss. Contradictory migration identities/session materials stay atomic.
+Files expected: bridge-parser, Bridge delivery queue, Timer validator, trusted core, migration validation, affected B2 unit/composed tests, exact test metadata and evidence.
+Impact tags: AUTHORITY_FENCING, MIGRATION_STORAGE, BRIDGE_OBSERVATION, TIMER_LEDGER, LIFECYCLE, SUPPORT_PRIVACY, PACKAGE_ARTIFACT, DOCS_ONLY.
+Contracts: L1 current exact settlement/teardown; L2 atomic migration/non-live recovery/stable identity; L3 audited read-only contexts; L4 historical Pending and current-only accrual; L6 saved-data protection; L7 finite diagnostics.
+Targeted gates: non-Production General, same padded job, prototype-derived bare General/remembered Pending, shutdown during read/import, disconnected-client and unchanged-error regressions, invalid-input atomicity. Then one aggregate B6 gate and exact clean-source package/ZIP checks.
+Proof states: MAPPED; synthetic execution is distinct from installed-browser/live-profile acceptance.
+Additional recovery boundary: IT-B2-BRIDGE-REJECT-001/002 reproduce a permanently rejected identity blocking fresh action-7 evidence. Retire only an explicit negative identity-validator acknowledgment; keep genuine storage/transport/fencing failures and their original timing pending for retry (IT-B2-BRIDGE-REJECT-003). Verify recovery after a rejected switch preserves the previously verified ledger boundary and reaches successful core settlement.
+Exclusions: no arbitrary label inference, guessed aliases, source rewrites, fallback writer, native mutations, logo redesign, competing checkout, merge/deploy, credentials/permission changes, or unpacked-policy bypass.
+
+Current v0.7.7 automated gate: PASS, 763 executions with no failures/skips/todos; independent focused review passed. Exact package proof follows in `implementation/PROTOTYPE-TRACKING-REPAIR-2026-10-02.md`. Installed Chrome/Edge clean/upgrade and the actual user profile remain BLOCKED/UNVERIFIED; historical acceptance does not certify these modified bytes.

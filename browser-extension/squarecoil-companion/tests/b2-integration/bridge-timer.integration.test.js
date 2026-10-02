@@ -1243,3 +1243,380 @@ test('IT-B2-MIG-SYNC-003 migration uses current OWNER established during an unav
     assert.deepEqual(sources, retained);
   } finally { await core.teardown(); await client.teardown(); await firstOwner.teardown(); }
 });
+
+test('IT-B2-MIG-DISPOSE-001 teardown during an OWNER read prevents import and real Bridge attachment', async () => {
+  const fixture = createFixture();
+  const firstOwner = fixture.client(790, 'runtime-dispose-read-first-owner');
+  const client = fixture.client(791, 'runtime-dispose-read-migration');
+  await firstOwner.ensure();
+  const sources = migration073Sources();
+  const retained = structuredClone(sources);
+  const bridge = {};
+  let releaseRead;
+  let readEntered;
+  const readGate = new Promise(resolve => { releaseRead = resolve; });
+  const entered = new Promise(resolve => { readEntered = resolve; });
+  let delayRead = false;
+  let migrationCommands = 0;
+  const authority = {
+    ...client,
+    async read() {
+      if (delayRead) { readEntered(); await readGate; }
+      return client.read();
+    },
+    migrationCommand(...args) {
+      migrationCommands += 1;
+      return client.migrationCommand(...args);
+    }
+  };
+  const core = createTrustedTransitionCore({ authorityClient: authority,
+    legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+    randomId: ids('dispose-read'), bridgeEnvironment: nativeBridgeEnvironment(fixture.clock,
+      { clockedOut: true, fetches: 0 }), createBridge: nativeBridgeFactory(bridge) });
+  let pending;
+  try {
+    assert.equal((await core.ensure()).preflight.disposition, 'REQUIRED');
+    const staleObserver = client.snapshot();
+    const before = fixture.area.read().document;
+    await firstOwner.teardown();
+    fixture.clock.value += 60_001;
+    await client.heartbeat();
+    assert.equal(client.snapshot().disposition, 'OWNER');
+    delayRead = true;
+    pending = core.handleAuthoritySnapshot(staleObserver);
+    pending.catch(() => {});
+    await entered;
+    await core.teardown();
+    releaseRead();
+    const [completion] = await Promise.allSettled([pending]);
+    if (completion.status === 'rejected') {
+      assert.match(completion.reason.message, /trusted-transition-core-disposed/);
+    }
+    assert.equal(migrationCommands, 0);
+    assert.equal(bridge.value, undefined);
+    assert.equal(core.snapshot().bridge, null);
+    assert.equal(core.snapshot().disposed, true);
+    assert.equal(core.snapshot().authorityOwner, false);
+    assert.equal(core.snapshot().status, 'trusted-core-torn-down');
+    assert.deepEqual(fixture.area.read().document, before);
+    assert.deepEqual(sources, retained);
+  } finally {
+    releaseRead();
+    if (pending) await Promise.allSettled([pending]);
+    if (bridge.value) await bridge.value.teardown();
+    await core.teardown(); await client.teardown(); await firstOwner.teardown();
+  }
+});
+
+test('IT-B2-MIG-DISPOSE-002 committed import survives teardown and disconnect without resurrecting a real Bridge', async () => {
+  const fixture = createFixture();
+  const client = fixture.client(792, 'runtime-dispose-committed-migration');
+  await client.ensure();
+  const sources = migration073Sources();
+  const retained = structuredClone(sources);
+  const bridge = {};
+  let releaseResponse;
+  let commandCommitted;
+  const responseGate = new Promise(resolve => { releaseResponse = resolve; });
+  const committed = new Promise(resolve => { commandCommitted = resolve; });
+  let migrationCommands = 0;
+  const authority = {
+    ...client,
+    async migrationCommand(...args) {
+      migrationCommands += 1;
+      const result = await client.migrationCommand(...args);
+      commandCommitted();
+      await responseGate;
+      return result;
+    }
+  };
+  const core = createTrustedTransitionCore({ authorityClient: authority,
+    legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+    randomId: ids('dispose-committed'), bridgeEnvironment: nativeBridgeEnvironment(fixture.clock,
+      { clockedOut: true, fetches: 0 }), createBridge: nativeBridgeFactory(bridge) });
+  let pending;
+  let restartedClient;
+  let restartedCore;
+  const restartedBridge = {};
+  try {
+    pending = core.ensure();
+    pending.catch(() => {});
+    await committed;
+    const imported = fixture.area.read().document;
+    assert073History(imported);
+    await core.teardown();
+    await client.teardown();
+    assert.equal(client.snapshot().healthy, false);
+    assert.equal(client.snapshot().disposition, 'UNAVAILABLE');
+    releaseResponse();
+    const [completion] = await Promise.allSettled([pending]);
+    if (completion.status === 'rejected') {
+      assert.match(completion.reason.message, /trusted-transition-core-disposed/);
+    }
+    assert.equal(migrationCommands, 1);
+    assert.equal(bridge.value, undefined);
+    assert.equal(core.snapshot().bridge, null);
+    assert.equal(core.snapshot().disposed, true);
+    assert.equal(core.snapshot().initialized, false);
+    assert.equal(core.snapshot().authorityOwner, false);
+    assert.equal(core.snapshot().status, 'trusted-core-torn-down');
+    assert.deepEqual(fixture.area.read().document, imported);
+    assert.deepEqual(sources, retained);
+
+    // A new positive client reads the completed marker rather than importing
+    // the same retained sources again after the old initialization was aborted.
+    restartedClient = fixture.client(793, 'runtime-dispose-restarted-migration');
+    let restartedMigrationCommands = 0;
+    const restartedAuthority = { ...restartedClient, migrationCommand: (...args) => {
+      restartedMigrationCommands += 1;
+      return restartedClient.migrationCommand(...args);
+    } };
+    restartedCore = createTrustedTransitionCore({ authorityClient: restartedAuthority,
+      legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+      randomId: ids('dispose-restarted'), bridgeEnvironment: nativeBridgeEnvironment(fixture.clock,
+        { clockedOut: true, fetches: 0 }), createBridge: nativeBridgeFactory(restartedBridge) });
+    assert.equal((await restartedCore.ensure()).preflight.disposition, 'COMPLETE_MATCH');
+    assert.equal(restartedMigrationCommands, 0);
+    assert073History(fixture.area.read().document);
+    assert.deepEqual(fixture.area.read().document.migration, imported.migration);
+    assert.equal(restartedBridge.value.snapshot().nativeMutationRequestCount, 0);
+    assert.deepEqual(sources, retained);
+  } finally {
+    releaseResponse();
+    if (pending) await Promise.allSettled([pending]);
+    if (bridge.value) await bridge.value.teardown();
+    await core.teardown(); await client.teardown();
+    if (restartedCore) await restartedCore.teardown();
+    if (restartedClient) await restartedClient.teardown();
+  }
+});
+
+test('IT-B2-MIG-DISPOSE-003 queued settlements cannot revive torn-down ownership or read a disconnected client', async () => {
+  const fixture = createFixture();
+  const client = fixture.client(794, 'runtime-dispose-queued-settlement');
+  const sources = migration073Sources();
+  const retained = structuredClone(sources);
+  const bridge = {};
+  let releaseRead;
+  let readEntered;
+  const readGate = new Promise(resolve => { releaseRead = resolve; });
+  const entered = new Promise(resolve => { readEntered = resolve; });
+  let delayRead = false;
+  let delayedReads = 0;
+  let migrationCommands = 0;
+  const authority = {
+    ...client,
+    async read() {
+      if (!delayRead) return client.read();
+      delayedReads += 1;
+      const value = await client.read();
+      readEntered();
+      await readGate;
+      return value;
+    },
+    migrationCommand(...args) {
+      migrationCommands += 1;
+      return client.migrationCommand(...args);
+    }
+  };
+  const core = createTrustedTransitionCore({ authorityClient: authority,
+    legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+    randomId: ids('dispose-queued'), bridgeEnvironment: nativeBridgeEnvironment(fixture.clock,
+      { clockedOut: true, fetches: 0 }), createBridge: nativeBridgeFactory(bridge) });
+  const pending = [];
+  try {
+    await core.ensure();
+    const connected = await client.ensure();
+    const imported = fixture.area.read().document;
+    assert073History(imported);
+    delayRead = true;
+    pending.push(core.settle(connected));
+    pending[0].catch(() => {});
+    await entered;
+    pending.push(core.settle(connected));
+    pending[1].catch(() => {});
+    await core.teardown();
+    await client.teardown();
+    releaseRead();
+    const completions = await Promise.allSettled(pending);
+    for (const completion of completions) {
+      if (completion.status === 'rejected') {
+        assert.match(completion.reason.message, /trusted-transition-core-disposed/);
+      }
+    }
+    assert.equal(delayedReads, 1);
+    assert.equal(migrationCommands, 1);
+    assert.equal(core.snapshot().disposed, true);
+    assert.equal(core.snapshot().authorityOwner, false);
+    assert.equal(core.snapshot().status, 'trusted-core-torn-down');
+    assert.equal(bridge.value.snapshot().disposed, true);
+    assert.equal(bridge.value.snapshot().active, false);
+    assert.equal(bridge.value.snapshot().owner, false);
+    assert.equal(bridge.value.snapshot().listenersAttached, false);
+    assert.equal(bridge.value.snapshot().nativeMutationRequestCount, 0);
+    assert.deepEqual(fixture.area.read().document, imported);
+    assert.deepEqual(sources, retained);
+  } finally {
+    releaseRead();
+    await Promise.allSettled(pending);
+    if (bridge.value) await bridge.value.teardown();
+    await core.teardown(); await client.teardown();
+  }
+});
+
+test('IT-B2-MIG-IDENTITY-001 conflicting identity and unproved same-ID recovery fail before atomic commit', async () => {
+  const cases = [
+    [() => ({ schema: 3, contexts: { 'job:111111': {
+      key: 'job:111111', type: 'job', projectId: '222222', accumulatedMs: 3_600_000, sessions: []
+    } }, active: null, pending: null }), 'legacy-context-identity-conflict'],
+    [() => ({ schema: 3, contexts: { 'job:123456': {
+      key: 'job:123456', type: 'job', projectId: 'malformed', accumulatedMs: 3_600_000, sessions: []
+    } }, active: null, pending: null }), 'legacy-context-identity-invalid'],
+    [() => ({ schema: 3, contexts: { 'job:123456': {
+      key: 'job:123456', type: 'job', projectId: '123456', accumulatedMs: 1_000,
+      sessions: [{ id: 'private-conflicting-active-id', startAt: 1_000, endAt: 2_000, durationMs: 1_000 }]
+    } }, active: { key: 'job:123456', sessionId: 'private-conflicting-active-id',
+      startedAt: 2_000, lastVerifiedAt: 3_000 }, pending: null }), 'legacy-session-id-conflict'],
+    [() => ({ schema: 3, contexts: { 'job:123456': {
+      key: 'job:123456', type: 'job', projectId: '123456', accumulatedMs: 1_000,
+      sessions: [{ id: 'private-conflicting-active-id', durationMs: 1_000 }]
+    } }, active: { key: 'job:123456', sessionId: 'private-conflicting-active-id',
+      startedAt: 1_000, lastVerifiedAt: 2_000 }, pending: null }), 'legacy-session-id-conflict']
+  ];
+  for (const [index, [source, reason]] of cases.entries()) {
+    const fixture = createFixture();
+    const client = fixture.client(810 + index, `runtime-identity-atomic-${index}`);
+    await client.ensure();
+    const before = fixture.area.read().document;
+    const sources = migration073Sources(source());
+    const retained = structuredClone(sources);
+    let migrationCommands = 0;
+    const authority = { ...client, migrationCommand: (...args) => {
+      migrationCommands += 1;
+      return client.migrationCommand(...args);
+    } };
+    const statuses = [];
+    const core = createTrustedTransitionCore({ authorityClient: authority,
+      legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+      randomId: ids(`identity-atomic-${index}`), createBridge: bridgeFactory({}),
+      onStatusChange: status => statuses.push(status) });
+    try {
+      const failed = await core.ensure();
+      assert.equal(failed.blocked, true);
+      assert.equal(failed.preflight.disposition, 'FAILED');
+      assert.equal(failed.lastError, reason);
+      assert.equal(failed.bridge, null);
+      assert.deepEqual(fixture.area.read().document, before);
+      assert.equal(migrationCommands, 1);
+      assert.deepEqual(sources, retained);
+      assert.equal(JSON.stringify(statuses).includes('private-conflicting-active-id'), false);
+      // Repair only this fictional test input. The live source must stay untouched.
+      sources[LEGACY_KEYS[0]] = JSON.stringify(orphanPauseJourney());
+      const recovered = await core.settle();
+      assert.equal(recovered.blocked, false);
+      assert.equal(recovered.preflight.disposition, 'COMPLETE_MATCH');
+      assert.equal(recovered.lastError, null);
+      assert.notEqual(recovered.bridge, null);
+      assert073History(fixture.area.read().document);
+      assert.equal(migrationCommands, 2);
+      const revision = fixture.area.read().document.revision;
+      await core.settle();
+      assert.equal(migrationCommands, 2);
+      assert.equal(fixture.area.read().document.revision, revision);
+    } finally { await core.teardown(); await client.teardown(); }
+  }
+});
+
+test('IT-B2-MIG-SYNC-004 genuine migration failure remains diagnostic after a real OWNER to OBSERVER transition', async () => {
+  const fixture = createFixture();
+  const client = fixture.client(795, 'runtime-failed-owner-loss');
+  await client.ensure();
+  const before = fixture.area.read().document;
+  const current = orphanPauseJourney();
+  current.localPause = 'malformed-private-pause';
+  const sources = migration073Sources(current);
+  const retained = structuredClone(sources);
+  let migrationCommands = 0;
+  const authority = { ...client, migrationCommand: (...args) => {
+    migrationCommands += 1;
+    return client.migrationCommand(...args);
+  } };
+  const bridge = {};
+  const core = createTrustedTransitionCore({ authorityClient: authority,
+    legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+    randomId: ids('failed-owner-loss'), bridgeEnvironment: nativeBridgeEnvironment(fixture.clock,
+      { clockedOut: true, fetches: 0 }), createBridge: nativeBridgeFactory(bridge) });
+  let nextOwner;
+  let recoveryOwner;
+  try {
+    assert.equal((await core.ensure()).lastError, 'legacy-local-pause-invalid');
+    assert.equal(migrationCommands, 1);
+    fixture.clock.value += 60_001;
+    nextOwner = fixture.client(796, 'runtime-failed-next-owner');
+    await nextOwner.ensure();
+    await client.heartbeat();
+    assert.equal(client.snapshot().disposition, 'OBSERVER_CONNECTED');
+    const observed = await core.handleAuthoritySnapshot(client.snapshot());
+    assert.equal(observed.authorityOwner, false);
+    assert.equal(observed.preflight.disposition, 'FAILED');
+    assert.equal(observed.status, 'legacy-preflight-failed');
+    assert.equal(observed.lastError, 'legacy-local-pause-invalid');
+    assert.equal(observed.bridge, null);
+    assert.equal(bridge.value, undefined);
+    assert.equal(migrationCommands, 1);
+    assert.deepEqual(fixture.area.read().document, before);
+    assert.deepEqual(sources, retained);
+    // Reacquisition retries the real validator, retaining the genuine failure
+    // and all original bytes rather than fabricating readiness or time.
+    await nextOwner.teardown();
+    fixture.clock.value += 60_001;
+    await client.heartbeat();
+    assert.equal(client.snapshot().disposition, 'OWNER');
+    const retried = await core.handleAuthoritySnapshot(client.snapshot());
+    assert.equal(retried.authorityOwner, true);
+    assert.equal(retried.preflight.disposition, 'FAILED');
+    assert.equal(retried.lastError, 'legacy-local-pause-invalid');
+    assert.equal(retried.bridge, null);
+    assert.equal(migrationCommands, 2);
+    assert.deepEqual(fixture.area.read().document, before);
+    assert.deepEqual(sources, retained);
+
+    // Changing only this fictional retained input invalidates the remembered
+    // failure. An OBSERVER still cannot import until it reacquires ownership.
+    fixture.clock.value += 60_001;
+    recoveryOwner = fixture.client(797, 'runtime-failed-recovery-owner');
+    await recoveryOwner.ensure();
+    await client.heartbeat();
+    assert.equal(client.snapshot().disposition, 'OBSERVER_CONNECTED');
+    sources[LEGACY_KEYS[0]] = JSON.stringify(orphanPauseJourney());
+    const repairedSources = structuredClone(sources);
+    const waiting = await core.settle();
+    assert.equal(waiting.authorityOwner, false);
+    assert.equal(waiting.preflight.disposition, 'REQUIRED');
+    assert.equal(waiting.lastError, null);
+    assert.equal(waiting.bridge, null);
+    assert.equal(migrationCommands, 2);
+    assert.deepEqual(fixture.area.read().document, before);
+    assert.deepEqual(sources, repairedSources);
+    await recoveryOwner.teardown();
+    fixture.clock.value += 60_001;
+    await client.heartbeat();
+    assert.equal(client.snapshot().disposition, 'OWNER');
+    const recovered = await core.handleAuthoritySnapshot(client.snapshot());
+    assert.equal(recovered.preflight.disposition, 'COMPLETE_MATCH');
+    assert.equal(recovered.lastError, null);
+    assert.equal(migrationCommands, 3);
+    assert073History(fixture.area.read().document);
+    const revision = fixture.area.read().document.revision;
+    await core.settle();
+    assert.equal(migrationCommands, 3);
+    assert.equal(fixture.area.read().document.revision, revision);
+    assert.equal(bridge.value.snapshot().nativeMutationRequestCount, 0);
+    assert.deepEqual(sources, repairedSources);
+  } finally {
+    if (bridge.value) await bridge.value.teardown();
+    await core.teardown(); await client.teardown();
+    if (nextOwner) await nextOwner.teardown();
+    if (recoveryOwner) await recoveryOwner.teardown();
+  }
+});

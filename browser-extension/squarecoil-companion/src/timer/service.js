@@ -9,6 +9,7 @@ const {
 const { dedupeSegments, splitInterval } = require('../data/ledger');
 const { createRecoveryCheckpoint } = require('../data/checkpoint');
 const { TIMER_COMMANDS } = require('./commands');
+const { parseClockContext } = require('../squarecoil/bridge-parser');
 
 const DEFAULT_VERIFICATION_GRACE_MS = 90 * 1000;
 const DEFAULT_CLOCK_SKEW_MS = 5 * 1000;
@@ -181,8 +182,19 @@ function normalizeContext(input) {
     if (!/^[1-9]\d*$/.test(projectId) || contextId !== `job:${projectId}`) {
       throw new Error('timer-observation-job-identity-invalid');
     }
-  } else if (contextId !== 'general:production-general') {
-    throw new Error('timer-observation-general-identity-invalid');
+  } else {
+    // Use the same supported project-zero/department rule as the Bridge.
+    // A General observation must carry that rule's exact identity; its label
+    // cannot turn a malformed or contradictory key into a new timer.
+    const general = parseClockContext({
+      href: '/project.php?id=0',
+      label: input.label || input.currentLabel || input.shortLabel
+    }).context;
+    if (!general || general.kind !== 'general' || general.contextId !== contextId ||
+        (input.projectId !== undefined && input.projectId !== null && String(input.projectId).trim() !== '0') ||
+        (input.generalKey !== undefined && input.generalKey !== general.generalKey)) {
+      throw new Error('timer-observation-general-identity-invalid');
+    }
   }
   const label = requireText(
     input.label || input.currentLabel || input.shortLabel || contextId,

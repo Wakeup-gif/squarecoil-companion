@@ -1,7 +1,7 @@
 {
   "name": "squarecoil-companion-rebuild",
   "private": true,
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Dependency-free build and test tooling for the staged SquareCoil Companion rebuild.",
   "scripts": {
     "build": "node scripts/build.js",

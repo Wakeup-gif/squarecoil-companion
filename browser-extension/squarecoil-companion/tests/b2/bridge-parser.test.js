@@ -187,8 +187,8 @@ test('UT-B2-BRIDGE-104 project-zero department labels yield stable General conte
   assert.equal(reconcileEvidence([server, dom]).kind, EVIDENCE_KINDS.CONTEXT);
   const meeting = parseServerSnapshot('<a href="/project.php?id=0">Meeting</a>', { observedAtMs: 14_002 });
   const training = parseClockContext({ href: '/project.php?id=0', label: 'Training' });
-  assert.equal(meeting.context.contextId, 'general:meeting-general');
-  assert.equal(training.context.contextId, 'general:training-general');
+  assert.equal(meeting.context.contextId, 'general:meeting');
+  assert.equal(training.context.contextId, 'general:training');
   const unsupportedText = parseDomSnapshot({ debugText: 'Meeting' }, { observedAtMs: 14_003 });
   assert.equal(unsupportedText.kind, EVIDENCE_KINDS.STATE_UNKNOWN);
 });
@@ -220,17 +220,61 @@ test('UT-B2-BRIDGE-108 unwrapped error text or numbers cannot verify a Job witho
   assert.equal(scoped.provenance, 'CLOCK_LABEL_SIX_DIGIT_FALLBACK');
 });
 
-test('UT-B2-BRIDGE-109 native department and General display forms reconcile to one stable General identity', () => {
+test('UT-B2-BRIDGE-109 project-zero identities retain the exact prototype label slug without guessed aliases', () => {
   for (const department of ['Design', 'Production']) {
     const server = parseServerSnapshot(`${department} (General)`, { observedAtMs: 17_000 });
     const dom = parseDomSnapshot({ remainingTimeHtml: `<a href="/project.php?id=0">${department}</a>` }, { observedAtMs: 17_001 });
-    const expected = `general:${department.toLowerCase()}-general`;
-    assert.equal(server.context.contextId, expected);
-    assert.equal(dom.context.contextId, expected);
-    assert.equal(reconcileEvidence([server, dom]).context.contextId, expected);
+    assert.equal(server.context.contextId, `general:${department.toLowerCase()}-general`);
+    assert.equal(dom.context.contextId, `general:${department.toLowerCase()}`);
+    assert.equal(reconcileEvidence([server, dom]).kind, EVIDENCE_KINDS.STATE_CONFLICT);
     const equivalentLinks = parseServerSnapshot(`<a href="/project.php?id=0">${department}</a><a href="/project.php?id=0">${department} (General)</a>`, { observedAtMs: 17_002 });
-    assert.equal(equivalentLinks.kind, EVIDENCE_KINDS.CONTEXT);
-    assert.equal(equivalentLinks.context.contextId, expected);
+    assert.equal(equivalentLinks.kind, EVIDENCE_KINDS.STATE_CONFLICT);
+    assert.equal(equivalentLinks.reason, 'MULTIPLE_CLOCK_GENERAL_IDENTITIES');
+  }
+});
+
+test('UT-B2-BRIDGE-110 padded clock labels and project links canonicalize the same positive numeric Job', () => {
+  const server = parseServerSnapshot('<a href="/project.php?id=00001234">001234 - Job</a>', { observedAtMs: 18_000 });
+  const dom = parseDomSnapshot({ debugText: '001234 - Job' }, { observedAtMs: 18_001 });
+  const wrapped = parseServerSnapshot('<span id="clockin-remaining-time">001234 - Job</span>', { observedAtMs: 18_002 });
+  for (const parsed of [server, dom, wrapped]) {
+    assert.equal(parsed.kind, EVIDENCE_KINDS.CONTEXT);
+    assert.equal(parsed.context.contextId, 'job:1234');
+    assert.equal(parsed.context.projectId, '1234');
+  }
+  assert.equal(reconcileEvidence([server, dom, wrapped]).context.contextId, 'job:1234');
+  const duplicateLinks = parseServerSnapshot('<a href="/project.php?id=001234">001234 - Job</a><a href="/project.php?id=00001234">001234 - Job</a>', { observedAtMs: 18_003 });
+  assert.equal(duplicateLinks.context.contextId, 'job:1234');
+  const conflictingLinks = parseServerSnapshot('<a href="/project.php?id=001234">001234 - One</a><a href="/project.php?id=001235">001235 - Two</a>', { observedAtMs: 18_004 });
+  assert.equal(conflictingLinks.kind, EVIDENCE_KINDS.STATE_CONFLICT);
+  assert.equal(conflictingLinks.reason, 'MULTIPLE_CLOCK_PROJECT_IDENTITIES');
+  const conflictingLabels = parseDomSnapshot({ debugText: '001234 - One / 001235 - Two' }, { observedAtMs: 18_005 });
+  assert.equal(conflictingLabels.kind, EVIDENCE_KINDS.STATE_UNKNOWN);
+  assert.equal(conflictingLabels.context, undefined);
+});
+
+test('UT-B2-BRIDGE-111 all-zero clock labels never create a Job or a General context', () => {
+  for (const html of ['000000 - Job', '<span id="clockin-remaining-time">000000 - Job</span>', '<a href="/project.php?id=0">000000 - Job</a>']) {
+    const parsed = parseServerSnapshot(html, { observedAtMs: 19_000 });
+    assert.equal(parsed.kind, EVIDENCE_KINDS.STATE_UNKNOWN, html);
+    assert.equal(parsed.context, undefined, html);
+  }
+  const dom = parseDomSnapshot({ debugText: '000000 - Job' }, { observedAtMs: 19_001 });
+  assert.equal(dom.kind, EVIDENCE_KINDS.STATE_UNKNOWN);
+  assert.equal(dom.context, undefined);
+});
+
+test('UT-B2-BRIDGE-112 eligible General labels use the original ASCII slug and forty-character limit', () => {
+  for (const [label, key] of [
+    ['Meeting', 'meeting'],
+    ['Design (General)', 'design-general'],
+    ['Training / Safety', 'training-safety'],
+    ['Révision (General)', 'r-vision-general'],
+    ['Long Department Name For Manufacturing Operations (General)', 'long-department-name-for-manufacturing-o']
+  ]) {
+    const parsed = parseClockContext({ href: '/project.php?id=0', label });
+    assert.equal(parsed.context.contextId, `general:${key}`, label);
+    assert.equal(parsed.context.generalKey, key, label);
   }
 });
 

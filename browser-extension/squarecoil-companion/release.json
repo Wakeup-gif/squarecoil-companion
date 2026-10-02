@@ -1,9 +1,9 @@
 {
   "channel": "test",
-  "latestVersion": "0.7.6",
+  "latestVersion": "0.7.7",
   "releasedAt": "2026-10-02",
   "minimumVersion": "0.5.3",
-  "releaseNotes": "Test only: reconcile delayed authority callbacks from current client state so OWNER migration cannot remain stranded as REQUIRED. Preserve atomic migration, saved hours, retained sources, parser/logo fixes and finite diagnostics. Live-profile and installed-browser verification remain required.",
+  "releaseNotes": "Test only: restore supported General and padded-job tracking identity, preserve prototype General history and remembered Pending, recover from explicitly rejected identity events, and fence delayed migration/shutdown callbacks. Saved hours and retained sources stay protected. Installed-browser and live-profile acceptance remain unverified.",
   "distribution": {
     "recommended": "developer-mode",
     "browsers": [
@@ -12,12 +12,12 @@
     ],
     "edge": {
       "branch": "release/squarecoil-companion-edge",
-      "artifact": "SquareCoil-Companion-v0.7.6-TEST-EDGE.zip",
+      "artifact": "SquareCoil-Companion-v0.7.7-TEST-EDGE.zip",
       "storeUrl": null
     },
     "chrome": {
       "branch": "release/squarecoil-companion",
-      "artifact": "SquareCoil-Companion-v0.7.6-TEST-CHROME.zip",
+      "artifact": "SquareCoil-Companion-v0.7.7-TEST-CHROME.zip",
       "storeUrl": null
     },
     "stableBranch": "release/squarecoil-companion",

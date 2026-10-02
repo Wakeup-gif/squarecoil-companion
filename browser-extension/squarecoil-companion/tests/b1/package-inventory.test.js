@@ -54,7 +54,7 @@ test('UT-B6-DOC-001 current authority documents agree on migration repair and re
     read('docs/EXECUTION-GATE-MATRIX.md')
   ];
   for (const document of documents) {
-    assert.match(document, /v0\.7\.6 authority reconciliation/);
+    assert.match(document, /v0\.7\.7 prototype tracking/);
     assert.match(document, /fix\/clock-detection-custom-dark-logo/);
     assert.match(document, /codex\/squarecoil-combined-2026-10-01/);
     assert.match(document, /608ddab4206810788570632518809d22bd345de1/);

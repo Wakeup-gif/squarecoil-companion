@@ -266,10 +266,14 @@ function projectIdFromHref(href) {
   return normalized || '0';
 }
 
+function labelJobIds(label) {
+  return [...normalizeText(label).matchAll(/(?:^|#|\b)(\d{6})(?=\b|\s*[-/])/g)]
+    .map(match => match[1].replace(/^0+(?=\d)/, ''));
+}
+
 function fallbackJobIdFromLabel(label) {
-  const matches = [...normalizeText(label).matchAll(/(?:^|#|\b)(\d{6})(?=\b|\s*[-/])/g)]
-    .map(match => match[1]);
-  return new Set(matches).size === 1 ? matches[0] : null;
+  const matches = labelJobIds(label);
+  return new Set(matches).size === 1 && matches[0] !== '0' ? matches[0] : null;
 }
 
 function auditedGeneralRule(label) {
@@ -278,19 +282,20 @@ function auditedGeneralRule(label) {
 }
 
 function departmentGeneralRule(label, explicitGeneralProject) {
-  const normalized = normalizeText(label).normalize('NFKC');
+  const normalized = normalizeText(label);
   const key = normalizedLabelKey(normalized);
   if (!normalized || normalized.length > 100 || GENERAL_CONTROL_LABELS.has(key) ||
-      !/\p{L}/u.test(normalized) || fallbackJobIdFromLabel(normalized) ||
+      !/\p{L}/u.test(normalized) || labelJobIds(normalized).length ||
       !/^[\p{L}\p{N}\p{M} &/'()._-]+$/u.test(normalized)) return null;
   const namedGeneral = normalized.match(/^(.+?)\s*\(general\)$/i);
   if (!explicitGeneralProject && !namedGeneral) return null;
   const departmentLabel = normalizeText(namedGeneral ? namedGeneral[1] : normalized.replace(/\s+general$/i, ''));
   if (!departmentLabel || /\(general\)/i.test(departmentLabel) ||
       GENERAL_CONTROL_LABELS.has(normalizedLabelKey(departmentLabel))) return null;
-  const departmentKey = normalizedLabelKey(departmentLabel).replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
-  if (!departmentKey) return null;
-  const generalKey = `${departmentKey}-general`;
+  // Retain the original producer's full-label slug. Inventing a suffix or a
+  // department alias would split imported history from the resumed Context.
+  const generalKey = normalized.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '').slice(0, 40) || 'general';
   return { contextId: `general:${generalKey}`, generalKey, canonicalLabel: normalized, shortLabel: 'General' };
 }
 

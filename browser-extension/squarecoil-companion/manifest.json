@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "US Sign SquareCoil Companion",
-  "version": "0.7.6",
-  "version_name": "0.7.6 Authority Reconciliation Repair TEST",
+  "version": "0.7.7",
+  "version_name": "0.7.7 Prototype Tracking Repair TEST",
   "description": "A local SquareCoil companion for time context, themes, dashboard summaries, settings, and privacy-safe diagnostics.",
   "icons": {
     "16": "icons/icon-16.png",

@@ -559,3 +559,91 @@ test('UT-B2-MIG-PAD-002 padded identity normalization never accepts zero malform
   } }), original), error => error.code === 'legacy-session-id-conflict');
   assert.deepEqual(original, emptyDocument());
 });
+
+test('UT-B2-MIG-IDENTITY-001 all numeric job aliases reject conflicts and explicit invalid IDs atomically', () => {
+  const cases = [
+    ['job:111111', { key: 'job:111111', projectId: '222222' }, 'legacy-context-identity-conflict'],
+    ['job:111111', { key: 'job:222222', projectId: '222222' }, 'legacy-context-identity-conflict'],
+    ['imported-alias', { key: 'job:111111', contextId: 'job:222222', projectId: '111111' },
+      'legacy-context-identity-conflict'],
+    ['job:123456', { key: 'job:123456', projectId: 'malformed' }, 'legacy-context-identity-invalid'],
+    ['job:123456', { key: 'job:123456', projectId: '-1' }, 'legacy-context-identity-invalid'],
+    ['job:123456', { key: 'job:123456', projectId: '1.2' }, 'legacy-context-identity-invalid'],
+    ['job:123456', { key: 'job:123456', projectId: '000000' }, 'legacy-context-identity-invalid'],
+    ['job:000000', { key: 'job:123456', projectId: '123456' }, 'legacy-context-identity-conflict']
+  ];
+  for (const [legacyKey, fields, code] of cases) {
+    const original = emptyDocument();
+    const before = structuredClone(original);
+    const legacySources = sources(JSON.stringify({ schema: 3, contexts: {
+      'job:654321': context({ key: 'job:654321', projectId: '654321', accumulatedMs: HOUR_MS,
+        sessions: [session('unrelated-preserved-history', BASE_MS, BASE_MS + HOUR_MS)] }),
+      [legacyKey]: context({ ...fields, accumulatedMs: HOUR_MS })
+    } }));
+    const retained = structuredClone(legacySources);
+    assert.throws(() => migrate(legacySources, original), error => error.code === code,
+      'must reject contradictory or invalid identity: ' + legacyKey + ' / ' + fields.projectId);
+    assert.deepEqual(original, before);
+    assert.equal(original.migration.completedSources[V07_MIGRATION_MARKER_ID], undefined);
+    assert.deepEqual(legacySources, retained);
+  }
+});
+
+test('UT-B2-MIG-IDENTITY-002 absent project IDs retain safe canonical key fallback and equivalent numeric aliases', () => {
+  for (const projectId of [undefined, null, '']) {
+    const fields = context({ key: 'job:123456', projectId, accumulatedMs: HOUR_MS });
+    const legacySources = sources(JSON.stringify({ contexts: { 'job:123456': fields } }));
+    const retained = structuredClone(legacySources);
+    const result = migrate(legacySources);
+    assert.deepEqual(Object.keys(result.document.contexts), ['job:123456']);
+    assert.equal(result.document.contexts['job:123456'].legacyUnattributedMs, HOUR_MS);
+    assert.deepEqual(legacySources, retained);
+  }
+  const result = migrate(sources({ contexts: {
+    'job:001234': context({ key: 'job:1234', contextId: 'job:0001234', projectId: '1234',
+      accumulatedMs: HOUR_MS })
+  } }));
+  assert.deepEqual(Object.keys(result.document.contexts), ['job:1234']);
+  assert.equal(result.document.contexts['job:1234'].legacyUnattributedMs, HOUR_MS);
+});
+
+test('UT-B2-MIG-ACTIVE-ID-001 reused finalized Session ID rejects unproved verified Active coverage atomically', () => {
+  for (const [startedAt, lastVerifiedAt, finalized] of [
+    [BASE_MS + HOUR_MS, BASE_MS + 2 * HOUR_MS],
+    [BASE_MS - HOUR_MS, BASE_MS + HOUR_MS],
+    [BASE_MS, BASE_MS + 2 * HOUR_MS],
+    [BASE_MS, BASE_MS + HOUR_MS, { id: 'reused-session-id', durationMs: HOUR_MS }]
+  ]) {
+    const original = emptyDocument();
+    const before = structuredClone(original);
+    const legacySources = sources(JSON.stringify({ schema: 3, contexts: {
+      'job:123456': context({ accumulatedMs: HOUR_MS,
+        sessions: [finalized || session('reused-session-id', BASE_MS, BASE_MS + HOUR_MS)] })
+    }, active: { key: 'job:123456', sessionId: 'reused-session-id', cycleId: 'cycle-legacy-1',
+      startedAt, lastVerifiedAt } }));
+    const retained = structuredClone(legacySources);
+    assert.throws(() => migrate(legacySources, original),
+      error => error.code === 'legacy-session-id-conflict');
+    assert.deepEqual(original, before);
+    assert.equal(original.migration.completedSources[V07_MIGRATION_MARKER_ID], undefined);
+    assert.deepEqual(legacySources, retained);
+  }
+});
+
+test('UT-B2-MIG-ACTIVE-ID-002 completed Session covering its verified Active prefix adds no duplicate recovery time', () => {
+  const legacySources = sources(JSON.stringify({ contexts: {
+    'job:123456': context({ accumulatedMs: HOUR_MS,
+      sessions: [session('covered-session-id', BASE_MS, BASE_MS + HOUR_MS)] })
+  }, active: { key: 'job:123456', sessionId: 'covered-session-id', cycleId: 'cycle-legacy-1',
+    startedAt: BASE_MS, lastVerifiedAt: BASE_MS + HOUR_MS / 2 } }));
+  const retained = structuredClone(legacySources);
+  const result = migrate(legacySources);
+  assert.equal(result.document.ledger.reduce((sum, row) => sum + row.durationMs, 0), HOUR_MS);
+  assert.equal(result.document.contexts['job:123456'].legacyUnattributedMs, 0);
+  assert.equal(timerIsIdle(result.document), true);
+  assert.ok(result.diagnostics.some(row => row.code === 'LEGACY_ACTIVE_SESSION_ALREADY_FINALIZED'));
+  assert.deepEqual(legacySources, retained);
+  const second = migrate(legacySources, result.document);
+  assert.equal(second.migrated, false);
+  assert.deepEqual(second.document, result.document);
+});

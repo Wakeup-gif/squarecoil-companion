@@ -218,19 +218,17 @@ function normalizeContextIdentity(legacyKey, raw) {
   const projectId = explicitId || keyId;
   if (!projectId) return null;
   const aliases = [legacyKey, raw.key, raw.contextId].map(value => String(value || '').trim());
-  const padded = /^0\d+$/.test(rawProjectId) || aliases.some(value => /^job:0\d+$/i.test(value));
-  if (padded) {
-    if (rawProjectId && !explicitId) return null;
-    // Normalization must not silently choose between contradictory identities.
-    for (const alias of aliases) {
-      const match = alias.match(/^job:(\d+)$/i);
-      if (match && canonicalId(match[1]) !== projectId) {
-        throw migrationError('legacy-context-identity-conflict');
-      }
-    }
-    if (explicitId && keyId && explicitId !== keyId) {
+  if (rawProjectId && !explicitId) return null;
+  // Every numeric alias must identify this same job, regardless of padding.
+  // Choosing one conflicting field would silently move saved hours to a job.
+  for (const alias of aliases) {
+    const match = alias.match(/^job:(\d+)$/i);
+    if (match && canonicalId(match[1]) !== projectId) {
       throw migrationError('legacy-context-identity-conflict');
     }
+  }
+  if (explicitId && keyId && explicitId !== keyId) {
+    throw migrationError('legacy-context-identity-conflict');
   }
   return { contextId: 'job:' + projectId, kind: 'job', projectId };
 }
@@ -770,6 +768,14 @@ function migrateLegacyActive(candidate, current, groups, keyToContextId, marker,
   const completedWithSameId = sessionIdRaw && group.trustedSessionEvidence.get(sessionIdRaw);
   let recoverySegments = [];
   if (completedWithSameId) {
+    // A reused ID alone cannot prove that this verified Active interval was
+    // already saved. The finalized interval must cover the same start and
+    // every verified millisecond, or the source is contradictory.
+    if (completedWithSameId.kind !== 'ATTRIBUTED' ||
+        completedWithSameId.startAtMs !== startedAtMs ||
+        completedWithSameId.endAtMs < lastVerifiedAtMs) {
+      throw migrationError('legacy-session-id-conflict');
+    }
     appendDiagnostic(diagnostics, 'LEGACY_ACTIVE_SESSION_ALREADY_FINALIZED', {
       contextId,
       legacySessionId: sessionIdRaw
