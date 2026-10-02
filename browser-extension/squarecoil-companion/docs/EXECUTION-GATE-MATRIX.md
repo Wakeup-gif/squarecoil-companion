@@ -1,6 +1,22 @@
+# Active large-history import responsiveness — October 1, 2026
+
+Intent: improve the user's large-history import and post-import responsiveness, with visible, truthful loading/progress during file reading, validation, review and saving. Active branch: `codex/squarecoil-import-progress`, from merged main `1cc27cc55dee3f62b1f04f30f462232c94fed7ef`. Candidate evidence: [Import responsiveness](../implementation/IMPORT-PROGRESS-EVIDENCE.md).
+Behavior changed or restored: reduce repeated calendar validation/history scans, show operation phases before expensive work, and prevent duplicate import submissions while retaining atomic Merge/Replace safety. Preserve all recorded sessions, exact totals, conflicts, current Timer state, data-mutation locking and fenced revalidation.
+Expected files: `src/data/model.js`, candidate-local `src/data/interval-index.js`, snapshot-local `src/data/query-summary.js`, `src/data/data-safety.js`, `src/timer/read-model.js`, workspace renderer/styles, focused B2/B3/B4 tests and browser import journeys, current checkpoint documents, this matrix and implementation evidence. Profiling confirms repeated per-Context display scans; aggregate summaries are rebuilt after the existing snapshot clone and full validation, never cached by document revision.
+Impact tags: TIMER_LEDGER, MIGRATION_STORAGE, SHARED_UI_ROOT, WORKSPACE_SETTINGS, PRESENTATION, PACKAGE_ARTIFACT, DOCS_ONLY.
+Contracts touched: L2 canonical queries/cache rebuildability, L5 incremental History/workspace interaction, L6 untrusted-file pipeline and atomic data mutation, L7 readable Settings status, L8 performance/accessibility and exact artifact acceptance.
+Targeted gates: B2 ledger/read-model and migration fixtures; B3 workspace/read-model; B4 import/dedupe/conflict and file UI; B5 Settings; generated synthetic large-history responsiveness/totals tests. Full aggregate and prototype checks follow once targeted gates pass. Exact installed Chrome/Edge clean/upgrade plus composed large import and repeat-import journey are required before replacing the user's tested package.
+Explicit exclusions: no real company-clock action, no authoritative pruning or altered time attribution, no new permission/network destination, no Store submission, and no automatic main merge. The previously accepted 8426b24 ZIP remains immutable.
+
+| ID | Requirement | Targeted proof | Composed proof | State |
+|---|---|---|---|---|
+| `IMPORT-PERF-001` | Large history validation and live queries avoid redundant expensive work while preserving every date, duration, total and conflict. | Synthetic large-ledger regression, B2/B3/B4 clusters | Exact installed large-import/timer navigation | `MAPPED` |
+| `IMPORT-PERF-002` | Import presents visible reading/checking/review/saving status, truthful determinate progress only when measured, and no duplicate submissions. | B4 file UI progress/paint/error/cancel tests | Trusted browser file selection through completion | `MAPPED` |
+| `IMPORT-PERF-003` | Failure, cancelled review and repeat import preserve existing data; save success follows the atomic acknowledgment. | B4 merge/fencing/idempotence tests | Large import twice, failure recovery and current Timer unchanged | `MAPPED` |
+
 # SquareCoil Companion Execution Gate Matrix
 
-**Status:** combined worktree review candidate accepted on `codex/squarecoil-combined-2026-10-01`, with exact package source `8426b242e26cc418228f66268b6e69040737b532`. Original branch evidence below is historical; it does not certify the merged bytes. Live account acceptance and Store activation remain external follow-ups.
+**Historical status:** combined worktree review candidate accepted on `codex/squarecoil-combined-2026-10-01`, with exact package source `8426b242e26cc418228f66268b6e69040737b532`, then merged by PR #5. Evidence below remains source-bound and does not certify the active import fix. Live account acceptance and Store activation remain external follow-ups.
 **Execution authority:** `docs/EXECUTION-ENFORCEMENT-PLAN.md`
 
 Current authorization, impact declaration, and `PI-*` requirement gates: [Prototype integration](PROTOTYPE-INTEGRATION-2026-09-14.md). This is the confirmed prototype integration. Historical UI/theme/lab/Figma stabilization batches below remain source-bound evidence, not acceptance of this new candidate.

@@ -45,7 +45,7 @@ test('UT-B6-PKG-001 one canonical inventory drives build validation browser pack
   }
 });
 
-test('UT-B6-DOC-001 current authority documents agree on combined integration and retain historical evidence', () => {
+test('UT-B6-DOC-001 current authority documents agree on import responsiveness and retain combined evidence', () => {
   const documents = [
     read('AGENTS.md'),
     read('REBUILD-START-HERE.md'),
@@ -53,6 +53,8 @@ test('UT-B6-DOC-001 current authority documents agree on combined integration an
     read('docs/EXECUTION-GATE-MATRIX.md')
   ];
   for (const document of documents) {
+    assert.match(document, /codex\/squarecoil-import-progress/);
+    assert.match(document, /IMPORT-PROGRESS-EVIDENCE\.md/);
     assert.match(document, /codex\/squarecoil-combined-2026-10-01/);
     assert.match(document, /608ddab4206810788570632518809d22bd345de1/);
     assert.match(document, /9f79a2094da6f2baa04120933ef635126ae2c05b/);

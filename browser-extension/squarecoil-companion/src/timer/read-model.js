@@ -9,14 +9,8 @@ const {
   timerKind,
   validateDocument
 } = require('../data/model');
-const {
-  DAY_MS,
-  createQueryService,
-  effectiveActiveEnd,
-  localDateAt,
-  virtualActiveSegments,
-  weekStartDate
-} = require('../data/ledger');
+const { effectiveActiveEnd } = require('../data/ledger');
+const { createQuerySummary } = require('../data/query-summary');
 const {
   DEFAULT_TIMER_LIMITS_MS,
   normalizeTimerLimits,
@@ -182,7 +176,7 @@ function createTimerReadModel(getDocument, options = {}) {
     const atMs = view.atMs === undefined ? now() : view.atMs;
     if (!isTimestamp(atMs)) throw new Error('timer-read-model-at-invalid');
     const historyLimit = resolveHistoryLimit(view.historyLimit);
-    const queries = createQueryService(() => document, { now: () => atMs });
+    const queries = createQuerySummary(document, atMs);
     const state = timerKind(document.timer);
     const currentContextId = operationalContextId(document.timer);
     const requestedSelection = view.selectedContextId || currentContextId;
@@ -194,17 +188,14 @@ function createTimerReadModel(getDocument, options = {}) {
     const positiveCurrent = currentContextId ? freshPositiveObservation(document.timer, currentContextId, atMs, verificationGraceMs) : false;
     const pendingReady = state === TIMER_STATES.PENDING && document.timer.pending.continuityState === 'VALID' && positiveCurrent;
     const localResumeReady = state === TIMER_STATES.LOCAL_PAUSED && positiveCurrent;
-    const todayDate = localDateAt(atMs, document.workdayZone);
-    const currentWeekStart = weekStartDate(atMs, document.workdayZone);
-    const currentWeekEnd = new Date(Date.parse(`${currentWeekStart}T12:00:00Z`) + 7 * DAY_MS).toISOString().slice(0, 10);
-    const allSegments = [...document.ledger, ...virtualActiveSegments(document, atMs)];
+    const { todayDate, currentWeekStart, currentWeekEnd } = queries;
 
     const contextRows = Object.values(document.contexts).map(context => {
       const contextId = context.contextId;
-      const recordedAtMs = lastRecordedActivity(document, contextId);
+      const recordedAtMs = queries.getLastRecordedActivity(contextId);
       const lastSeenAtMs = isTimestamp(context.lastSeenAtMs) ? context.lastSeenAtMs : null;
-      const todayMs = queries.getContextToday(contextId, atMs);
-      const totalMs = queries.getContextTotal(contextId, atMs);
+      const todayMs = queries.getContextToday(contextId);
+      const totalMs = queries.getContextTotal(contextId);
       const containsLiveContribution = active?.contextId === contextId && effectiveEndAtMs > active.startedAtMs;
       return {
         contextId,
@@ -235,7 +226,7 @@ function createTimerReadModel(getDocument, options = {}) {
     );
     const rowById = new Map(contextRows.map(row => [row.contextId, row]));
 
-    const todayByContext = queries.getDayByContext(todayDate, atMs).map(row => {
+    const todayByContext = queries.getDayByContext(todayDate).map(row => {
       const contextRow = rowById.get(row.contextId);
       return {
         contextId: row.contextId,
@@ -268,25 +259,14 @@ function createTimerReadModel(getDocument, options = {}) {
     todayByContext.sort((left, right) => right.durationMs - left.durationMs ||
       (right.lastRecordedActivityAtMs || 0) - (left.lastRecordedActivityAtMs || 0) || left.contextId.localeCompare(right.contextId));
 
-    const byDayMap = new Map();
-    for (const segment of allSegments) {
-      const row = byDayMap.get(segment.localDate) || { localDate: segment.localDate, durationMs: 0, contextIds: new Set(), top: new Map() };
-      row.durationMs += segment.durationMs;
-      row.contextIds.add(segment.contextId);
-      row.top.set(segment.contextId, (row.top.get(segment.contextId) || 0) + segment.durationMs);
-      byDayMap.set(segment.localDate, row);
-    }
-    const byDayRows = [...byDayMap.values()].map(row => {
-      const top = [...row.top.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0] || null;
-      return {
-        localDate: row.localDate,
-        durationMs: row.durationMs,
-        contextCount: row.contextIds.size,
-        topContextId: top?.[0] || null,
-        topContextLabel: top ? rowById.get(top[0])?.label || 'Unknown Context' : null,
-        topContextDurationMs: top?.[1] || 0
-      };
-    }).sort((left, right) => right.localDate.localeCompare(left.localDate));
+    const byDayRows = queries.getDaySummaries().map(row => ({
+      localDate: row.localDate,
+      durationMs: row.durationMs,
+      contextCount: row.contextCount,
+      topContextId: row.topContextId,
+      topContextLabel: row.topContextId ? rowById.get(row.topContextId)?.label || 'Unknown Context' : null,
+      topContextDurationMs: row.topContextDurationMs
+    }));
 
     const byContextRows = contextRows.filter(row => row.totalMs > 0 || row.isOperational).slice().sort((left, right) =>
       (right.lastRecordedActivityAtMs || 0) - (left.lastRecordedActivityAtMs || 0) || left.contextId.localeCompare(right.contextId));
@@ -296,12 +276,11 @@ function createTimerReadModel(getDocument, options = {}) {
     const selectedContextRow = selectedContextId ? rowById.get(selectedContextId) : null;
     if (selectedContextRow) {
       const row = selectedContextRow;
-      const dailyRows = queries.getContextByDay(row.contextId, { atMs });
+      const dailyRows = queries.getContextByDay(row.contextId);
       const weekMs = dailyRows.filter(day => day.localDate >= currentWeekStart && day.localDate < currentWeekEnd)
         .reduce((total, day) => total + day.durationMs, 0);
       const finalizedSessions = logicalRows.filter(session => session.contextId === row.contextId);
-      const datedMs = document.ledger.filter(segment => segment.contextId === row.contextId)
-        .reduce((total, segment) => total + segment.durationMs, 0);
+      const datedMs = queries.getContextRecordedTotal(row.contextId);
       contextDetails[row.contextId] = { ...row, weekMs, datedMs, dailyRows, finalizedSessions, hasMoreSessions: false };
     }
 
@@ -351,12 +330,12 @@ function createTimerReadModel(getDocument, options = {}) {
       currentContext: currentContextId ? deepClone(document.contexts[currentContextId]) : null,
       selectedContextId,
       selectedContext: selectedContextId ? deepClone(document.contexts[selectedContextId]) : null,
-      todayTotalMs: queries.getTodayTotal(atMs),
-      weekTotalMs: queries.getWeekTotal(atMs),
-      currentContextTodayMs: currentContextId ? queries.getContextToday(currentContextId, atMs) : 0,
-      currentContextTotalMs: currentContextId ? queries.getContextTotal(currentContextId, atMs) : 0,
-      selectedContextTodayMs: selectedContextId ? queries.getContextToday(selectedContextId, atMs) : 0,
-      selectedContextTotalMs: selectedContextId ? queries.getContextTotal(selectedContextId, atMs) : 0,
+      todayTotalMs: queries.getTodayTotal(),
+      weekTotalMs: queries.getWeekTotal(),
+      currentContextTodayMs: currentContextId ? queries.getContextToday(currentContextId) : 0,
+      currentContextTotalMs: currentContextId ? queries.getContextTotal(currentContextId) : 0,
+      selectedContextTodayMs: selectedContextId ? queries.getContextToday(selectedContextId) : 0,
+      selectedContextTotalMs: selectedContextId ? queries.getContextTotal(selectedContextId) : 0,
       todayTotalIsProvisional: provisional,
       weekTotalIsProvisional: provisional,
       contextRows,

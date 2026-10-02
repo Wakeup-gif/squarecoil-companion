@@ -1,12 +1,14 @@
 # SquareCoil Companion Rebuild — Current Handoff
 
-**Current work: combined worktree integration (October 1, 2026).** See the combined review candidate below for current branch and authorization. The confirmed prototype integration checkpoint is historical at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`; previous UI/theme/lab/Figma stabilization evidence remains source-bound.
+**Current work: large-history import responsiveness (October 1, 2026).** The user requested faster imports and visible loading/progress. Branch `codex/squarecoil-import-progress` starts at merged main `1cc27cc55dee3f62b1f04f30f462232c94fed7ef`. Preserve all recorded time, atomic data safety and original worktrees. The active declaration is at the top of `docs/EXECUTION-GATE-MATRIX.md`; the new candidate evidence is `implementation/IMPORT-PROGRESS-EVIDENCE.md`. The confirmed prototype integration checkpoint is historical at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`; previous UI/theme/lab/Figma stabilization evidence remains source-bound.
 
 Updated: 2026-10-01
 Repository: `Wakeup-gif/squarecoil-companion`
-Branch: `codex/squarecoil-combined-2026-10-01`
+Branch: `codex/squarecoil-import-progress`
 
-## Combined review candidate
+## Historical combined review candidate
+
+`codex/squarecoil-combined-2026-10-01` was merged by PR #5 at the user's request. Its proof below certifies the original package only.
 
 Completed integration of Main Development `608ddab4206810788570632518809d22bd345de1` and UI Edits `9f79a2094da6f2baa04120933ef635126ae2c05b`. Exact package source `8426b242e26cc418228f66268b6e69040737b532` passed Chrome and Edge clean 31/31 plus valid v0.7 upgrade 2/2 each, with unchanged ZIP/package hashes and zero native mutation attempts. Tooling-only correction `5efed69` and later documentation preserve the same runtime fingerprint. Both original worktrees remain clean and intact. Integration evidence is in `implementation/COMBINED-WORKTREE-EVIDENCE.md`; [PR #5](https://github.com/Wakeup-gif/squarecoil-companion/pull/5) contains the combined review candidate. Previous acceptance below remains historical. Main merge, Store submission and live SquareCoil writes remain separate actions.
 

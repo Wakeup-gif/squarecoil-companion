@@ -45,6 +45,23 @@ const MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000;
 const MAX_COMMAND_RECEIPTS = 4096;
 const DATA_SAFETY_SCHEMA_VERSION = 1;
 const DATA_ACTIVITY_LIMIT = 500;
+// Calendar helpers are pure for a validated IANA zone. Reusing their Intl
+// objects avoids rebuilding them for every ledger row and UI refresh. Bound
+// both caches because imported zone strings remain untrusted input.
+const MAX_CALENDAR_CACHE_ENTRIES = 64;
+// Two endpoint conversions per allowed 50,000-record import. This is a bounded
+// cache of pure calendar conversions, not a cache of trusted records: every
+// segment still passes all timestamp, duration, date and identity checks.
+const MAX_VALIDATION_DATE_CACHE_ENTRIES = 100_000;
+const resolvedWorkdayZones = new Map();
+const validationDateFormatters = new Map();
+const validationLocalDates = new Map();
+
+function rememberCalendarValue(cache, key, value) {
+  if (cache.size >= MAX_CALENDAR_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+  cache.set(key, value);
+  return value;
+}
 
 function deepClone(value) {
   if (typeof structuredClone === 'function') return structuredClone(value);
@@ -83,11 +100,12 @@ function assertWorkdayZone(value) {
   if (/^[+-]\d{2}:\d{2}$/.test(zone)) {
     throw new Error('workday-zone-offset-only:' + zone);
   }
+  if (resolvedWorkdayZones.has(zone)) return resolvedWorkdayZones.get(zone);
   try {
     const resolved = new Intl.DateTimeFormat('en', { timeZone: zone })
       .resolvedOptions().timeZone;
     if (!resolved) throw new Error('missing resolved zone');
-    return resolved;
+    return rememberCalendarValue(resolvedWorkdayZones, zone, resolved);
   } catch (_) {
     throw new Error('workday-zone-invalid:' + zone);
   }
@@ -110,15 +128,24 @@ function assertLocalDate(value, name = 'localDate') {
 
 function localDateForValidation(timestampMs, workdayZone) {
   if (!isTimestamp(timestampMs)) throw new Error('timestamp-invalid');
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: assertWorkdayZone(workdayZone),
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(new Date(timestampMs));
+  const zone = assertWorkdayZone(workdayZone);
+  const dateKey = `${zone}\u0000${timestampMs}`;
+  if (validationLocalDates.has(dateKey)) return validationLocalDates.get(dateKey);
+  let formatter = validationDateFormatters.get(zone);
+  if (!formatter) {
+    formatter = rememberCalendarValue(validationDateFormatters, zone, new Intl.DateTimeFormat('en-CA', {
+      timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit'
+    }));
+  }
+  const parts = formatter.formatToParts(new Date(timestampMs));
   const values = {};
   for (const part of parts) if (part.type !== 'literal') values[part.type] = part.value;
-  return `${values.year}-${values.month}-${values.day}`;
+  const localDate = `${values.year}-${values.month}-${values.day}`;
+  if (validationLocalDates.size >= MAX_VALIDATION_DATE_CACHE_ENTRIES) {
+    validationLocalDates.delete(validationLocalDates.keys().next().value);
+  }
+  validationLocalDates.set(dateKey, localDate);
+  return localDate;
 }
 
 function isCleanCheckpointDisposition(value) {
