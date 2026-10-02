@@ -39,6 +39,14 @@ const AUDITED_GENERAL_CONTEXTS = Object.freeze([
 ]);
 
 const DEFAULT_EVIDENCE_FRESHNESS_MS = 5_000;
+const HEADER_FRAGMENT_TAGS = new Set(['a', 'span', 'strong', 'b', 'em', 'i', 'small', 'font', 'br']);
+const SERVER_DOCUMENT_TAGS = new Set(['html', 'head', 'body', 'title', 'script', 'style', 'form', 'input', 'select', 'button', 'iframe']);
+const GENERAL_CONTROL_LABELS = new Set([
+  'clock in', 'clock out', 'change / clock out', 'change/clock out', 'change',
+  'close', 'cancel', 'submit', 'save', 'time remaining', 'clocked out',
+  'not clocked in', 'unknown', 'none', 'no context', 'no current job',
+  'select department', 'select project'
+]);
 
 function deepClone(value) {
   if (Array.isArray(value)) return value.map(deepClone);
@@ -248,6 +256,9 @@ function projectIdFromHref(href) {
   } catch (_error) {
     return null;
   }
+  const relative = !/^[a-z][a-z\d+.-]*:|^\/\//i.test(raw);
+  if (url.username || url.password || (url.origin !== 'https://ussignandmill.squarecoil.net' &&
+      !(relative && url.origin === 'https://squarecoil.invalid'))) return null;
   if (url.pathname.toLocaleLowerCase('en-US') !== '/project.php') return null;
   const ids = url.searchParams.getAll('id');
   if (ids.length !== 1 || !/^\d+$/.test(ids[0])) return null;
@@ -264,6 +275,23 @@ function fallbackJobIdFromLabel(label) {
 function auditedGeneralRule(label) {
   const key = normalizedLabelKey(label);
   return AUDITED_GENERAL_CONTEXTS.find(rule => rule.aliases.includes(key)) || null;
+}
+
+function departmentGeneralRule(label, explicitGeneralProject) {
+  const normalized = normalizeText(label).normalize('NFKC');
+  const key = normalizedLabelKey(normalized);
+  if (!normalized || normalized.length > 100 || GENERAL_CONTROL_LABELS.has(key) ||
+      !/\p{L}/u.test(normalized) || fallbackJobIdFromLabel(normalized) ||
+      !/^[\p{L}\p{N}\p{M} &/'()._-]+$/u.test(normalized)) return null;
+  const namedGeneral = normalized.match(/^(.+?)\s*\(general\)$/i);
+  if (!explicitGeneralProject && !namedGeneral) return null;
+  const departmentLabel = normalizeText(namedGeneral ? namedGeneral[1] : normalized.replace(/\s+general$/i, ''));
+  if (!departmentLabel || /\(general\)/i.test(departmentLabel) ||
+      GENERAL_CONTROL_LABELS.has(normalizedLabelKey(departmentLabel))) return null;
+  const departmentKey = normalizedLabelKey(departmentLabel).replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
+  if (!departmentKey) return null;
+  const generalKey = `${departmentKey}-general`;
+  return { contextId: `general:${generalKey}`, generalKey, canonicalLabel: normalized, shortLabel: 'General' };
 }
 
 function makeGeneralContext(rule, label, department) {
@@ -292,7 +320,8 @@ function parseClockContext(parts = {}) {
   const label = normalizeText(parts.label);
   const department = normalizeText(parts.department);
   const projectId = projectIdFromHref(parts.href);
-  const generalRule = auditedGeneralRule(label);
+  const knownGeneralRule = auditedGeneralRule(label);
+  const generalRule = knownGeneralRule || departmentGeneralRule(label, projectId === '0');
 
   if (generalRule) {
     if (projectId && projectId !== '0') {
@@ -301,7 +330,8 @@ function parseClockContext(parts = {}) {
     return frozenClone({
       context: makeGeneralContext(generalRule, label, department),
       reason: 'AUDITED_GENERAL_CONTEXT',
-      provenance: 'AUDITED_GENERAL_ALLOWLIST'
+      provenance: knownGeneralRule ? 'AUDITED_GENERAL_ALLOWLIST'
+        : projectId === '0' ? 'CLOCK_GENERAL_PROJECT_LINK' : 'CLOCK_GENERAL_DEPARTMENT_LABEL'
     });
   }
   if (projectId && projectId !== '0') {
@@ -405,13 +435,26 @@ function parseScopedContext(parts = {}) {
   const explicitLabel = parts.text === undefined ? null : normalizeText(parts.text);
   const anchors = projectAnchors(html);
   if (anchors.malformed) return frozenClone({ context: null, malformed: true, reason: 'MALFORMED_CLOCK_SCOPE' });
+  if (anchors.anchors.some(anchor => anchor.projectId === null)) {
+    return frozenClone({ context: null, reason: 'UNSUPPORTED_CLOCK_LINK' });
+  }
   const projectAnchorsOnly = anchors.anchors.filter(anchor => anchor.projectId !== null);
   const distinctProjectIds = new Set(projectAnchorsOnly.map(anchor => anchor.projectId));
   if (distinctProjectIds.size > 1) {
     return frozenClone({ context: null, conflict: true, reason: 'MULTIPLE_CLOCK_PROJECT_IDENTITIES' });
   }
+  const generalContextIds = new Set(projectAnchorsOnly.filter(anchor => anchor.projectId === '0')
+    .map(anchor => parseClockContext({ href: anchor.href, label: anchor.label }).context?.contextId)
+    .filter(Boolean));
+  if (generalContextIds.size > 1) {
+    return frozenClone({ context: null, conflict: true, reason: 'MULTIPLE_CLOCK_GENERAL_IDENTITIES' });
+  }
   const anchor = projectAnchorsOnly[0] || null;
-  const label = explicitLabel || anchor?.label || normalizeText(html);
+  // A project-zero link identifies the native department label. Surrounding
+  // countdown/debug text must not manufacture a second General identity.
+  const label = anchor?.projectId === '0' && anchor.label
+    ? anchor.label
+    : explicitLabel || anchor?.label || normalizeText(html);
   const href = parts.href === undefined ? anchor?.href : parts.href;
   return parseClockContext({
     href,
@@ -419,6 +462,30 @@ function parseScopedContext(parts = {}) {
     department: parts.department,
     allowSixDigitFallback: parts.allowSixDigitFallback
   });
+}
+
+function auditedHeaderFragment(html) {
+  const scanned = tokenizeHtml(html);
+  if (scanned.malformed) return { ok: false, reason: 'MALFORMED_CLOCK_HEADER_FRAGMENT' };
+  const stack = [];
+  for (const token of scanned.tokens) {
+    if (!HEADER_FRAGMENT_TAGS.has(token.name)) return { ok: false, reason: 'UNSAFE_CLOCK_HEADER_FRAGMENT' };
+    if (token.kind === 'close') {
+      if (token.name === 'br' || stack.pop() !== token.name) {
+        return { ok: false, reason: 'MALFORMED_CLOCK_HEADER_FRAGMENT' };
+      }
+      continue;
+    }
+    if (Object.keys(token.attributes).some(name => name === 'id' || name === 'data-id' || /^on/i.test(name))) {
+      return { ok: false, reason: 'UNSAFE_CLOCK_HEADER_FRAGMENT' };
+    }
+    if (token.name === 'a' && (stack.includes('a') || !projectIdFromHref(token.attributes.href))) {
+      return { ok: false, reason: 'UNSUPPORTED_CLOCK_LINK' };
+    }
+    if (token.selfClosing && token.name !== 'br') return { ok: false, reason: 'MALFORMED_CLOCK_HEADER_FRAGMENT' };
+    if (token.name !== 'br') stack.push(token.name);
+  }
+  return stack.length ? { ok: false, reason: 'MALFORMED_CLOCK_HEADER_FRAGMENT' } : { ok: true };
 }
 
 function parseServerSnapshot(html, options = {}) {
@@ -430,17 +497,36 @@ function parseServerSnapshot(html, options = {}) {
   if (typeof html !== 'string' || !html.trim()) {
     return unknown(source, observedAtMs, 'EMPTY_OR_MALFORMED_SERVER_SNAPSHOT');
   }
+  const scanned = tokenizeHtml(html);
+  if (scanned.tokens.some(token => SERVER_DOCUMENT_TAGS.has(token.name)) || /<!doctype\b/i.test(html)) {
+    return unknown(source, observedAtMs, 'UNSAFE_SERVER_SNAPSHOT');
+  }
   const element = findExactElementById(html, 'clockin-remaining-time');
-  if (element.reason) return unknown(source, observedAtMs, element.reason);
+  let clockHtml = element.innerHtml;
+  let fragmentOnly = false;
+  if (element.reason) {
+    if (element.malformed || element.reason !== 'AUDITED_CLOCK_ELEMENT_MISSING') {
+      return unknown(source, observedAtMs, element.reason);
+    }
+    // action 7 may return the header's inner HTML rather than its enclosing
+    // span. Only a complete inline clock fragment from that audited endpoint
+    // qualifies; arbitrary page/body/container searches remain prohibited.
+    const fragment = auditedHeaderFragment(html);
+    if (!fragment.ok) return unknown(source, observedAtMs, fragment.reason);
+    clockHtml = html;
+    fragmentOnly = true;
+  }
   const parsed = parseScopedContext({
-    html: element.innerHtml,
+    html: clockHtml,
     department: options.department,
-    allowSixDigitFallback: true
+    // Unwrapped plain text may be an error response containing a job number.
+    // Numeric label fallback requires the explicit audited clock scope.
+    allowSixDigitFallback: !fragmentOnly
   });
   if (parsed.context) return positive(source, observedAtMs, STATE_CERTAINTY.VERIFIED_SERVER, parsed);
   if (parsed.conflict) return conflict(source, observedAtMs, parsed.reason);
   if (parsed.malformed) return unknown(source, observedAtMs, parsed.reason);
-  if (normalizeText(element.innerHtml)) return unknown(source, observedAtMs, parsed.reason);
+  if (normalizeText(clockHtml)) return unknown(source, observedAtMs, parsed.reason);
   return negative(source, observedAtMs, NEGATIVE_KINDS.NO_CONTEXT, 'SERVER_NO_CONTEXT_CANDIDATE');
 }
 

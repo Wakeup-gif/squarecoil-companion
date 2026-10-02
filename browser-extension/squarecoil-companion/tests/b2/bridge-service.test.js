@@ -101,6 +101,80 @@ test('UT-B2-BRIDGE-025 audited DOM extraction rejects duplicate clock ownership 
   assert.equal(captured.snapshot.debug.html, '');
 });
 
+test('UT-B2-BRIDGE-037 audited control visibility honors computed CSS without weakening hidden markers', () => {
+  const clockIn = element();
+  const clockOut = element();
+  const fixture = browserFixture({ selectors: {
+    '#clockin': [clockIn], '#clockout': [clockOut], '#clockin-remaining-time': []
+  } });
+  fixture.window.getComputedStyle = value => ({ display: value === clockIn ? 'none' : 'block',
+    visibility: 'visible', opacity: '1' });
+  let snapshot = readAuditedDomSnapshot(fixture.document, fixture.window).snapshot;
+  assert.equal(snapshot.clockInVisible, false);
+  assert.equal(snapshot.clockOutVisible, true);
+
+  fixture.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', opacity: '0' });
+  snapshot = readAuditedDomSnapshot(fixture.document, fixture.window).snapshot;
+  assert.equal(snapshot.clockOutVisible, false);
+  clockOut.hidden = true;
+  fixture.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', opacity: '1' });
+  assert.equal(readAuditedDomSnapshot(fixture.document, fixture.window).snapshot.clockOutVisible, false);
+});
+
+test('UT-B2-BRIDGE-038 HTTP success with malformed clock sources remains observable and recovers in one Bridge', async () => {
+  const fixture = browserFixture({ selectors: {
+    '#clockin-remaining-time': [], '#clockout': [], '.timeclock-container': []
+  } });
+  let html = '<span id="clockin-remaining-time"><a href="/project.php?id=260702">';
+  let time = 8_000;
+  const events = [];
+  const bridge = createSquareCoilBridgeService({
+    document: fixture.document, window: fixture.window, timers: fixture.timers,
+    sourceRuntimeId: 'runtime-malformed-clock-recovery', now: () => time,
+    completionObservationAvailable: true,
+    fetch: async () => ({ ok: true, text: async () => html }),
+    onEvents: async values => events.push(...values)
+  });
+  const failed = await bridge.ensure({ owner: true });
+  assert.equal(failed.capability, 'UNAVAILABLE');
+  assert.equal(failed.ownerInitialObservationCompleted, true);
+  assert.equal(failed.lastError, 'UNCLOSED_AUDITED_CLOCK_ELEMENT');
+  assert.equal(failed.lastReason, 'UNCLOSED_AUDITED_CLOCK_ELEMENT');
+  assert.equal(events[0].type, 'STATE_UNKNOWN');
+
+  html = '<span id="clockin-remaining-time"><a href="/project.php?id=260702">260702 - Fabrication</a></span>';
+  time += 1_000;
+  await bridge.verifyNow('repaired-clock-source');
+  const recovered = bridge.snapshot();
+  assert.equal(recovered.capability, 'SERVER_FALLBACK');
+  assert.equal(recovered.lastError, null);
+  assert.equal(recovered.lastReason, 'CONTEXT_DETECTED');
+  assert.equal(recovered.requestCount, 2);
+  assert.equal(events.filter(event => event.type === 'CONTEXT_DETECTED').length, 1);
+  assert.equal(fixture.intervals.size, 1);
+  assert.equal(recovered.nativeMutationRequestCount, 0);
+  await bridge.teardown();
+});
+
+test('UT-B2-BRIDGE-039 a semantic unknown remains usable while preserving its privacy-safe parser reason', async () => {
+  const label = 'Unsupported activity with private content';
+  const fixture = browserFixture({ selectors: {
+    '#clockin-remaining-time': [element(label, label)]
+  } });
+  const bridge = createSquareCoilBridgeService({
+    document: fixture.document, window: fixture.window, timers: fixture.timers,
+    sourceRuntimeId: 'runtime-semantic-unknown-clock', now: () => 9_000,
+    completionObservationAvailable: true,
+    fetch: async () => ({ ok: true, text: async () => `<span id="clockin-remaining-time">${label}</span>` })
+  });
+  const health = await bridge.ensure({ owner: true });
+  assert.equal(health.capability, 'FULL');
+  assert.equal(health.lastReason, 'UNSUPPORTED_CLOCK_LABEL');
+  assert.equal(health.lastError, 'UNSUPPORTED_CLOCK_LABEL');
+  assert.equal(JSON.stringify(health).includes(label), false);
+  await bridge.teardown();
+});
+
 test('UT-B2-BRIDGE-026 live Bridge transport can issue only exact read-only action 7 and commits ordered semantic events', async () => {
   const fixture = browserFixture();
   const requests = [];

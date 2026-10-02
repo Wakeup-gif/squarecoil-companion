@@ -1,6 +1,7 @@
 'use strict';
 
 const {
+  EVIDENCE_KINDS,
   parseServerSnapshot,
   parseDomSnapshot
 } = require('./bridge-parser');
@@ -22,6 +23,21 @@ const DEFAULT_CLICK_VERIFY_DELAY_MS = 900;
 const DEFAULT_FOLLOW_UP_MS = 300;
 const DEFAULT_VERIFICATION_TIMEOUT_MS = 8_000;
 const NATIVE_ACTIONS = new Set([2, 3, 4]);
+const UNUSABLE_EVIDENCE_REASONS = new Set([
+  'SERVER_UNAVAILABLE', 'EMPTY_OR_MALFORMED_SERVER_SNAPSHOT', 'MALFORMED_HTML',
+  'AUDITED_CLOCK_ELEMENT_MISSING', 'DUPLICATE_AUDITED_CLOCK_ELEMENT',
+  'UNCLOSED_AUDITED_CLOCK_ELEMENT', 'MALFORMED_CLOCK_SCOPE',
+  'UNSAFE_SERVER_SNAPSHOT', 'UNSAFE_CLOCK_HEADER_FRAGMENT',
+  'MALFORMED_CLOCK_HEADER_FRAGMENT', 'UNSUPPORTED_CLOCK_LINK',
+  'DOM_UNAVAILABLE', 'MALFORMED_DOM_SNAPSHOT', 'MALFORMED_DOM_CLOCK_SCOPE',
+  'DOM_STATE_INSUFFICIENT'
+]);
+
+function usableEvidence(value) {
+  // A well-shaped but unsupported Context may remain UNKNOWN on a healthy
+  // path. Missing/malformed clock evidence cannot certify that path as usable.
+  return value && !UNUSABLE_EVIDENCE_REASONS.has(value.reason);
+}
 
 function defaultId(prefix) {
   try {
@@ -47,11 +63,17 @@ function sameAuthorityTenure(left, right) {
     left.workerInstanceId === right.workerInstanceId;
 }
 
-function visible(element) {
+function visible(element, windowObject) {
   if (!element || element.hidden === true) return false;
   if (String(element.getAttribute?.('aria-hidden') || '').toLowerCase() === 'true') return false;
-  const style = element.style || {};
-  return style.display !== 'none' && style.visibility !== 'hidden';
+  let style = element.style || {};
+  try {
+    if (typeof windowObject?.getComputedStyle === 'function') {
+      style = windowObject.getComputedStyle(element) || style;
+    }
+  } catch (_) {}
+  return style.display !== 'none' && style.visibility !== 'hidden' &&
+    Number(style.opacity || 1) !== 0;
 }
 
 function exactElement(documentObject, selector) {
@@ -63,7 +85,7 @@ function exactElement(documentObject, selector) {
   };
 }
 
-function readAuditedDomSnapshot(documentObject) {
+function readAuditedDomSnapshot(documentObject, windowObject = documentObject?.defaultView) {
   if (!documentObject || typeof documentObject.querySelectorAll !== 'function') {
     return { available: false, snapshot: null, reason: 'DOM_UNAVAILABLE' };
   }
@@ -85,8 +107,8 @@ function readAuditedDomSnapshot(documentObject) {
     snapshot: {
       remainingTime: scope(remaining.element),
       debug: scope(debug.element),
-      clockInVisible: Boolean(clockIn.element) && visible(clockIn.element),
-      clockOutVisible: Boolean(clockOut.element) && visible(clockOut.element)
+      clockInVisible: Boolean(clockIn.element) && visible(clockIn.element, windowObject),
+      clockOutVisible: Boolean(clockOut.element) && visible(clockOut.element, windowObject)
     }
   };
 }
@@ -358,8 +380,9 @@ function createSquareCoilBridgeService(options = {}) {
       if (!response || response.ok !== true) throw new Error(`action-7-http-${response?.status || 'failed'}`);
       const html = await response.text();
       if (!currentOwnerTenure(verificationTenure)) return staleOwnerTenureResult();
-      serverAvailable = true;
       serverEvidence = parseServerSnapshot(html, { observedAtMs: Math.max(observedAtMs, now()) });
+      serverAvailable = usableEvidence(serverEvidence);
+      lastError = serverEvidence.kind === EVIDENCE_KINDS.STATE_UNKNOWN ? serverEvidence.reason : null;
     } catch (error) {
       if (!currentOwnerTenure(verificationTenure)) return staleOwnerTenureResult();
       serverAvailable = false;
@@ -374,12 +397,12 @@ function createSquareCoilBridgeService(options = {}) {
     }
 
     if (!currentOwnerTenure(verificationTenure)) return staleOwnerTenureResult();
-    const captured = readAuditedDomSnapshot(documentObject);
-    domAvailable = captured.available;
+    const captured = readAuditedDomSnapshot(documentObject, windowObject);
     const domEvidence = parseDomSnapshot(captured.snapshot, {
       observedAtMs: Math.max(serverEvidence.observedAtMs, now()),
       available: captured.available
     });
+    domAvailable = captured.available && usableEvidence(domEvidence);
     if (!currentOwnerTenure(verificationTenure)) return staleOwnerTenureResult();
     const accepted = acceptVerification(engineState, {
       request: started.request,
@@ -392,8 +415,10 @@ function createSquareCoilBridgeService(options = {}) {
     }
     if (!currentOwnerTenure(verificationTenure)) return staleOwnerTenureResult();
     if (accepted.accepted) ownerInitialObservationCompleted = true;
-    lastReason = accepted.reason;
-    if (serverAvailable === true) lastError = null;
+    const latestEvent = accepted.events[accepted.events.length - 1];
+    lastReason = ['STATE_UNKNOWN', 'STATE_CONFLICT'].includes(latestEvent?.type)
+      ? latestEvent.reason || accepted.reason
+      : accepted.reason;
     publishHealth();
     if (accepted.needsVerification && currentOwnerTenure(verificationTenure)) {
       schedule('followUp', followUpMs, 'bounded-follow-up');

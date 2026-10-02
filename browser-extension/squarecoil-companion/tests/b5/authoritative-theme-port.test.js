@@ -96,7 +96,14 @@ test('UT-B5-THEME-038 both Glass ports keep shared gradients and target live gen
 test('UT-B5-THEME-031 final Glass integration gives the collapsed restore control the hidden logo lane', () => {
   for (const relative of ['src/presentation/ports/dark-glass.css', 'src/presentation/ports/light-glass.css']) {
     const css = read(relative);
-    assert.match(css, /img\[data-squarecoil-companion-logo="brand"\][\s\S]*display:\s*block\s*!important/);
+    const integration = css.slice(css.indexOf('Companion integration delta'));
+    const logoRule = /img\[data-squarecoil-companion-logo="brand"\] \{([\s\S]*?)\}/.exec(integration)?.[1];
+    assert.ok(logoRule);
+    assert.match(logoRule, /display:\s*block\s*!important/);
+    assert.match(logoRule, /max-height:\s*38px\s*!important/);
+    assert.match(logoRule, /min-height:\s*0\s*!important/);
+    assert.match(logoRule, /clip:\s*auto\s*!important/);
+    assert.match(integration, /img\[data-squarecoil-companion-logo-asset="dark"\][\s\S]*?background:\s*transparent\s*!important/);
     assert.match(css, /body\.sb-l-m[\s\S]*\.navbar-brand\s*\{[\s\S]*display:\s*none\s*!important[\s\S]*pointer-events:\s*none\s*!important/);
     const toggle = /body\.sb-l-m :is\(header\.navbar,\.navbar\) #toggle_sidemenu_l \{[\s\S]*?\}/.exec(css)?.[0];
     assert.ok(toggle);

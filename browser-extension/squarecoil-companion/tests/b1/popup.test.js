@@ -593,6 +593,48 @@ test('UT-B5-POPUP-002 raw READY without the exact healthy gate remains Limited',
   assert.equal(document.body.dataset.health, 'attention');
 });
 
+test('UT-B3-POPUP-CLOCK-001 unreadable clock warns at startup and recovers after refresh', async () => {
+  const listeners = new Map(); const nodes = new Map();
+  for (const id of ['classification', 'lifecycle', 'reason', 'runtimeId', 'retryCleanup', 'startFresh', 'enabled', 'refresh',
+    'version', 'stage', 'friendlyStatus', 'friendlyMessage', 'statusIcon', 'summaryCard', 'emptySummary', 'emptySummaryText',
+    'summaryLabel', 'summaryToday', 'summarySession', 'summaryState']) {
+    nodes.set(id, { id, textContent: '', hidden: false, checked: true,
+      addEventListener(type, listener) { this[`on${type}`] = listener; } });
+  }
+  const document = { body: { dataset: {} }, getElementById: id => nodes.get(id) || null,
+    addEventListener: (type, listener) => listeners.set(type, listener) };
+  let summary = { ok: true, status: 'CLOCK_UNDETECTED', current: null };
+  let healthResult = {
+    ok: true, ready: true, classification: 'HEALTHY_SAME_BUILD', health: { state: 'READY', mode: 'ENABLED', reason: 'ready' }
+  };
+  const chrome = {
+    tabs: { query: async () => [{ id: 17 }], sendMessage: async () => summary },
+    storage: { local: { get: async () => ({ timerEnabled: true }), set: async () => {} } },
+    runtime: { getManifest: () => ({ version: '0.7.2' }), sendMessage: async () => healthResult }
+  };
+  const source = fs.readFileSync(path.resolve(__dirname, '../../src/popup/popup.js'), 'utf8');
+  vm.runInNewContext(source, { chrome, document, console }, { filename: 'src/popup/popup.js' });
+  await listeners.get('DOMContentLoaded')();
+  assert.equal(nodes.get('friendlyStatus').textContent, 'Clock not detected');
+  assert.equal(document.body.dataset.health, 'attention');
+  assert.equal(nodes.get('emptySummary').hidden, false);
+  assert.match(nodes.get('emptySummaryText').textContent, /Time is not being recorded/);
+  healthResult = { ok: false, reloadRequired: true, classification: 'FAILED_SAME_BUILD',
+    health: { state: 'FAILED', mode: 'ENABLED', reason: 'reload-required' } };
+  await nodes.get('refresh').onclick();
+  assert.equal(nodes.get('friendlyStatus').textContent, 'Needs attention');
+  assert.match(nodes.get('friendlyMessage').textContent, /Reload the SquareCoil tab/);
+  healthResult = { ok: true, ready: true, classification: 'HEALTHY_SAME_BUILD',
+    health: { state: 'READY', mode: 'ENABLED', reason: 'ready' } };
+  summary = { ok: true, status: 'WORKING', current: { label: 'Design (General)', todayMs: 4000, sessionMs: 4000 } };
+  await nodes.get('refresh').onclick();
+  assert.equal(nodes.get('friendlyStatus').textContent, 'Ready');
+  assert.equal(document.body.dataset.health, 'ok');
+  assert.equal(nodes.get('summaryCard').hidden, false);
+  assert.equal(nodes.get('summaryLabel').textContent, 'Design (General)');
+  assert.equal(nodes.get('summaryState').textContent, 'Working');
+});
+
 test('UT-B5-POPUP-003 popup reports existing Bing access without a second consent action', async () => {
   const listeners = new Map(); const nodes = new Map();
   for (const id of ['classification', 'lifecycle', 'reason', 'runtimeId', 'retryCleanup', 'startFresh', 'enabled', 'refresh',

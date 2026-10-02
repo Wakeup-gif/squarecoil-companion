@@ -2,6 +2,8 @@
 
 **Read this file before modifying the extension.**
 
+**October 2, 2026 source update:** v0.7.2 is a review/test build correcting initial clock detection and restoring the user-approved custom dark logo as `assets/us-sign-dark-logo.png`. Dark modes use this packaged asset; light modes retain their existing native-logo handling. See [repair evidence](implementation/CLOCK-LOGO-REPAIR-2026-10-02.md), `CURRENT.md`, `AGENTS.md`, and `docs/EXECUTION-ENFORCEMENT-PLAN.md` for current rebuilt-source boundaries. The legacy architecture/release details below are historical, including the old runtime Imgur-fetch workflow.
+
 Current stable release: **v0.7.0 Dual Browser + Glass**  
 Repository: `Wakeup-gif/test_repo`  
 Primary development branch: `main`  

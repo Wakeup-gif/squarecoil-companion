@@ -272,11 +272,6 @@ function createTrustedTransitionCore(options = {}) {
     }
   }
 
-  function shouldForwardNonPositive(event) {
-    if (!['STATE_UNKNOWN', 'STATE_CONFLICT'].includes(event.type)) return true;
-    return Boolean(authorityDocument?.timer?.active || authorityDocument?.timer?.pending);
-  }
-
   async function acceptBridgeEvents(events) {
     return serialize(async () => {
       if (disposed || blocked || !authorityOwner) return { accepted: false, reason: 'trusted-core-not-owner' };
@@ -294,7 +289,8 @@ function createTrustedTransitionCore(options = {}) {
           publishStatus('recovery-reconciled');
           continue;
         }
-        if (!shouldForwardNonPositive(event)) continue;
+        // Startup uncertainty is authoritative observation too. IDLE handling
+        // records it without creating a Context or accruing guessed time.
         await commit(TIMER_COMMANDS.ACCEPT_OBSERVATION, { observation: event });
         publishStatus('bridge-event-committed');
       }

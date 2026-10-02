@@ -65,6 +65,43 @@ function nativeCandidate(state, nativeAction, completedAtMs, options = {}) {
   });
 }
 
+test('UT-B2-BRIDGE-106 action 3 project-zero completion confirms a parsed General department with its native boundary', () => {
+  const initial = confirmJob(createBridgeEngineState(), '260893', '260893 - Design', 100);
+  const candidate = nativeCandidate(initial.state, NATIVE_ACTIONS.CHANGE_CONTEXT, 200, {
+    requestProjectId: '0', requestDepartment: 'Design'
+  });
+  const general = parseServerSnapshot('<a href="/project.php?id=0">Design (General)</a>', { observedAtMs: 202 });
+  const changed = verify(candidate.state, general, 201);
+  assert.equal(changed.reason, EVENT_TYPES.CONTEXT_CHANGED);
+  assert.equal(changed.events.length, 1);
+  assert.equal(changed.events[0].context.contextId, 'general:design-general');
+  assert.equal(changed.events[0].boundaryAtMs, 200);
+  assert.equal(changed.events[0].boundaryCertainty, BOUNDARY_CERTAINTY.NATIVE_CONFIRMED);
+  assert.equal(changed.events[0].transitionCandidateId, candidate.candidate.candidateId);
+  assert.equal(changed.state.candidates.length, 0);
+  const verified = verify(changed.state, parseServerSnapshot('<a href="/project.php?id=0">Design (General)</a>', { observedAtMs: 300 }), 299);
+  assert.equal(verified.events.length, 1);
+  assert.equal(verified.events[0].type, EVENT_TYPES.CONTEXT_VERIFIED);
+  assert.equal(verified.events[0].boundaryAtMs, null);
+});
+
+test('UT-B2-BRIDGE-107 a project-zero native candidate cannot confirm numbered or fabricated job-zero poststate', () => {
+  for (const postState of [
+    jobEvidence('260893', '260893 - Design', 202),
+    { kind: 'CONTEXT', source: 'SERVER_ACTION_7', polarity: 'POSITIVE', observedAtMs: 202,
+      stateCertainty: 'VERIFIED_SERVER', context: { kind: 'job', projectId: '0', contextId: 'job:0', label: 'Not General' } }
+  ]) {
+    const initial = confirmJob(createBridgeEngineState(), '260621', '260621 - Design', 100);
+    const candidate = nativeCandidate(initial.state, NATIVE_ACTIONS.CHANGE_CONTEXT, 200, { requestProjectId: '0' });
+    const rejected = verify(candidate.state, postState, 201);
+    assert.equal(rejected.events.length, 1);
+    assert.equal(rejected.events[0].type, EVENT_TYPES.STATE_CONFLICT);
+    assert.equal(rejected.events[0].reason, 'TRANSITION_CANDIDATE_POSTSTATE_CONFLICT');
+    assert.equal(rejected.events[0].boundaryAtMs, null);
+    assert.equal(rejected.state.lastConfirmed.context.contextId, 'job:260621');
+  }
+});
+
 test('UT-B2-BRIDGE-010 action 3 A-to-B emits one native-confirmed Context change', () => {
   const initial = confirmJob(createBridgeEngineState(), '260701', '260701 - Design', 100);
   const candidate = nativeCandidate(initial.state, NATIVE_ACTIONS.CHANGE_CONTEXT, 200, {

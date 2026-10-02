@@ -1,5 +1,25 @@
 # SquareCoil Companion Execution Gate Matrix
 
+## Clock detection and custom dark logo repair (October 2, 2026)
+
+Intent: correct the user's reported missing initial clock detection and restore the approved custom dark logo in a review/test build.
+Behavior restored: recognize unambiguous action-7 clock fragments and explicitly identified general department contexts, retain failed clock reads as observable UNKNOWN state, recover after a corrected snapshot, and restore the original approved dark logo without a runtime image-host permission.
+Impact tags: `BRIDGE_OBSERVATION`, `TIMER_LEDGER`, `SHARED_UI_ROOT`, `WORKSPACE_SETTINGS`, `PRESENTATION`, `SUPPORT_PRIVACY`, `PACKAGE_ARTIFACT`.
+Contracts touched: L3 read-only context observation and L4 unknown-state handling; L7 dark-logo/appearance restoration. This explicit user correction supersedes the October 1 B6 decision to replace the dark logo with the native website image. Existing conservative gap, Pending/Resume, authority, migration, and native clock-action rules remain in force.
+Expected files: bridge parser/engine/service and trusted-core observation forwarding; workspace and popup clock-read disclosure; theme service and generated CSS ports; the unmodified approved logo asset, canonical inventory/identity/manifest policy; focused regressions and this evidence.
+Targeted gates: B2 parser/engine/service and composed startup recovery; B3 workspace status; B1 popup/package identity; B5 theme-service/port freshness. Full candidate aggregate at completion: yes. Browser acceptance will be recorded separately and is not inferred from unit tests.
+Composed journeys: initially unknown clock -> valid clock fragment -> ACTIVE; native project-0 general context -> ACTIVE; Dark Glass/custom dark logo -> light theme -> Original; late/replaced image and asset failure -> native fallback. All simulated native state remains fictional; no live clock action or record write.
+
+| Requirement | Expected result | Evidence | State |
+|---|---|---|---|
+| `CLOCK-001` | Unambiguous read-only clock fragments and explicitly identified general departments are recognized; full pages, controls, malformed scopes and ambiguous identities remain rejected. | B2 parser/engine regression cluster, [repair evidence](../implementation/CLOCK-LOGO-REPAIR-2026-10-02.md) | `AUTOMATED PASS` |
+| `CLOCK-002` | An initial failed clock read remains observable and can recover in the same core after a valid snapshot, without fabricated time. | `UT-B2-BRIDGE-037/038/039`, `IT-B2-BRIDGE-TIMER-011`, `UT-B3-UI-CLOCK-001`, `UT-B3-POPUP-CLOCK-001` | `AUTOMATED PASS` |
+| `LOGO-001` | Dark themes use the approved packaged logo, reset inherited clipping/size constraints, and restore native attributes on exit/failure. | `UT-B5-THEME-101` through `108`, B5 port freshness, B1 package identity | `AUTOMATED PASS` |
+
+Final source gate: `npm run check:b6-candidate` passes 709 unit/integration cases plus 16 prototype cases (725 total), with zero failures, skips, or todos. Independent review reproductions pass. Installed Chrome/Edge and live read-only clock acceptance remain `PENDING`; these rows do not promote a release. See the repair evidence for precise limits.
+
+Earlier PASS rows remain historical evidence for their named bytes; they do not certify this test build.
+
 **Status:** combined worktree review candidate accepted on `codex/squarecoil-combined-2026-10-01`, with exact package source `8426b242e26cc418228f66268b6e69040737b532`. Original branch evidence below is historical; it does not certify the merged bytes. Live account acceptance and Store activation remain external follow-ups.
 **Execution authority:** `docs/EXECUTION-ENFORCEMENT-PLAN.md`
 

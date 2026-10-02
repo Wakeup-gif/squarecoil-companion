@@ -28,9 +28,9 @@ assert(JSON.stringify(manifest.permissions || []) === JSON.stringify(['storage',
 assert(JSON.stringify(manifest.host_permissions || []) === JSON.stringify(['https://ussignandmill.squarecoil.net/*', 'https://www.bing.com/*']), 'Host permissions must include only the exact SquareCoil tenant and Bing image origin');
 assert(!Object.hasOwn(manifest, 'optional_host_permissions'), 'Bing access must be declared at installation, with no optional host permissions');
 assert(JSON.stringify(manifest.web_accessible_resources || []) === JSON.stringify([{
-  resources: ['dist/themes/dark-glass.css', 'dist/themes/light-glass.css'],
+  resources: ['dist/themes/dark-glass.css', 'dist/themes/light-glass.css', 'assets/us-sign-dark-logo.png'],
   matches: ['https://ussignandmill.squarecoil.net/*']
-}]), 'Authoritative presentation resources must be limited to the two generated CSS ports on the exact SquareCoil tenant');
+}]), 'Presentation resources must be limited to the two generated CSS ports and approved dark logo on the exact SquareCoil tenant');
 assert(JSON.stringify(Object.keys(manifest.background || {}).sort()) === JSON.stringify(['service_worker']), 'B1 background policy must contain only the service worker entry');
 assert(manifest.background?.service_worker === 'dist/background.js', 'B1 manifest must use generated dist/background.js');
 assert(manifest.action?.default_popup === 'popup/popup.html', 'B1 popup path must be explicit');

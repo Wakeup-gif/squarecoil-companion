@@ -166,6 +166,28 @@ test('UT-B3-UI-025 a blocked pre-Timer snapshot shows recovery instead of indefi
   h.ui.teardown();
 });
 
+test('UT-B3-UI-CLOCK-001 an unknown initial clock is disclosed and a repaired snapshot returns to Working', async () => {
+  const h = await harness({ prepareTimer(timer) {
+    timer.nativeDisposition = 'SQUARECOIL_STATE_UNKNOWN';
+    timer.currentContextId = null;
+    timer.contextRows = [];
+    timer.running = null;
+    timer.todayTotalMs = 0;
+    timer.weekTotalMs = 0;
+    timer.availableActions = {};
+  } });
+  assert.match(h.root.innerHTML, /data-sc-status>Clock not detected/);
+  assert.match(h.root.innerHTML, /could not read your SquareCoil clock/);
+  assert.doesNotMatch(h.root.innerHTML, /data-sc-status>Ready/);
+  assert.doesNotMatch(h.root.innerHTML, /data-timer-action=/);
+  Object.assign(h.timer, makeTimer(), { nativeDisposition: 'TRACKABLE_CONTEXT' });
+  h.ui.render();
+  assert.match(h.root.innerHTML, /data-sc-status>Working/);
+  assert.doesNotMatch(h.root.innerHTML, /Clock not detected/);
+  assert.equal(h.timerActions.length, 0);
+  h.ui.teardown();
+});
+
 test('UT-B3-UI-001 compact tabs expose Today, threshold meaning, operational status, and accessibility text together', async () => {
   const h = await harness();
   assert.match(h.root.innerHTML, /data-threshold="YELLOW"/);

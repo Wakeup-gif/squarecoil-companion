@@ -9,6 +9,8 @@ const EDITOR_STYLE_ID = 'squarecoil-companion-ckeditor-document-theme';
 const EDITOR_FRAME_ATTRIBUTE = 'data-squarecoil-companion-editor-frame';
 const PRESENTATION_BOOTSTRAP_KEY = '__squareCoilCompanionPresentationBootstrap';
 const WEBSITE_LOGO_SOURCE = 'images/US-Sign&-Mill-Logo - sized for SC site.png';
+const DARK_WEBSITE_LOGO_PATH = 'assets/us-sign-dark-logo.png';
+const WEBSITE_LOGO_SELECTOR = 'header.navbar .navbar-brand img, .navbar-branding .navbar-brand img, img[src*="US-Sign" i], img[src*="USSIGN" i]';
 const ROUTE_BY_PATH = Object.freeze({
   '/dashboard.php': 'DASHBOARD',
   '/project_milestones.php': 'PROJECT_MILESTONES',
@@ -84,7 +86,7 @@ html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.alert-danger,.text-danger){co
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.alert-warning,.text-warning){color:#845413!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] :is(.alert-success,.text-success){color:#216a45!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand{display:inline-flex!important;align-items:center!important;gap:8px!important;color:#17212b!important;text-decoration:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand>img[data-squarecoil-companion-logo="brand"]{display:block!important;width:100px!important;min-width:100px!important;max-width:100px!important;height:38px!important;flex:0 0 100px!important;object-fit:contain!important;padding:3px 6px!important;border-radius:7px!important;background:#fff!important}
+html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand>img[data-squarecoil-companion-logo="brand"]{display:block!important;width:100px!important;min-width:100px!important;max-width:100px!important;height:38px!important;min-height:0!important;max-height:38px!important;clip:auto!important;clip-path:none!important;flex:0 0 100px!important;object-fit:contain!important;padding:3px 6px!important;border-radius:7px!important;background:#fff!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand::before,html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar-brand::after{content:none!important;display:none!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] .navbar :is(.navbar-right,.navbar-nav)>li>a:is(:hover,:focus-visible){color:#17334a!important;background:rgba(61,131,193,.12)!important}
 html[${ROOT_THEME_ATTRIBUTE}="REFINED_LIGHT"] #pmlt>div:has(>#duplicate){display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:6px!important}
@@ -120,7 +122,7 @@ html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] :is(.alert-danger,.text-danger){colo
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] :is(.alert-warning,.text-warning){color:#845413!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] :is(.alert-success,.text-success){color:#216a45!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand{display:inline-flex!important;align-items:center!important;gap:8px!important;color:#17212c!important;text-decoration:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand>img[data-squarecoil-companion-logo="brand"]{display:block!important;width:100px!important;min-width:100px!important;max-width:100px!important;height:38px!important;flex:0 0 100px!important;object-fit:contain!important;padding:3px 6px!important;border-radius:7px!important;background:#fff!important}
+html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand>img[data-squarecoil-companion-logo="brand"]{display:block!important;width:100px!important;min-width:100px!important;max-width:100px!important;height:38px!important;min-height:0!important;max-height:38px!important;clip:auto!important;clip-path:none!important;flex:0 0 100px!important;object-fit:contain!important;padding:3px 6px!important;border-radius:7px!important;background:#fff!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand::before,html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar-brand::after{content:none!important;display:none!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] .navbar :is(.navbar-right,.navbar-nav)>li>a:is(:hover,:focus-visible){color:#17334a!important;background:rgba(61,131,193,.13)!important}
 html[${ROOT_THEME_ATTRIBUTE}="LIGHT_GLASS"] #pmlt>div:has(>#duplicate){display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:6px!important}
@@ -159,7 +161,8 @@ html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .text-warning{color:#ffd48b}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .alert-success,
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .text-success{color:#8ed8af}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand{display:inline-flex!important;align-items:center!important;gap:8px!important;color:#eef5fb!important;text-decoration:none!important}
-html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand>img[data-squarecoil-companion-logo="brand"]{display:block!important;width:100px!important;min-width:100px!important;max-width:100px!important;height:38px!important;flex:0 0 100px!important;object-fit:contain!important;padding:3px 6px!important;border-radius:7px!important;background:#fff!important}
+html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand>img[data-squarecoil-companion-logo="brand"]{display:block!important;width:100px!important;min-width:100px!important;max-width:100px!important;height:38px!important;min-height:0!important;max-height:38px!important;clip:auto!important;clip-path:none!important;flex:0 0 100px!important;object-fit:contain!important;padding:3px 6px!important;border-radius:7px!important;background:#fff!important}
+html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand>img[data-squarecoil-companion-logo-asset="dark"]{background:transparent!important}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand::before,html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar-brand::after{content:none!important;display:none!important}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] .navbar :is(.navbar-right,.navbar-nav)>li>a:is(:hover,:focus-visible){color:#fff!important;background:rgba(97,174,247,.14)!important}
 html[${ROOT_THEME_ATTRIBUTE}="SLEEK_DARK"] #pmlt>div:has(>#duplicate){display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:6px!important}
@@ -260,6 +263,12 @@ function createThemeService(options = {}) {
   const reducedTransparencyMedia = typeof window.matchMedia === 'function'
     ? window.matchMedia('(prefers-reduced-transparency: reduce)') : null;
   const nativeLogoState = new WeakMap();
+  const resolveAssetUrl = typeof options.resolveAssetUrl === 'function' ? options.resolveAssetUrl :
+    path => globalThis.chrome?.runtime?.getURL?.(path) || null;
+  let trackedLogo = null;
+  let logoObserver = null;
+  let logoLoadListener = null;
+  let logoErrorListener = null;
   let disposed = false;
   let preferenceSnapshot = normalizePreferenceSnapshot({});
   let effective = null;
@@ -361,36 +370,166 @@ function createThemeService(options = {}) {
   }
 
   function findLogo() {
-    return document.querySelector?.('header.navbar .navbar-brand img, .navbar-branding .navbar-brand img, img[src*="US-Sign" i], img[src*="USSIGN" i]') || null;
+    return document.querySelector?.(WEBSITE_LOGO_SELECTOR) || null;
   }
 
-  function restoreLogo() {
-    const logo = findLogo();
-    if (!logo) return 'native-logo-not-found';
+  function restoreLogoAttributes(logo, original) {
+    for (const name of ['src', 'srcset']) {
+      const current = logo.getAttribute?.(name) ?? null;
+      if (original[name] === null) {
+        if (current !== null) logo.removeAttribute?.(name);
+      } else if (current !== original[name]) logo.setAttribute?.(name, original[name]);
+    }
+  }
+
+  function captureNativeLogoAttributes(logo, state) {
+    state.src = logo.getAttribute?.('src') ?? null;
+    state.srcset = logo.getAttribute?.('srcset') ?? null;
+  }
+
+  function restoreLogoElement(logo) {
+    if (!logo) return;
     const original = nativeLogoState.get(logo);
     if (original) {
-      if (original.src === null) logo.removeAttribute?.('src'); else logo.setAttribute?.('src', original.src);
-      if (original.srcset === null) logo.removeAttribute?.('srcset'); else logo.setAttribute?.('srcset', original.srcset);
+      // A native header refresh may race teardown before its observer callback.
+      if ((original.appliedSource && logo.getAttribute?.('src') !== original.appliedSource && !original.failedSource) ||
+          (!original.appliedSource && original.status === 'native-logo-fallback')) {
+        captureNativeLogoAttributes(logo, original);
+      }
+      restoreLogoAttributes(logo, original);
       nativeLogoState.delete(logo);
     }
     logo.removeAttribute?.('data-squarecoil-companion-logo');
-    return 'native-logo';
+    logo.removeAttribute?.('data-squarecoil-companion-logo-asset');
+  }
+
+  function detachLogoListeners() {
+    if (trackedLogo) {
+      if (logoLoadListener) trackedLogo.removeEventListener?.('load', logoLoadListener);
+      if (logoErrorListener) trackedLogo.removeEventListener?.('error', logoErrorListener);
+    }
+    logoLoadListener = null;
+    logoErrorListener = null;
+  }
+
+  function refreshLogoOnly() {
+    if (disposed || !effective) return;
+    const logoStatus = applyLogo(effective.websiteThemeEffective);
+    if (logoStatus !== effective.logoStatus) publishIfChanged(Object.freeze({ ...effective, logoStatus }));
+  }
+
+  function observeLogo(enabled) {
+    if (!enabled) {
+      logoObserver?.disconnect?.();
+      logoObserver = null;
+      return;
+    }
+    if (logoObserver || typeof window.MutationObserver !== 'function' || !document.documentElement) return;
+    logoObserver = new window.MutationObserver(records => {
+      const relevant = records.some(record => {
+        if (record.type === 'attributes') return record.target === trackedLogo;
+        if (record.type !== 'childList') return false;
+        if (record.target?.closest?.('header.navbar, .navbar-branding, .navbar-brand')) return true;
+        return [...(record.addedNodes || []), ...(record.removedNodes || [])].some(node =>
+          node === trackedLogo || (trackedLogo && node.contains?.(trackedLogo)) ||
+          node.matches?.('header.navbar, .navbar-branding, .navbar-brand') ||
+          node.matches?.(WEBSITE_LOGO_SELECTOR) ||
+          node.querySelector?.('header.navbar, .navbar-branding, .navbar-brand')
+        );
+      });
+      if (relevant) refreshLogoOnly();
+    });
+    logoObserver.observe(document.documentElement, { childList: true, subtree: true,
+      attributes: true, attributeFilter: ['src', 'srcset'] });
+  }
+
+  function trackLogo(logo) {
+    if (trackedLogo === logo) return;
+    detachLogoListeners();
+    restoreLogoElement(trackedLogo);
+    trackedLogo = logo;
+    if (!logo) return;
+    logoLoadListener = () => {
+      const state = nativeLogoState.get(logo);
+      if (disposed || trackedLogo !== logo || !state?.appliedSource || logo.getAttribute?.('src') !== state.appliedSource) return;
+      state.status = state.darkAsset ? 'configured-dark-logo' : 'configured-website-logo';
+      refreshLogoOnly();
+    };
+    logoErrorListener = () => {
+      const state = nativeLogoState.get(logo);
+      if (disposed || trackedLogo !== logo || !state?.appliedSource || logo.getAttribute?.('src') !== state.appliedSource) return;
+      state.failedSource = state.appliedSource;
+      state.appliedSource = null;
+      state.status = 'native-logo-fallback';
+      restoreLogoAttributes(logo, state);
+      logo.removeAttribute?.('data-squarecoil-companion-logo-asset');
+      // Keep the recovery marker so the fallback is visible through the old lockup CSS.
+      refreshLogoOnly();
+    };
+    logo.addEventListener?.('load', logoLoadListener);
+    logo.addEventListener?.('error', logoErrorListener);
+  }
+
+  function restoreLogo() {
+    observeLogo(false);
+    const logo = findLogo();
+    detachLogoListeners();
+    restoreLogoElement(trackedLogo);
+    if (logo !== trackedLogo) restoreLogoElement(logo);
+    trackedLogo = null;
+    return logo ? 'native-logo' : 'native-logo-not-found';
   }
 
   function applyLogo(websiteTheme) {
     if (websiteTheme === 'ORIGINAL') return restoreLogo();
+    observeLogo(true);
     const logo = findLogo();
+    trackLogo(logo);
     if (!logo) return 'website-logo-not-found';
     if (!nativeLogoState.has(logo)) nativeLogoState.set(logo, {
       src: logo.getAttribute?.('src') ?? null,
-      srcset: logo.getAttribute?.('srcset') ?? null
+      srcset: logo.getAttribute?.('srcset') ?? null,
+      appliedSource: null,
+      failedSource: null,
+      status: null
     });
-    if (logo.getAttribute?.('src') !== WEBSITE_LOGO_SOURCE) logo.setAttribute?.('src', WEBSITE_LOGO_SOURCE);
-    if (logo.getAttribute?.('srcset') !== null) logo.removeAttribute?.('srcset');
-    if (logo.getAttribute?.('data-squarecoil-companion-logo') !== 'brand') {
-      logo.setAttribute?.('data-squarecoil-companion-logo', 'brand');
+    const state = nativeLogoState.get(logo);
+    // Native updates during fallback become the baseline even while the failed
+    // asset remains suppressed. Preserve them before theme changes or teardown.
+    if (!state.appliedSource && state.status === 'native-logo-fallback') captureNativeLogoAttributes(logo, state);
+    const darkAsset = websiteTheme === 'SLEEK_DARK';
+    let source = WEBSITE_LOGO_SOURCE;
+    if (darkAsset) {
+      try { source = resolveAssetUrl(DARK_WEBSITE_LOGO_PATH); } catch (_) { source = null; }
     }
-    return 'configured-website-logo';
+    if (logo.getAttribute?.('data-squarecoil-companion-logo') !== 'brand') logo.setAttribute?.('data-squarecoil-companion-logo', 'brand');
+    if (!source) {
+      restoreLogoAttributes(logo, state);
+      logo.removeAttribute?.('data-squarecoil-companion-logo-asset');
+      state.appliedSource = null;
+      state.status = 'native-logo-fallback';
+      return state.status;
+    }
+    if (state.failedSource === source) return 'native-logo-fallback';
+    state.failedSource = null;
+    if (state.appliedSource && logo.getAttribute?.('src') !== state.appliedSource) {
+      captureNativeLogoAttributes(logo, state);
+    } else if (state.appliedSource && logo.getAttribute?.('srcset') !== null) {
+      state.srcset = logo.getAttribute?.('srcset');
+    }
+    const sourceChanged = state.appliedSource !== source || logo.getAttribute?.('src') !== source;
+    state.appliedSource = source;
+    state.darkAsset = darkAsset;
+    if (sourceChanged) state.status = darkAsset ? 'dark-logo-loading' : 'configured-website-logo';
+    if (logo.getAttribute?.('src') !== source) logo.setAttribute?.('src', source);
+    if (logo.getAttribute?.('srcset') !== null) logo.removeAttribute?.('srcset');
+    if (darkAsset) {
+      if (logo.getAttribute?.('data-squarecoil-companion-logo-asset') !== 'dark') logo.setAttribute?.('data-squarecoil-companion-logo-asset', 'dark');
+    } else if (logo.getAttribute?.('data-squarecoil-companion-logo-asset') !== null) {
+      logo.removeAttribute?.('data-squarecoil-companion-logo-asset');
+    }
+    if (darkAsset && logo.complete === true && logo.naturalWidth > 0) state.status = 'configured-dark-logo';
+    return state.status;
   }
 
   function presentationBootstrap() {
@@ -536,7 +675,10 @@ function createThemeService(options = {}) {
   function apply(preferences) {
     if (disposed) throw new Error('theme-service-disposed');
     const nextPreferences = normalizePreferenceSnapshot(preferences);
-    if (effective && JSON.stringify(nextPreferences) === JSON.stringify(preferenceSnapshot)) return effective;
+    if (effective && JSON.stringify(nextPreferences) === JSON.stringify(preferenceSnapshot)) {
+      refreshLogoOnly();
+      return effective;
+    }
     preferenceSnapshot = nextPreferences;
     syncListeners();
     return publishIfChanged(resolve());
@@ -568,4 +710,4 @@ function createThemeService(options = {}) {
 }
 
 module.exports = { STYLE_ID, ROOT_THEME_ATTRIBUTE, ROOT_ROUTE_ATTRIBUTE, EDITOR_STYLE_ID, EDITOR_FRAME_ATTRIBUTE,
-  ROUTE_BY_PATH, classifyWebsiteRoute, createThemeService };
+  DARK_WEBSITE_LOGO_PATH, ROUTE_BY_PATH, classifyWebsiteRoute, createThemeService };

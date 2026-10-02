@@ -260,6 +260,71 @@ function countingAuthority(client, holder) {
 
 const emptyLegacyStorage = { getItem() { return null; } };
 
+test('IT-B2-BRIDGE-TIMER-011 malformed startup is preserved without time and repaired action-7 fragment starts once', async () => {
+  const fixture = createFixture();
+  const client = fixture.client(607, 'runtime-clock-parser-recovery');
+  const bridge = {};
+  const page = { clockedOut: false, fetches: 0 };
+  const environment = nativeBridgeEnvironment(fixture.clock, page);
+  const requests = [];
+  let html = '<span id="clockin-remaining-time"><a href="/project.php?id=260801">';
+  environment.document.querySelectorAll = () => [];
+  environment.fetch = async (url, options) => {
+    requests.push({ url, body: options.body });
+    return { ok: true, text: async () => html };
+  };
+  const core = createTrustedTransitionCore({
+    authorityClient: client, legacyStorage: emptyLegacyStorage,
+    now: () => fixture.clock.value, randomId: ids('clock-parser-recovery-command'),
+    bridgeEnvironment: environment, createBridge: nativeBridgeFactory(bridge)
+  });
+
+  const failed = await core.ensure();
+  const failedDocument = fixture.area.read().document;
+  assert.equal(failed.bridge.capability, 'UNAVAILABLE');
+  assert.equal(failed.bridge.lastError, 'UNCLOSED_AUDITED_CLOCK_ELEMENT');
+  assert.equal(failed.timer.nativeDisposition, 'SQUARECOIL_STATE_UNKNOWN');
+  assert.equal(failedDocument.timer.lastObservation.type, 'STATE_UNKNOWN');
+  assert.equal(failedDocument.timer.lastObservation.stateCertainty, 'UNKNOWN');
+  assert.equal(failedDocument.timer.active, null);
+  assert.equal(failedDocument.timer.pending, null);
+  assert.equal(failedDocument.ledger.length, 0);
+  assert.equal(Object.keys(failedDocument.contexts).length, 0);
+  assert.equal(failedDocument.revision, 1);
+  const initialGeneration = failed.bridge.bridgeGeneration;
+
+  fixture.clock.value = 1_500;
+  html = '<a href="/project.php?id=260801">260801 - Production</a>' +
+    '<a href="/project.php?id=260802">260802 - Fabrication</a>';
+  const conflicting = await core.verifyNow('conflicting-header-fragment');
+  const conflictingDocument = fixture.area.read().document;
+  assert.equal(conflicting.timer.nativeDisposition, 'SQUARECOIL_STATE_UNKNOWN');
+  assert.equal(conflictingDocument.timer.lastObservation.type, 'STATE_CONFLICT');
+  assert.equal(conflictingDocument.timer.active, null);
+  assert.equal(conflictingDocument.ledger.length, 0);
+  assert.equal(Object.keys(conflictingDocument.contexts).length, 0);
+
+  fixture.clock.value = 2_000;
+  html = '<a href="/project.php?id=260801">260801 - Production</a>';
+  const recovered = await core.verifyNow('repaired-header-fragment');
+  const recoveredDocument = fixture.area.read().document;
+  assert.equal(recovered.bridge.capability, 'SERVER_FALLBACK');
+  assert.equal(recovered.bridge.lastError, null);
+  assert.equal(recovered.bridge.bridgeGeneration, initialGeneration);
+  assert.equal(recovered.bridge.requestCount, 3);
+  assert.equal(recoveredDocument.timer.lastObservation.type, 'CONTEXT_DETECTED');
+  assert.equal(recoveredDocument.timer.active.contextId, 'job:260801');
+  assert.equal(recoveredDocument.timer.active.startedAtMs, 2_000);
+  assert.equal(recoveredDocument.timer.pending, null);
+  assert.equal(recoveredDocument.ledger.length, 0);
+  assert.equal(recoveredDocument.revision, 3);
+  assert.equal(requests.length, 3);
+  assert.ok(requests.every(request => request.body === 'action=7'));
+  assert.equal(recovered.bridge.nativeMutationRequestCount, 0);
+  await core.teardown();
+  await client.teardown();
+});
+
 async function waitFor(predicate, message) {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if (predicate()) return;

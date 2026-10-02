@@ -157,10 +157,20 @@ function formatDuration(value) {
 
 function renderSummary(summary) {
   const current = summary?.ok === true ? summary.current : null;
+  const clockUndetected = summary?.ok === true && summary.status === 'CLOCK_UNDETECTED';
+  if (clockUndetected && document.body.dataset.status === 'ready') {
+    document.body.dataset.status = 'attention';
+    document.body.dataset.health = 'attention';
+    setText('friendlyStatus', 'Clock not detected');
+    setText('friendlyMessage', 'Companion could not read your SquareCoil clock. It will retry; you can also refresh status.');
+    setText('statusIcon', '!');
+  }
   setHidden('summaryCard', !current);
   setHidden('emptySummary', Boolean(current));
   if (!current) {
-    setText('emptySummaryText', summary?.ok === true
+    setText('emptySummaryText', clockUndetected
+      ? 'Your SquareCoil clock has not been detected. Time is not being recorded.'
+      : summary?.ok === true
       ? 'Your saved work is still available in Companion.'
       : 'Open a SquareCoil page to see current work.');
     return;
@@ -168,7 +178,7 @@ function renderSummary(summary) {
   setText('summaryLabel', current.label || 'Current work');
   setText('summaryToday', formatDuration(current.todayMs));
   setText('summarySession', formatDuration(current.sessionMs));
-  setText('summaryState', summary.status === 'WORKING' ? 'Working' : 'Ready');
+  setText('summaryState', clockUndetected ? 'Clock not detected' : summary.status === 'WORKING' ? 'Working' : 'Ready');
 }
 
 async function renderWallpaperPermission() {

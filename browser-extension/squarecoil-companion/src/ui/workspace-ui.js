@@ -124,6 +124,7 @@ function statusTone(status) {
 function friendlyCompanionStatus(core, timer) {
   if (core?.blocked) return Object.freeze({ label: 'Needs attention', tone: 'danger', message: 'Open Settings for recovery options.' });
   if (!core || (!core.initialized && !timer && !String(core.status || '').includes('recover'))) return Object.freeze({ label: 'Connecting', tone: 'warning', message: 'Getting your saved workspace ready.' });
+  if (timer?.nativeDisposition === 'SQUARECOIL_STATE_UNKNOWN') return Object.freeze({ label: 'Clock not detected', tone: 'warning', message: 'Companion could not read your SquareCoil clock. It will retry; you can also refresh status.' });
   if (timer?.running) return Object.freeze({ label: 'Working', tone: 'positive', message: 'Watching your current SquareCoil activity.' });
   if (core?.initialized && timer) return Object.freeze({ label: 'Ready', tone: 'positive', message: 'Companion is ready when you are.' });
   if (String(core?.status || '').includes('recover')) return Object.freeze({ label: 'Working', tone: 'warning', message: 'Reconnecting to this SquareCoil page.' });
@@ -795,6 +796,7 @@ ${prototypeDockStyle(ROOT_ID)}
   function mainView(timer) {
     const selected = selectedRow(timer);
     const operational = currentRow(timer);
+    if (!selected && timer?.nativeDisposition === 'SQUARECOIL_STATE_UNKNOWN') return `<div class="sc-view"><div class="sc-empty"><strong>Clock not detected.</strong><br>Companion could not read your SquareCoil clock. It will retry automatically.</div><div class="sc-actions"><button data-action="sync">Refresh status</button></div>${mainNavigationMarkup()}${searchMarkup()}</div>`;
     if (!selected) return `<div class="sc-view"><div class="sc-empty"><strong>No recent jobs yet.</strong><br>Open a SquareCoil job to begin. Settings, history and local data tools are available now.</div>${mainNavigationMarkup()}${searchMarkup()}</div>`;
     const selectedOperational = selected.contextId === timer.currentContextId;
     const status = selected.status || 'NOT_RUNNING';

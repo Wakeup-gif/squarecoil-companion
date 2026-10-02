@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { STYLE_ID, ROOT_THEME_ATTRIBUTE, ROOT_ROUTE_ATTRIBUTE, EDITOR_STYLE_ID, EDITOR_FRAME_ATTRIBUTE,
-  ROUTE_BY_PATH, classifyWebsiteRoute, createThemeService } = require('../../src/presentation/theme-service');
+  DARK_WEBSITE_LOGO_PATH, ROUTE_BY_PATH, classifyWebsiteRoute, createThemeService } = require('../../src/presentation/theme-service');
 
 class FakeElement {
   constructor(tag = 'div') {
@@ -13,11 +13,20 @@ class FakeElement {
     this.attributes = new Map();
     this.children = [];
     this.parent = null;
+    this.listeners = new Map();
   }
   setAttribute(name, value) { this.attributes.set(name, String(value)); if (name === 'id') this.id = String(value); }
   getAttribute(name) { return name === 'id' ? this.id || null : this.attributes.get(name) ?? null; }
   removeAttribute(name) { this.attributes.delete(name); if (name === 'id') this.id = ''; }
   appendChild(child) { child.parent = this; this.children.push(child); return child; }
+  addEventListener(type, listener) {
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type).add(listener);
+  }
+  removeEventListener(type, listener) { this.listeners.get(type)?.delete(listener); }
+  dispatch(type) { for (const listener of this.listeners.get(type) || []) listener({ target: this }); }
+  matches(selector) { return this.tagName === 'IMG' ? selector.includes('img') : this.tagName === 'HEADER' && selector.includes('header.navbar'); }
+  contains(element) { return this === element || this.children.some(child => child.contains?.(element)); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); this.parent = null; }
 }
 
@@ -51,16 +60,17 @@ function media(matches = false) {
 }
 
 function harness({ glass = true, logoInitiallyAvailable = true,
-  pathname = '/dashboard.php', editorFrames = [] } = {}) {
+  pathname = '/dashboard.php', editorFrames = [], assetUrlAvailable = true } = {}) {
   const root = new FakeElement('html');
   const head = new FakeElement('head');
-  const logo = new FakeElement('img');
+  let logo = new FakeElement('img');
   logo.setAttribute('src', '/native-logo.png');
   const dark = media(false);
   const forced = media(false);
   const reducedTransparency = media(false);
   const documentListeners = new Map();
   const windowListeners = new Map();
+  const observers = new Set();
   let logoAvailable = logoInitiallyAvailable;
   const document = {
     documentElement: root,
@@ -77,6 +87,11 @@ function harness({ glass = true, logoInitiallyAvailable = true,
   };
   const window = {
     location: { pathname },
+    MutationObserver: class {
+      constructor(callback) { this.callback = callback; this.connected = false; observers.add(this); }
+      observe(target, options) { this.connected = true; this.target = target; this.options = options; }
+      disconnect() { this.connected = false; }
+    },
     matchMedia(query) {
       if (query.includes('forced-colors')) return forced;
       if (query.includes('reduced-transparency')) return reducedTransparency;
@@ -86,9 +101,18 @@ function harness({ glass = true, logoInitiallyAvailable = true,
     addEventListener(type, listener) { windowListeners.set(type, listener); },
     removeEventListener(type, listener) { if (windowListeners.get(type) === listener) windowListeners.delete(type); }
   };
-  const service = createThemeService({ document, window });
-  return { service, document, window, root, head, logo, dark, forced, reducedTransparency, documentListeners, windowListeners,
-    showLogo() { logoAvailable = true; } };
+  const service = createThemeService({ document, window,
+    resolveAssetUrl: path => assetUrlAvailable ? `chrome-extension://test/${path}` : null });
+  return { service, document, window, root, head, get logo() { return logo; }, dark, forced, reducedTransparency, documentListeners, windowListeners, observers,
+    showLogo() { logoAvailable = true; },
+    replaceLogo(source = '/new-native-logo.png') {
+      const previous = logo;
+      logo = new FakeElement('img');
+      logo.setAttribute('src', source);
+      return previous;
+    },
+    mutate(records) { for (const observer of observers) if (observer.connected) observer.callback(records); }
+  };
 }
 
 function preferences(values = {}) {
@@ -209,12 +233,12 @@ test('UT-B5-THEME-004 forced colors yields native website presentation without r
   assert.equal(h.root.getAttribute(ROOT_ROUTE_ATTRIBUTE), null);
 });
 
-test('UT-B5-THEME-005 non-native themes use the repository-established website PNG path without a packaged asset', () => {
+test('UT-B5-THEME-005 Sleek Dark uses the approved bundled custom logo', () => {
   const h = harness();
   const snapshot = h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
   assert.equal(snapshot.websiteThemeEffective, 'SLEEK_DARK');
-  assert.equal(snapshot.logoStatus, 'configured-website-logo');
-  assert.equal(h.logo.getAttribute('src'), 'images/US-Sign&-Mill-Logo - sized for SC site.png');
+  assert.equal(snapshot.logoStatus, 'dark-logo-loading');
+  assert.equal(h.logo.getAttribute('src'), `chrome-extension://test/${DARK_WEBSITE_LOGO_PATH}`);
 });
 
 test('UT-B5-THEME-006 teardown removes listeners and Companion-owned presentation resources', () => {
@@ -244,14 +268,14 @@ test('UT-B5-THEME-007 reduced transparency keeps Glass durable but resolves it t
   assert.equal(snapshot.reducedTransparency, true);
 });
 
-test('UT-B5-THEME-008 document-ready recovery applies the fixed website logo when the header appears after document start', () => {
+test('UT-B5-THEME-008 document-ready recovery applies the bundled dark logo when the header appears after document start', () => {
   const h = harness({ logoInitiallyAvailable: false });
   const before = h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
   assert.equal(before.logoStatus, 'website-logo-not-found');
   h.showLogo();
   h.documentListeners.get('DOMContentLoaded')();
-  assert.equal(h.service.snapshot().logoStatus, 'configured-website-logo');
-  assert.equal(h.logo.getAttribute('src'), 'images/US-Sign&-Mill-Logo - sized for SC site.png');
+  assert.equal(h.service.snapshot().logoStatus, 'dark-logo-loading');
+  assert.equal(h.logo.getAttribute('src'), `chrome-extension://test/${DARK_WEBSITE_LOGO_PATH}`);
   assert.equal(h.document.querySelectorAll(`#${STYLE_ID}`).length, 1);
 });
 
@@ -400,13 +424,14 @@ test('UT-B5-THEME-026 an existing CKEditor layer updates when authoritative Glas
   h.service.teardown();
 });
 
-test('UT-B5-THEME-030 every non-native theme uses only the fixed website PNG path and Original restores native attributes', () => {
+test('UT-B5-THEME-030 Dark uses the approved asset while Light handling and Original attribute restoration remain intact', () => {
   const h = harness();
   h.logo.setAttribute('srcset', '/native-logo-2x.png 2x');
   for (const [revision, websiteTheme] of ['REFINED_LIGHT', 'SLEEK_DARK', 'LIGHT_GLASS'].entries()) {
     const snapshot = h.service.apply(preferences({ websiteTheme, preferenceRevision: revision + 1 }));
-    assert.equal(snapshot.logoStatus, 'configured-website-logo');
-    assert.equal(h.logo.getAttribute('src'), 'images/US-Sign&-Mill-Logo - sized for SC site.png');
+    assert.equal(snapshot.logoStatus, websiteTheme === 'SLEEK_DARK' ? 'dark-logo-loading' : 'configured-website-logo');
+    assert.equal(h.logo.getAttribute('src'), websiteTheme === 'SLEEK_DARK' ? `chrome-extension://test/${DARK_WEBSITE_LOGO_PATH}` : 'images/US-Sign&-Mill-Logo - sized for SC site.png');
+    assert.equal(h.logo.getAttribute('data-squarecoil-companion-logo-asset'), websiteTheme === 'SLEEK_DARK' ? 'dark' : null);
     assert.equal(h.logo.getAttribute('srcset'), null);
     assert.equal(h.logo.getAttribute('data-squarecoil-companion-logo'), 'brand');
   }
@@ -434,4 +459,138 @@ test('UT-B5-THEME-032 Refined Light owns one coherent canvas panel control and c
   assert.doesNotMatch(css, /:focus-visible\{outline:3px/);
   assert.doesNotMatch(css, /content:"SC"/);
   h.service.teardown();
+});
+
+test('UT-B5-THEME-101 bundled dark logo load success and failure are local presentation state with bounded retry', () => {
+  const h = harness();
+  h.logo.setAttribute('srcset', '/native-2x.png 2x');
+  const dark = preferences({ websiteTheme: 'SLEEK_DARK' });
+  h.service.apply(dark);
+  h.logo.dispatch('load');
+  assert.equal(h.service.snapshot().logoStatus, 'configured-dark-logo');
+  h.logo.dispatch('error');
+  assert.equal(h.service.snapshot().logoStatus, 'native-logo-fallback');
+  assert.equal(h.logo.getAttribute('src'), '/native-logo.png');
+  assert.equal(h.logo.getAttribute('srcset'), '/native-2x.png 2x');
+  assert.equal(h.logo.getAttribute('data-squarecoil-companion-logo'), 'brand');
+  assert.equal(h.logo.getAttribute('data-squarecoil-companion-logo-asset'), null);
+  const setAttribute = h.logo.setAttribute.bind(h.logo);
+  let writes = 0;
+  h.logo.setAttribute = (name, value) => { writes += 1; setAttribute(name, value); };
+  h.mutate([{ type: 'attributes', target: h.logo }]);
+  h.service.apply(dark);
+  assert.equal(writes, 0);
+  assert.equal(h.service.snapshot().websiteThemeEffective, 'SLEEK_DARK');
+  h.service.apply(preferences({ websiteTheme: 'LIGHT_GLASS', preferenceRevision: 2 }));
+  h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK', preferenceRevision: 3 }));
+  assert.equal(h.logo.getAttribute('src'), `chrome-extension://test/${DARK_WEBSITE_LOGO_PATH}`);
+  h.service.teardown();
+  assert.equal(h.logo.getAttribute('src'), '/native-logo.png');
+  assert.equal(h.logo.getAttribute('srcset'), '/native-2x.png 2x');
+  assert.equal(h.logo.getAttribute('data-squarecoil-companion-logo'), null);
+  assert.equal([...h.observers].some(observer => observer.connected), false);
+  assert.equal(h.logo.listeners.get('error').size, 0);
+});
+
+test('UT-B5-THEME-102 a header inserted after document ready acquires the dark logo without rewriting the theme', () => {
+  const h = harness({ logoInitiallyAvailable: false });
+  h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
+  h.documentListeners.get('DOMContentLoaded')();
+  const style = h.document.querySelectorAll(`#${STYLE_ID}`)[0];
+  let writes = 0;
+  const currentCss = style.textContent;
+  Object.defineProperty(style, 'textContent', { get() { return currentCss; }, set() { writes += 1; } });
+  h.showLogo();
+  h.mutate([{ type: 'childList', target: h.root, addedNodes: [h.logo], removedNodes: [] }]);
+  assert.equal(h.logo.getAttribute('src'), `chrome-extension://test/${DARK_WEBSITE_LOGO_PATH}`);
+  assert.equal(writes, 0);
+  assert.equal(h.service.snapshot().logoStatus, 'dark-logo-loading');
+  h.service.teardown();
+});
+
+test('UT-B5-THEME-103 a native src refresh preserves the new native attributes for Original', () => {
+  const h = harness();
+  h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
+  h.logo.setAttribute('src', '/refreshed-native.png');
+  h.logo.setAttribute('srcset', '/refreshed-native-2x.png 2x');
+  h.mutate([{ type: 'attributes', target: h.logo }]);
+  assert.equal(h.logo.getAttribute('src'), `chrome-extension://test/${DARK_WEBSITE_LOGO_PATH}`);
+  h.service.apply(preferences({ websiteTheme: 'ORIGINAL', preferenceRevision: 2 }));
+  assert.equal(h.logo.getAttribute('src'), '/refreshed-native.png');
+  assert.equal(h.logo.getAttribute('srcset'), '/refreshed-native-2x.png 2x');
+  h.service.teardown();
+});
+
+test('UT-B5-THEME-104 a replaced native img is reconciled and the detached img is restored with no listeners', () => {
+  const h = harness();
+  h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
+  const previous = h.replaceLogo();
+  h.mutate([{ type: 'childList', target: h.root, addedNodes: [h.logo], removedNodes: [previous] }]);
+  assert.equal(h.logo.getAttribute('src'), `chrome-extension://test/${DARK_WEBSITE_LOGO_PATH}`);
+  assert.equal(previous.getAttribute('src'), '/native-logo.png');
+  assert.equal(previous.getAttribute('data-squarecoil-companion-logo'), null);
+  assert.equal(previous.listeners.get('load').size, 0);
+  h.service.apply(preferences({ websiteTheme: 'ORIGINAL', preferenceRevision: 2 }));
+  assert.equal(h.logo.getAttribute('src'), '/new-native-logo.png');
+  h.service.teardown();
+});
+
+test('UT-B5-THEME-105 unavailable extension asset resolution restores a visible native fallback', () => {
+  const h = harness({ assetUrlAvailable: false });
+  const result = h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
+  assert.equal(result.logoStatus, 'native-logo-fallback');
+  assert.equal(h.logo.getAttribute('src'), '/native-logo.png');
+  assert.equal(h.logo.getAttribute('data-squarecoil-companion-logo'), 'brand');
+  assert.equal(h.logo.getAttribute('data-squarecoil-companion-logo-asset'), null);
+  h.service.teardown();
+});
+
+test('UT-B5-THEME-106 local theme logo recovery removes legacy clipping and keeps the approved dark artwork transparent', () => {
+  const h = harness();
+  for (const [revision, websiteTheme] of ['SLEEK_DARK', 'LIGHT_GLASS', 'REFINED_LIGHT'].entries()) {
+    h.service.apply(preferences({ websiteTheme, preferenceRevision: revision + 1 }));
+    const css = h.document.querySelectorAll(`#${STYLE_ID}`)[0].textContent;
+    const imageRule = /img\[data-squarecoil-companion-logo="brand"\]\{([^}]+)\}/.exec(css)?.[1];
+    assert.ok(imageRule);
+    assert.match(imageRule, /min-height:0!important/);
+    assert.match(imageRule, /max-height:38px!important/);
+    assert.match(imageRule, /clip:auto!important;clip-path:none!important/);
+    if (websiteTheme === 'SLEEK_DARK') assert.match(css, /img\[data-squarecoil-companion-logo-asset="dark"\]\{background:transparent!important\}/);
+  }
+  h.service.teardown();
+});
+
+
+test('UT-B5-THEME-107 native refresh during a dark asset failure survives observer reconciliation and Original', () => {
+  const h = harness();
+  h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
+  h.logo.dispatch('error');
+  h.logo.setAttribute('src', '/updated-after-failure.png');
+  h.logo.setAttribute('srcset', '/updated-after-failure-2x.png 2x');
+  h.mutate([{ type: 'attributes', target: h.logo }]);
+  assert.equal(h.service.snapshot().logoStatus, 'native-logo-fallback');
+  assert.equal(h.logo.getAttribute('src'), '/updated-after-failure.png');
+  h.service.apply(preferences({ websiteTheme: 'ORIGINAL', preferenceRevision: 2 }));
+  assert.equal(h.logo.getAttribute('src'), '/updated-after-failure.png');
+  assert.equal(h.logo.getAttribute('srcset'), '/updated-after-failure-2x.png 2x');
+  h.service.teardown();
+});
+
+test('UT-B5-THEME-108 native fallback updates racing theme switch or teardown retain the latest src and srcset', () => {
+  for (const next of ['ORIGINAL', 'LIGHT_GLASS', 'TEARDOWN']) {
+    const h = harness();
+    h.service.apply(preferences({ websiteTheme: 'SLEEK_DARK' }));
+    h.logo.dispatch('error');
+    h.logo.setAttribute('src', '/latest-native.png');
+    h.logo.setAttribute('srcset', '/latest-native-2x.png 2x');
+    // Deliberately do not deliver the observer callback before leaving Dark.
+    if (next === 'TEARDOWN') h.service.teardown();
+    else {
+      h.service.apply(preferences({ websiteTheme: next, preferenceRevision: 2 }));
+      h.service.apply(preferences({ websiteTheme: 'ORIGINAL', preferenceRevision: 3 }));
+      h.service.teardown();
+    }
+    assert.equal(h.logo.getAttribute('src'), '/latest-native.png', next);
+    assert.equal(h.logo.getAttribute('srcset'), '/latest-native-2x.png 2x', next);
+  }
 });

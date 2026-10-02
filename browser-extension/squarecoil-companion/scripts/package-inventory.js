@@ -5,6 +5,7 @@ const path = require('path');
 const { canonicalFileBytes } = require('./canonical-text');
 
 const PACKAGE_FILES = Object.freeze([
+  'assets/us-sign-dark-logo.png',
   'dist/background.js',
   'dist/build-info.json',
   'dist/companion-app.js',

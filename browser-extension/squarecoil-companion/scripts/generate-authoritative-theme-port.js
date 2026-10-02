@@ -219,18 +219,26 @@ html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-bra
   visibility: visible !important;
   position: relative !important;
   margin: 0 !important;
+  clip: auto !important;
   clip-path: none !important;
   opacity: 1 !important;
   overflow: visible !important;
   width: 100px !important;
   min-width: 100px !important;
   height: 38px !important;
+  min-height: 0 !important;
+  max-height: 38px !important;
   max-width: 100px !important;
   flex: 0 0 100px !important;
   padding: 3px 6px !important;
   object-fit: contain !important;
   border-radius: 7px !important;
   background: #fff !important;
+}
+
+html.us-sign-v230 body :is(header.navbar,.navbar) .navbar-branding .navbar-brand>img[data-squarecoil-companion-logo-asset="dark"],
+html.us-sign-v230 body :is(header.navbar,.navbar) .navbar-brand>img[data-squarecoil-companion-logo-asset="dark"] {
+  background: transparent !important;
 }
 
 html:is(.us-sign-v230,.us-sign-v240) body :is(header.navbar,.navbar) .navbar-branding .navbar-brand::before,

@@ -7,6 +7,7 @@ const {
   NEGATIVE_KINDS,
   STATE_CERTAINTY,
   AUDITED_GENERAL_CONTEXTS,
+  parseClockContext,
   parseServerSnapshot,
   parseDomSnapshot,
   reconcileEvidence
@@ -63,7 +64,7 @@ test('UT-B2-BRIDGE-003 only exact id and href attributes inside audited scope ar
   `, { observedAtMs: 3_001 });
 
   assert.equal(wrongId.kind, EVIDENCE_KINDS.STATE_UNKNOWN);
-  assert.equal(wrongId.reason, 'AUDITED_CLOCK_ELEMENT_MISSING');
+  assert.equal(wrongId.reason, 'UNSAFE_CLOCK_HEADER_FRAGMENT');
   assert.equal(wrongHref.kind, EVIDENCE_KINDS.STATE_UNKNOWN);
   assert.equal(wrongHref.reason, 'UNSUPPORTED_CLOCK_LABEL');
 });
@@ -88,8 +89,8 @@ test('UT-B2-BRIDGE-004 malformed or ambiguous clock HTML becomes unknown, never 
   }
 });
 
-test('UT-B2-BRIDGE-005 only audited General and six-digit clock labels form fallback Contexts', () => {
-  const unaudited = parseServerSnapshot(`
+test('UT-B2-BRIDGE-005 explicit General project and six-digit clock labels form scoped Contexts', () => {
+  const generalProject = parseServerSnapshot(`
     <span id="clockin-remaining-time"><a href="project.php?id=0">Warehouse General</a></span>
   `, { observedAtMs: 5_000 });
   const generic = parseDomSnapshot({
@@ -101,11 +102,136 @@ test('UT-B2-BRIDGE-005 only audited General and six-digit clock labels form fall
     bodyHtml: '<a href="/project.php?id=999999">999999 - Outside</a>'
   }, { observedAtMs: 5_002 });
 
-  assert.equal(unaudited.kind, EVIDENCE_KINDS.STATE_UNKNOWN);
+  assert.equal(generalProject.kind, EVIDENCE_KINDS.CONTEXT);
+  assert.equal(generalProject.context.contextId, 'general:warehouse-general');
   assert.equal(generic.kind, EVIDENCE_KINDS.STATE_UNKNOWN);
   assert.equal(fallback.kind, EVIDENCE_KINDS.CONTEXT);
   assert.equal(fallback.context.contextId, 'job:260703');
   assert.equal(fallback.provenance, 'CLOCK_LABEL_SIX_DIGIT_FALLBACK');
+});
+
+test('UT-B2-BRIDGE-100 exact action-7 inline header fragments recognize jobs and General work without a wrapper', () => {
+  const job = parseServerSnapshot('<i class="fa fa-clock-o"></i> <a href="/project.php?id=260893"><strong>260893 - FP - Bloom on Third</strong></a>', { observedAtMs: 10_000 });
+  const general = parseServerSnapshot('Production (General)', { observedAtMs: 10_001 });
+  const named = parseServerSnapshot('<span><b>Design (General)</b></span>', { observedAtMs: 10_002 });
+  assert.equal(job.kind, EVIDENCE_KINDS.CONTEXT);
+  assert.equal(job.context.contextId, 'job:260893');
+  assert.equal(job.stateCertainty, STATE_CERTAINTY.VERIFIED_SERVER);
+  assert.equal(general.context.contextId, 'general:production-general');
+  assert.equal(named.context.contextId, 'general:design-general');
+  assert.equal(named.provenance, 'CLOCK_GENERAL_DEPARTMENT_LABEL');
+});
+
+test('UT-B2-BRIDGE-101 fragment fallback rejects documents, unrelated containers and malformed or spoofed clock scopes', () => {
+  for (const html of [
+    '<!doctype html><html><body><a href="/project.php?id=260893">260893 - Outside</a></body></html>',
+    '<div class="project-list"><a href="/project.php?id=260893">260893 - Outside</a></div>',
+    '<nav><a href="/project.php?id=260893">260893 - Outside</a></nav>',
+    '<span id="another-scope"><a href="/project.php?id=260893">260893 - Outside</a></span>',
+    '<span data-id="clockin-remaining-time"><a href="/project.php?id=260893">260893 - Outside</a></span>',
+    '<span id="clockin-remaining-time" id="other"><a href="/project.php?id=260893">260893</a></span>',
+    '<span id="clockin-remaining-time">Production (General)</span><span id="clockin-remaining-time">Design (General)</span>',
+    '<span><a href="/project.php?id=260893">260893</span></a>',
+    '<a href="/project.php?id=260893">260893',
+    '<a href="/project.php?id=260893" onclick="clockIn()">260893</a>',
+    '<script>260893</script>',
+    '<form><a href="/project.php?id=260893">260893</a></form>'
+  ]) {
+    const parsed = parseServerSnapshot(html, { observedAtMs: 11_000 });
+    assert.equal(parsed.kind, EVIDENCE_KINDS.STATE_UNKNOWN, html);
+    assert.equal(parsed.context, undefined, html);
+  }
+});
+
+test('UT-B2-BRIDGE-102 explicit clock wrapper remains authoritative and conflicting fragment project identities fail closed', () => {
+  const scoped = parseServerSnapshot('<a href="/project.php?id=999999">999999 - Outside</a><header><span id="clockin-remaining-time"><a href="/project.php?id=260893">260893 - Current</a></span></header>', { observedAtMs: 12_000 });
+  assert.equal(scoped.context.contextId, 'job:260893');
+  const conflict = parseServerSnapshot('<a href="/project.php?id=260893">260893 - One</a> <a href="/project.php?id=260621">260621 - Two</a>', { observedAtMs: 12_001 });
+  assert.equal(conflict.kind, EVIDENCE_KINDS.STATE_CONFLICT);
+  assert.equal(conflict.reason, 'MULTIPLE_CLOCK_PROJECT_IDENTITIES');
+  const generalConflict = parseServerSnapshot('<a href="/project.php?id=0">Design (General)</a><a href="/project.php?id=0">Meeting</a>', { observedAtMs: 12_002 });
+  assert.equal(generalConflict.kind, EVIDENCE_KINDS.STATE_CONFLICT);
+  assert.equal(generalConflict.reason, 'MULTIPLE_CLOCK_GENERAL_IDENTITIES');
+});
+
+test('UT-B2-BRIDGE-103 only native project links support fragment or wrapped General identity', () => {
+  for (const href of [
+    'https://other.example/project.php?id=260893',
+    '//other.example/project.php?id=260893',
+    'https://squarecoil.invalid/project.php?id=260893',
+    '/projects.php?id=260893',
+    '/project.php?id=260893&id=260621',
+    '/project.php?id=invalid',
+    'javascript:clockIn(260893)'
+  ]) {
+    for (const wrap of [value => value, value => `<span id="clockin-remaining-time">${value}</span>`]) {
+      const parsed = parseServerSnapshot(wrap(`<a href="${href}">260893 - Current</a>`), { observedAtMs: 13_000 });
+      assert.equal(parsed.kind, EVIDENCE_KINDS.STATE_UNKNOWN, href);
+      assert.equal(parsed.reason, 'UNSUPPORTED_CLOCK_LINK', href);
+    }
+  }
+  const native = parseServerSnapshot('<a href="https://ussignandmill.squarecoil.net/project.php?id=260893">260893 - Current</a>', { observedAtMs: 13_001 });
+  assert.equal(native.context.contextId, 'job:260893');
+});
+
+test('UT-B2-BRIDGE-104 project-zero department labels yield stable General contexts and ignore surrounding countdown text', () => {
+  const server = parseServerSnapshot('<a href="/project.php?id=0">Design (General)</a>', { observedAtMs: 14_000 });
+  const dom = parseDomSnapshot({ remainingTime: { html: '<a href="/project.php?id=0">DESIGN (General)</a><small>00:00:10</small>', text: 'DESIGN (General) 00:00:10' }, clockOutVisible: true }, { observedAtMs: 14_001 });
+  for (const parsed of [server, dom]) {
+    assert.equal(parsed.kind, EVIDENCE_KINDS.CONTEXT);
+    assert.equal(parsed.context.kind, 'general');
+    assert.equal(parsed.context.contextId, 'general:design-general');
+    assert.equal(parsed.context.generalKey, 'design-general');
+    assert.equal('projectId' in parsed.context, false);
+  }
+  assert.equal(reconcileEvidence([server, dom]).kind, EVIDENCE_KINDS.CONTEXT);
+  const meeting = parseServerSnapshot('<a href="/project.php?id=0">Meeting</a>', { observedAtMs: 14_002 });
+  const training = parseClockContext({ href: '/project.php?id=0', label: 'Training' });
+  assert.equal(meeting.context.contextId, 'general:meeting-general');
+  assert.equal(training.context.contextId, 'general:training-general');
+  const unsupportedText = parseDomSnapshot({ debugText: 'Meeting' }, { observedAtMs: 14_003 });
+  assert.equal(unsupportedText.kind, EVIDENCE_KINDS.STATE_UNKNOWN);
+});
+
+test('UT-B2-BRIDGE-105 controls, empty labels and numbered jobs never manufacture a project-zero General context', () => {
+  for (const label of ['', 'Clock In', 'Clock Out', 'Change / Clock Out', 'Close', 'Time Remaining', 'Clock In (General)', 'Design (General) Meeting (General)', '260893 - Current', '|||', '00:00:10']) {
+    const parsed = parseServerSnapshot(`<a href="/project.php?id=0">${label}</a>`, { observedAtMs: 15_000 });
+    assert.notEqual(parsed.kind, EVIDENCE_KINDS.CONTEXT, label);
+    assert.equal(parsed.context, undefined, label);
+  }
+  const conflict = parseClockContext({ href: '/project.php?id=260893', label: 'Design (General)' });
+  assert.equal(conflict.conflict, true);
+  assert.equal(conflict.context, null);
+});
+
+test('UT-B2-BRIDGE-108 unwrapped error text or numbers cannot verify a Job without a native project link', () => {
+  for (const html of [
+    'Could not load project 260893. Please log in.',
+    'Error: 260893 access denied',
+    '260893',
+    '<span>260893 - Current</span>'
+  ]) {
+    const parsed = parseServerSnapshot(html, { observedAtMs: 16_000 });
+    assert.equal(parsed.kind, EVIDENCE_KINDS.STATE_UNKNOWN, html);
+    assert.equal(parsed.context, undefined, html);
+  }
+  const scoped = parseServerSnapshot('<span id="clockin-remaining-time">260893 - Current</span>', { observedAtMs: 16_001 });
+  assert.equal(scoped.context.contextId, 'job:260893');
+  assert.equal(scoped.provenance, 'CLOCK_LABEL_SIX_DIGIT_FALLBACK');
+});
+
+test('UT-B2-BRIDGE-109 native department and General display forms reconcile to one stable General identity', () => {
+  for (const department of ['Design', 'Production']) {
+    const server = parseServerSnapshot(`${department} (General)`, { observedAtMs: 17_000 });
+    const dom = parseDomSnapshot({ remainingTimeHtml: `<a href="/project.php?id=0">${department}</a>` }, { observedAtMs: 17_001 });
+    const expected = `general:${department.toLowerCase()}-general`;
+    assert.equal(server.context.contextId, expected);
+    assert.equal(dom.context.contextId, expected);
+    assert.equal(reconcileEvidence([server, dom]).context.contextId, expected);
+    const equivalentLinks = parseServerSnapshot(`<a href="/project.php?id=0">${department}</a><a href="/project.php?id=0">${department} (General)</a>`, { observedAtMs: 17_002 });
+    assert.equal(equivalentLinks.kind, EVIDENCE_KINDS.CONTEXT);
+    assert.equal(equivalentLinks.context.contextId, expected);
+  }
 });
 
 test('UT-B2-BRIDGE-006 audited control visibility creates distinct unconfirmed negative candidates', () => {

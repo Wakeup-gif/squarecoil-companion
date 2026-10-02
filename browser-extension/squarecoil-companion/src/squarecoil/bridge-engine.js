@@ -390,7 +390,8 @@ function candidateMatchesContext(candidate, context) {
   }
   if (!candidate.requestProjectId) return true;
   if (candidate.requestProjectId === '0') {
-    return context.contextId === 'general:production-general';
+    return context.kind === 'general' && typeof context.generalKey === 'string' &&
+      context.generalKey.length > 0 && context.contextId === `general:${context.generalKey}`;
   }
   return String(context.projectId || '') === candidate.requestProjectId;
 }

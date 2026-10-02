@@ -1,20 +1,23 @@
 {
-  "channel": "stable",
-  "latestVersion": "0.7.1",
-  "releasedAt": "2026-08-25",
+  "channel": "test",
+  "latestVersion": "0.7.2",
+  "releasedAt": "2026-10-02",
   "minimumVersion": "0.5.3",
-  "releaseNotes": "Chrome Interaction Recovery: fixes a case where the Job Timer could be visible but non-interactive because a stale timer root caused the extension to skip the MAIN-world timer runtime. v0.7.1 now treats the runtime global as authoritative, removes stale dead timer DOM before reinjection, verifies the runtime after boot, and restores the root-only observer rule for the Glass presentation layer. Edge and Chrome continue to ship from the same MV3 source with Solid/Glass finishes, website themes, dark-theme logo, Job Workspace controls, archives, and CSV backup/restore.",
+  "releaseNotes": "Test build: restore safe clock response fragment and general department detection, disclose failed clock reads, and restore the approved custom dark logo. Requires browser validation before release promotion.",
   "distribution": {
     "recommended": "developer-mode",
-    "browsers": ["microsoft-edge", "google-chrome"],
+    "browsers": [
+      "microsoft-edge",
+      "google-chrome"
+    ],
     "edge": {
       "branch": "release/squarecoil-companion-edge",
-      "artifact": "SquareCoil-Companion-v0.7.1-EDGE.zip",
+      "artifact": "SquareCoil-Companion-v0.7.2-TEST-EDGE.zip",
       "storeUrl": null
     },
     "chrome": {
       "branch": "release/squarecoil-companion",
-      "artifact": "SquareCoil-Companion-v0.7.1-CHROME.zip",
+      "artifact": "SquareCoil-Companion-v0.7.2-TEST-CHROME.zip",
       "storeUrl": null
     },
     "stableBranch": "release/squarecoil-companion",

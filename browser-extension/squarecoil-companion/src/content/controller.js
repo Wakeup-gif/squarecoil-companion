@@ -718,7 +718,9 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
       }));
     return Object.freeze({
       ok: true,
-      status: active && timer.running ? 'WORKING' : 'READY',
+      status: current.blocked ? 'NEEDS_ATTENTION'
+        : timer.nativeDisposition === 'SQUARECOIL_STATE_UNKNOWN' ? 'CLOCK_UNDETECTED'
+          : active && timer.running ? 'WORKING' : 'READY',
       current: active ? Object.freeze({
         label: String(active.label || 'Current work').slice(0, 160),
         status: String(active.status || 'NOT_RUNNING').slice(0, 48),

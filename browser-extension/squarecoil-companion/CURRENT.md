@@ -1,5 +1,11 @@
 # SquareCoil Companion Current State
 
+## October 2, 2026 repair candidate
+
+The current source includes a **v0.7.2 test build** for initial native clock detection and the approved custom US Sign & Mill dark logo. It recognizes safe action-7 header fragments and general departments, exposes failed initial reads, and packages the original transparent dark artwork. See [repair evidence](implementation/CLOCK-LOGO-REPAIR-2026-10-02.md) for automated validation and remaining installed-browser acceptance. This does not promote a stable release or certify earlier candidate evidence for these bytes.
+
+The legacy release notes below describe the earlier implementation. Current rebuilt source lives in `src/`; current authority and acceptance rules are in `AGENTS.md`, `docs/EXECUTION-ENFORCEMENT-PLAN.md`, and `logic/`.
+
 Current stable release: **v0.7.1 Chrome Interaction Recovery**
 
 Primary source: `browser-extension/squarecoil-companion/`

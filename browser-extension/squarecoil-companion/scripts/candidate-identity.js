@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { canonicalFileBytes } = require('./canonical-text');
 
 const EXPLICIT_INPUTS = Object.freeze([
+  'assets/us-sign-dark-logo.png',
   'manifest.json',
   'popup/popup.css',
   'popup/popup.html',
