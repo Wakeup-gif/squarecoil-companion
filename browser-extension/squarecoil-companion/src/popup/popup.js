@@ -18,6 +18,7 @@ let appearanceQueue = Promise.resolve();
 let appearanceSnapshot = null;
 let panelQueue = Promise.resolve();
 let panelVisible = true;
+let migrationTechnicalDetails = [];
 
 async function activeTabId() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -316,6 +317,17 @@ function renderHealth(result) {
   setText('lifecycle', safeDiagnosticToken(health.state, 'UNAVAILABLE'));
   setText('reason', safeDiagnosticToken(reason, 'unavailable'));
   setText('runtimeId', safeDiagnosticToken(health.runtimeInstanceId, '—'));
+  const core = health.trustedCore || {};
+  const authority = health.authority || {};
+  migrationTechnicalDetails = [
+    `Authority: ${['OWNER', 'OBSERVER_CONNECTED', 'UNAVAILABLE'].includes(authority.disposition) ? authority.disposition : 'unavailable'}`,
+    `Migration: ${['NOT_REQUIRED', 'REQUIRED', 'IN_PROGRESS', 'COMPLETE_MATCH', 'SOURCE_CHANGED_AFTER_COMPLETION', 'UNAVAILABLE', 'FAILED'].includes(core.preflight?.disposition) ? core.preflight.disposition : 'unavailable'}`,
+    // migrationError is the controller's finite, sanitized projection; raw
+    // lastError, retained sources, labels and history never reach this copy.
+    `Migration error: ${safeDiagnosticToken(core.migrationError, 'none')}`,
+    `Bridge: ${['FULL', 'VERIFICATION_FALLBACK', 'SERVER_FALLBACK', 'DOM_FALLBACK', 'UNAVAILABLE'].includes(core.bridge?.capability) ? core.bridge.capability : 'unavailable'}`
+  ];
+  setText('migrationDetails', migrationTechnicalDetails.join('\n'));
   const attention = Boolean(!result || result.ok === false || result.reloadRequired || health.state !== 'READY');
   document.body.dataset.health = attention ? 'attention' : 'ok';
   const friendly = friendlyHealth(result);
@@ -450,7 +462,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       `Probe: ${document.getElementById('classification')?.textContent || 'unknown'}`,
       `Lifecycle: ${document.getElementById('lifecycle')?.textContent || 'unknown'}`,
       `Reason: ${document.getElementById('reason')?.textContent || 'unknown'}`,
-      `Runtime: ${document.getElementById('runtimeId')?.textContent || 'unknown'}`
+      `Runtime: ${document.getElementById('runtimeId')?.textContent || 'unknown'}`,
+      ...migrationTechnicalDetails
     ].join('\n');
     try {
       await globalThis.navigator?.clipboard?.writeText(values);

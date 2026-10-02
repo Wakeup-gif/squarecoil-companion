@@ -384,3 +384,15 @@ Composed journey: leading-zero source + unrelated history -> COMPLETE_MATCH -> f
 Full candidate gate: yes after targeted gates pass.
 Exclusions: no source-key writes, guessed identity, imported live state, native mutation, main merge or stable publication.
 Proof: UT-B2-MIG-PAD-001/002, IT-B2-MIG-PAD-001. State: BLOCKED for installed-browser/live-profile proof; all targeted and aggregate automated checks and exact package validation passed. See `implementation/LEADING-ZERO-MIGRATION-REPAIR-2026-10-02.md`.
+
+
+## Active v0.7.5 migration diagnostics
+
+Intent: expose the existing fixed migration error in popup Copy diagnostics, which currently hides the cause of the live startup failure.
+Impact tags: SUPPORT_PRIVACY, LIFECYCLE, PACKAGE_ARTIFACT, DOCS_ONLY.
+Files: trusted core finite reason export, controller settlement projection, background read-only blocked-shell confirmation, popup technical details and tests, test metadata/evidence.
+Contracts: L1 bounded current settlement, L2 fail-closed migration unchanged, L7 fixed privacy-safe diagnostics.
+Targeted gates: popup diagnostics, migration reason whitelist, controller integration and source projection; full B6 gate after targeted tests pass.
+Composed journey: failed migration -> sanitized settlement -> popup display/copy, then healthy refresh removes stale error.
+Exclusions: no Timer/Ledger/migration semantics, retained-source changes, native mutations, main merge or stable release.
+Proof: UT-B1-POPUP-MIG-001, UT-B2-MIG-034 and UT-B2-MIG-DIAG-001. State: MAPPED; installed/live-profile proof pending.

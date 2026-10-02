@@ -820,7 +820,9 @@ async function settleB2Response(request, probe, response) {
 
 async function settleOperationResponse(request, response) {
   const shellHealth = response?.health;
-  if (!isB2SettlementCandidate(response?.classification, shellHealth)) return response;
+  const migrationBlocked = response?.classification === PROBE_RESULTS.DEGRADED_SAME_BUILD &&
+    shellHealth?.reason === 'legacy-migration-required';
+  if (!isB2SettlementCandidate(response?.classification, shellHealth) && !migrationBlocked) return response;
 
   let probe;
   try {
@@ -863,6 +865,24 @@ async function settleOperationResponse(request, response) {
     documentToken: probe.documentToken,
     expectedDocumentId: request.expectedDocumentId || probe.browserDocumentId
   };
+  // A blocked MAIN shell must stay non-READY. CONFIRM only reads the isolated
+  // core; it cannot refresh authority, migrate data or start the Bridge.
+  if (migrationBlocked) {
+    if (currentClassification !== PROBE_RESULTS.DEGRADED_SAME_BUILD ||
+        probe.runtimeSnapshot?.reason !== 'legacy-migration-required' ||
+        probe.runtimeInstanceId !== shellHealth.runtimeInstanceId) return currentResponse;
+    const evidence = await readB2Settlement(currentRequest, probe.runtimeInstanceId, B2_SETTLEMENT_MODES.CONFIRM);
+    if (!evidence.ok) return currentResponse;
+    return {
+      ...currentResponse,
+      ready: false,
+      health: {
+        ...currentResponse.health,
+        authority: evidence.authority,
+        trustedCore: evidence.core
+      }
+    };
+  }
   return settleB2Response(currentRequest, probe, currentResponse);
 }
 

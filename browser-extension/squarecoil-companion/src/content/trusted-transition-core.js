@@ -748,6 +748,7 @@ function createTrustedTransitionCore(options = {}) {
 }
 
 module.exports = {
+  migrationFailureReason,
   RECOVERY_MODES,
   RECOVERY_ELIGIBLE_EVENTS,
   legacyPreferencesFromSources,

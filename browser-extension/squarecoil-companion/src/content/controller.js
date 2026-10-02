@@ -14,7 +14,7 @@ const {
   createB2SettlementAcknowledgment
 } = require('../extension/authority-protocol');
 const { createAuthorityClient } = require('../extension/authority-client');
-const { createTrustedTransitionCore } = require('./trusted-transition-core');
+const { createTrustedTransitionCore, migrationFailureReason } = require('./trusted-transition-core');
 const { createThemeService } = require('../presentation/theme-service');
 const { createCinematicBackground } = require('../presentation/cinematic-background');
 const { createDashboardProfile } = require('../presentation/dashboard-profile');
@@ -251,6 +251,8 @@ const AUTHORITY_HEALTH_KEY = '__squareCoilCompanionAuthorityHealth';
         workerInstanceId: current.authorityTenure.workerInstanceId
       } : null,
       status: current.status || 'unavailable',
+      migrationError: current.preflight?.disposition === 'FAILED' && current.lastError
+        ? migrationFailureReason({ message: current.lastError }) : null,
       revision: current.revision,
       preflight: current.preflight ? {
         checked: current.preflight.checked === true,

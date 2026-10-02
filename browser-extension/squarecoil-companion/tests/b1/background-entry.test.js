@@ -1624,3 +1624,34 @@ test('disable cannot report success when runtime ownership remains after an unin
   assert.equal(roots.length, 1);
   assert.notEqual(global.window.__squareCoilCompanionRuntime, undefined);
 });
+
+
+test('UT-B2-MIG-DIAG-001 blocked shell exposes exact acknowledged failure without refresh or READY', async () => {
+  const runtimeInstanceId = 'runtime-migration-diagnostics-001';
+  const modes = [];
+  installChromeHarness({
+    timerEnabled: true,
+    roots: [{ dataset: { squarecoilCompanionRoot: 'rebuild', runtimeInstanceId, buildId: BUILD_ID, documentToken: DOCUMENT_TOKEN } }],
+    runtimeSnapshot: {
+      buildId: BUILD_ID, packageVersion: '0.7.1', runtimeInstanceId,
+      documentToken: DOCUMENT_TOKEN, mode: 'ENABLED', state: 'DEGRADED',
+      reason: 'legacy-migration-required', teardownInProgress: false,
+      readiness: { oneLifecycleOwner: true, validRuntimeIdentity: true, oneOwnedRoot: true },
+      ui: { rootPresent: true, interactionReady: true }
+    },
+    onTabMessage: ({ message }) => {
+      modes.push(message.settlementMode);
+      const acknowledgment = completeB2SettlementAcknowledgment(message);
+      acknowledgment.core.preflight = { checked: true, blocked: true, disposition: 'FAILED', reason: 'legacy-preflight-failed' };
+      acknowledgment.core.migrationError = 'legacy-context-identity-invalid';
+      return acknowledgment;
+    }
+  });
+  const result = await loadBackground().getHealth(61);
+  assert.deepEqual(modes, ['CONFIRM']);
+  assert.equal(result.ready, false);
+  assert.equal(result.health.state, 'DEGRADED');
+  assert.equal(result.health.reason, 'legacy-migration-required');
+  assert.equal(result.health.trustedCore.migrationError, 'legacy-context-identity-invalid');
+  assert.equal(result.b2Settlement, undefined);
+});

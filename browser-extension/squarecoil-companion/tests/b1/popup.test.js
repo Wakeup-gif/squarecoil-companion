@@ -874,3 +874,42 @@ test('UT-DIAG-007 unavailable log reports failure without creating a download', 
   assert.match(h.nodes.get('diagnosticDownloadResult').textContent, /Could not download the log/);
   assert.equal(h.nodes.get('downloadDiagnosticLog').disabled, false);
 });
+
+
+test('UT-B1-POPUP-MIG-001 popup copies sanitized migration settlement and clears stale failures after recovery', async () => {
+  const listeners = new Map(); const nodes = new Map(); let copied = '';
+  for (const id of ['classification', 'lifecycle', 'reason', 'runtimeId', 'enabled', 'refresh', 'version',
+    'friendlyStatus', 'friendlyMessage', 'copyDiagnostics', 'copyResult', 'migrationDetails']) {
+    nodes.set(id, { textContent: '', hidden: false, checked: true,
+      addEventListener(type, listener) { this[`on${type}`] = listener; } });
+  }
+  let result = { ok: false, ready: false, classification: 'DEGRADED_SAME_BUILD', health: {
+    state: 'DEGRADED', reason: 'legacy-preflight-failed', authority: { disposition: 'OWNER' },
+    trustedCore: { preflight: { disposition: 'FAILED' }, migrationError: 'legacy-session-id-conflict',
+      lastError: 'private-customer-job-123456', timer: { privateHours: 1234 } }
+  } };
+  const document = { body: { dataset: {} }, getElementById: id => nodes.get(id) || null,
+    addEventListener: (type, listener) => listeners.set(type, listener) };
+  const chrome = { tabs: { query: async () => [{ id: 17 }] },
+    storage: { local: { get: async () => ({ timerEnabled: true }), set: async () => {} } },
+    runtime: { getManifest: () => ({ version: '0.7.5' }), sendMessage: async () => result } };
+  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../src/popup/popup.js'), 'utf8'), {
+    document, chrome, console, navigator: { clipboard: { async writeText(value) { copied = value; } } }
+  });
+  await listeners.get('DOMContentLoaded')();
+  await nodes.get('copyDiagnostics').onclick();
+  assert.match(copied, /Authority: OWNER/);
+  assert.match(copied, /Migration: FAILED/);
+  assert.match(copied, /Migration error: legacy-session-id-conflict/);
+  assert.doesNotMatch(copied, /private-customer|privateHours|123456/);
+  result = { ok: true, ready: true, classification: 'HEALTHY_SAME_BUILD', health: {
+    state: 'READY', authority: { disposition: 'OWNER' },
+    trustedCore: { preflight: { disposition: 'COMPLETE_MATCH' }, bridge: { capability: 'FULL' } }
+  } };
+  await nodes.get('refresh').onclick();
+  await nodes.get('copyDiagnostics').onclick();
+  assert.match(copied, /Migration: COMPLETE_MATCH/);
+  assert.match(copied, /Migration error: none/);
+  assert.match(copied, /Bridge: FULL/);
+  assert.doesNotMatch(copied, /legacy-session-id-conflict/);
+});

@@ -2,6 +2,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { migrationFailureReason } = require('../../src/content/trusted-transition-core');
 const { createDefaultAuthorityKernel, AUTHORITY_STORAGE_KEY } = require('../../src/extension/authority-kernel');
 const { createAuthorityRouter } = require('../../src/extension/authority-router');
 const { createAuthorityClient } = require('../../src/extension/authority-client');
@@ -987,6 +991,17 @@ test('IT-B2-MIG-COMPAT-002 strict real router failures preserve authority and re
       const failed = await core.ensure();
       assert.equal(failed.blocked, true);
       assert.equal(failed.lastError, reason);
+      // Exercise the production controller's bounded settlement projection
+      // on the real router/client/core failure, not a manufactured error.
+      const controllerSource = fs.readFileSync(path.resolve(__dirname, '../../src/content/controller.js'), 'utf8');
+      const projectionStart = controllerSource.indexOf('  function settlementCoreSnapshot(');
+      const projectionEnd = controllerSource.indexOf('  // This handle exists', projectionStart);
+      const project = vm.runInNewContext('(' + controllerSource.slice(projectionStart, projectionEnd).trim() + ')',
+        { migrationFailureReason });
+      const projected = project(failed);
+      assert.equal(projected.migrationError, reason);
+      assert.equal(Object.hasOwn(projected, 'lastError'), false);
+      assert.equal(Object.hasOwn(projected, 'timer'), false);
       assert.equal(failed.bridge, null);
       assert.deepEqual(fixture.area.read().document, before);
       assert.deepEqual(sources, original);

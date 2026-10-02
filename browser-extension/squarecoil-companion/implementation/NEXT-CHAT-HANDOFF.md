@@ -1,6 +1,6 @@
 # SquareCoil Companion Rebuild — Current Handoff
 
-**Current work: v0.7.4 migration job-identity repair.** Follow `implementation/CLOUD-CODEX-MIGRATION-HANDOFF-2026-10-02.md` on `fix/clock-detection-custom-dark-logo`. Leading-zero numeric IDs normalize by the existing Bridge rule. Test-only package; retain hours and legacy bytes, existing clock-parser and custom dark-logo repairs. Exact browser/live-profile verification remains required. No main merge or stable publication.
+**Current work: v0.7.5 migration diagnostics.** Follow `implementation/CLOUD-CODEX-MIGRATION-HANDOFF-2026-10-02.md` on `fix/clock-detection-custom-dark-logo`. Leading-zero numeric IDs normalize by the existing Bridge rule. Test-only package; retain hours and legacy bytes, existing clock-parser and custom dark-logo repairs. Exact browser/live-profile verification remains required. No main merge or stable publication.
 
 **Historical checkpoint: combined worktree integration (October 1, 2026).** The combined review candidate below is historical evidence. The confirmed prototype integration checkpoint is historical at `docs/PROTOTYPE-INTEGRATION-2026-09-14.md`; previous UI/theme/lab/Figma stabilization evidence remains source-bound.
 
