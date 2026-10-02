@@ -513,8 +513,11 @@ function createTrustedTransitionCore(options = {}) {
     if (initializationPromise) await initializationPromise;
     if (!initialized || disposed) return snapshot();
     return serializeReconciliation(async () => {
-      const nextOwner = authority?.healthy === true && authority.disposition === 'OWNER';
-      const nextTenure = normalizeAuthorityTenure(authority);
+      // Health callbacks may wait behind initialization or another settlement.
+      // Their captured disposition cannot overwrite the client's newer tenure.
+      const currentAuthority = authorityClient.snapshot();
+      const nextOwner = currentAuthority?.healthy === true && currentAuthority.disposition === 'OWNER';
+      const nextTenure = normalizeAuthorityTenure(currentAuthority);
       const tenureChanged = !sameAuthorityTenure(authorityTenure, nextTenure);
       const changed = authorityOwner !== nextOwner || tenureChanged;
       if (!changed) return snapshot();
@@ -524,10 +527,18 @@ function createTrustedTransitionCore(options = {}) {
       authorityTenure = nextTenure;
       if (blocked || !bridge) {
         await refreshDocument();
+        // Reading can reconnect or transfer ownership. Use that final current
+        // client state before deciding whether this runtime may import.
+        const refreshedAuthority = authorityClient.snapshot();
+        authorityOwner = refreshedAuthority?.healthy === true && refreshedAuthority.disposition === 'OWNER';
+        authorityTenure = normalizeAuthorityTenure(refreshedAuthority);
         return resolveMigrationAndBridge();
       }
       if (acquired || ownerTenureChanged) {
         await refreshDocument();
+        const refreshedAuthority = authorityClient.snapshot();
+        authorityOwner = refreshedAuthority?.healthy === true && refreshedAuthority.disposition === 'OWNER';
+        authorityTenure = normalizeAuthorityTenure(refreshedAuthority);
         determineRecoveryMode(true);
       }
       await bridge.setOwner(authorityOwner, authorityTenure);

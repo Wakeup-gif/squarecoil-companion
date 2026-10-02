@@ -325,6 +325,7 @@ function renderHealth(result) {
     // migrationError is the controller's finite, sanitized projection; raw
     // lastError, retained sources, labels and history never reach this copy.
     `Migration error: ${safeDiagnosticToken(core.migrationError, 'none')}`,
+    `Core authority: ${core.initialized === true ? (core.authorityOwner === true ? 'OWNER' : 'OBSERVER') : 'uninitialized'}`,
     `Bridge: ${['FULL', 'VERIFICATION_FALLBACK', 'SERVER_FALLBACK', 'DOM_FALLBACK', 'UNAVAILABLE'].includes(core.bridge?.capability) ? core.bridge.capability : 'unavailable'}`
   ];
   setText('migrationDetails', migrationTechnicalDetails.join('\n'));

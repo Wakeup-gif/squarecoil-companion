@@ -396,3 +396,12 @@ Targeted gates: popup diagnostics, migration reason whitelist, controller integr
 Composed journey: failed migration -> sanitized settlement -> popup display/copy, then healthy refresh removes stale error.
 Exclusions: no Timer/Ledger/migration semantics, retained-source changes, native mutations, main merge or stable release.
 Proof: UT-B1-POPUP-MIG-001, UT-B2-MIG-034 and UT-B2-MIG-DIAG-001. State: MAPPED; installed/live-profile proof pending.
+
+## Active v0.7.6 authority reconciliation repair
+
+Intent: reproduce client OWNER/core REQUIRED disagreement from delayed health callbacks, then reconcile using current authority inside the serialized critical section.
+Impact tags: LIFECYCLE, AUTHORITY_FENCING, MIGRATION_STORAGE, SUPPORT_PRIVACY, PACKAGE_ARTIFACT, DOCS_ONLY.
+Contracts: L1 exact current settlement; L2 OWNER-only fenced atomic migration, no imported live state; preserved legacy bytes and totals.
+Targeted gates: trusted-core integration takeover/race/rollback, authority-client, full built content/background journey, then check:b6-candidate.
+Proof: IT-B2-MIG-SYNC-001/002/003 (delayed callbacks, strict failure retention, disconnected fencing and read-time ownership transfer); installed live-profile verification pending.
+No main merge, stable release, retained source writes or native clock mutations.

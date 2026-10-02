@@ -1088,3 +1088,158 @@ test('IT-B2-MIG-PAD-001 live-profile padded shape preserves totals and reaches f
     assert.deepEqual(sources, retained);
   } finally { await core.teardown(); await client.teardown(); }
 });
+
+test('IT-B2-MIG-SYNC-001 delayed OBSERVER callback uses current OWNER and migrates preserved history once', async () => {
+  const fixture = createFixture();
+  const page = { clockedOut: true, fetches: 0 };
+  const bridge = {};
+  const firstOwner = fixture.client(780, 'runtime-delayed-first-owner');
+  const client = fixture.client(781, 'runtime-delayed-migration');
+  await firstOwner.ensure();
+  const sources = migration073Sources();
+  const retained = structuredClone(sources);
+  let migrationCommands = 0;
+  const authority = { ...client, migrationCommand: (...args) => {
+    migrationCommands += 1; return client.migrationCommand(...args);
+  } };
+  const core = createTrustedTransitionCore({ authorityClient: authority,
+    legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+    randomId: ids('delayed-migration'), bridgeEnvironment: nativeBridgeEnvironment(fixture.clock, page),
+    createBridge: nativeBridgeFactory(bridge) });
+  try {
+    assert.equal((await core.ensure()).preflight.disposition, 'REQUIRED');
+    const staleObserver = client.snapshot();
+    await firstOwner.teardown();
+    fixture.clock.value += 60_001;
+    await client.heartbeat();
+    assert.equal(client.snapshot().disposition, 'OWNER');
+    await core.handleAuthoritySnapshot(staleObserver);
+    assert.equal(core.snapshot().authorityOwner, true);
+    assert.equal(core.snapshot().preflight.disposition, 'COMPLETE_MATCH');
+    assert.equal(core.snapshot().blocked, false);
+    assert073History(fixture.area.read().document);
+    await core.handleAuthoritySnapshot(staleObserver);
+    assert.equal(migrationCommands, 1);
+    page.clockedOut = false;
+    fixture.clock.value += 1_000;
+    await core.verifyNow('fresh-after-delayed-migration');
+    assert.equal(fixture.area.read().document.timer.active.contextId, 'job:260801');
+    fixture.clock.value += 2_000;
+    await core.verifyNow('accrue-after-delayed-migration');
+    assert.equal(fixture.area.read().document.ledger[0].durationMs, 3_600_000);
+    await core.prepareDisable();
+    assert.deepEqual(fixture.area.read().document.ledger.map(row => row.durationMs), [3_600_000, 2_000]);
+    assert.equal(fixture.area.read().document.ledger[1].contextId, 'job:260801');
+    assert.equal(bridge.value.snapshot().nativeMutationRequestCount, 0);
+    assert.deepEqual(sources, retained);
+  } finally { await core.teardown(); await client.teardown(); await firstOwner.teardown(); }
+});
+
+test('IT-B2-MIG-SYNC-002 stale unavailable health retains a real migration failure and stale OWNER cannot import', async () => {
+  const fixture = createFixture();
+  const client = fixture.client(782, 'runtime-delayed-failed-migration');
+  await client.ensure();
+  const before = fixture.area.read().document;
+  const current = orphanPauseJourney();
+  current.localPause = 'malformed-private-pause';
+  const sources = migration073Sources(current);
+  const retained = structuredClone(sources);
+  let migrationCommands = 0;
+  const authority = { ...client, migrationCommand: (...args) => {
+    migrationCommands += 1;
+    return client.migrationCommand(...args);
+  } };
+  const core = createTrustedTransitionCore({ authorityClient: authority,
+    legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+    randomId: ids('delayed-failed-migration'), createBridge: bridgeFactory({}) });
+  try {
+    const failed = await core.ensure();
+    assert.equal(failed.authorityOwner, true);
+    assert.equal(failed.preflight.disposition, 'FAILED');
+    assert.equal(failed.lastError, 'legacy-local-pause-invalid');
+    assert.equal(migrationCommands, 1);
+    const currentOwner = client.snapshot();
+
+    const unchanged = await core.handleAuthoritySnapshot({
+      ...currentOwner, healthy: false, disposition: 'UNAVAILABLE'
+    });
+    assert.equal(client.snapshot().disposition, 'OWNER');
+    assert.equal(unchanged.authorityOwner, true);
+    assert.deepEqual(unchanged.authorityTenure, failed.authorityTenure);
+    assert.equal(unchanged.preflight.disposition, 'FAILED');
+    assert.equal(unchanged.status, 'legacy-preflight-failed');
+    assert.equal(unchanged.lastError, 'legacy-local-pause-invalid');
+    assert.equal(unchanged.bridge, null);
+    assert.equal(migrationCommands, 1);
+    assert.deepEqual(fixture.area.read().document, before);
+    assert.deepEqual(sources, retained);
+
+    // A previously positive callback cannot revive a now disconnected client.
+    await client.teardown();
+    assert.equal(client.snapshot().disposition, 'UNAVAILABLE');
+    await assert.rejects(core.handleAuthoritySnapshot(currentOwner), /authority-teardown-requested/);
+    const disconnected = core.snapshot();
+    assert.equal(disconnected.authorityOwner, false);
+    assert.equal(disconnected.preflight.disposition, 'FAILED');
+    assert.equal(disconnected.lastError, 'legacy-local-pause-invalid');
+    assert.equal(disconnected.bridge, null);
+    assert.equal(migrationCommands, 1);
+    assert.deepEqual(fixture.area.read().document, before);
+    assert.deepEqual(sources, retained);
+  } finally { await core.teardown(); await client.teardown(); }
+});
+
+test('IT-B2-MIG-SYNC-003 migration uses current OWNER established during an unavailable-client read', async () => {
+  const fixture = createFixture();
+  const firstOwner = fixture.client(783, 'runtime-read-reconnect-first-owner');
+  const client = fixture.client(784, 'runtime-read-reconnect-migration');
+  await firstOwner.ensure();
+  const sources = migration073Sources();
+  const retained = structuredClone(sources);
+  let unavailableUntilRead = false;
+  let migrationCommands = 0;
+  const authority = {
+    ...client,
+    snapshot() {
+      const current = client.snapshot();
+      return unavailableUntilRead ? {
+        ...current, healthy: false, disposition: 'UNAVAILABLE',
+        coordinationEpoch: null, workerInstanceId: null
+      } : current;
+    },
+    async read() {
+      // Model the real client's read() reconnecting before it returns its
+      // authoritative document. All reads and migration still use the router.
+      unavailableUntilRead = false;
+      return client.read();
+    },
+    migrationCommand(...args) {
+      migrationCommands += 1;
+      return client.migrationCommand(...args);
+    }
+  };
+  const core = createTrustedTransitionCore({ authorityClient: authority,
+    legacyStorage: readonly073Storage(sources), now: () => fixture.clock.value,
+    randomId: ids('read-reconnect-migration'), createBridge: bridgeFactory({}) });
+  try {
+    assert.equal((await core.ensure()).preflight.disposition, 'REQUIRED');
+    assert.equal(migrationCommands, 0);
+    await firstOwner.teardown();
+    fixture.clock.value += 60_001;
+    await client.heartbeat();
+    assert.equal(client.snapshot().disposition, 'OWNER');
+    unavailableUntilRead = true;
+    const unavailable = authority.snapshot();
+    const result = await core.handleAuthoritySnapshot(unavailable);
+    assert.equal(result.authorityOwner, true);
+    assert.deepEqual(result.authorityTenure, {
+      coordinationEpoch: client.snapshot().coordinationEpoch,
+      workerInstanceId: client.snapshot().workerInstanceId
+    });
+    assert.equal(result.preflight.disposition, 'COMPLETE_MATCH');
+    assert.equal(result.blocked, false);
+    assert073History(fixture.area.read().document);
+    assert.equal(migrationCommands, 1);
+    assert.deepEqual(sources, retained);
+  } finally { await core.teardown(); await client.teardown(); await firstOwner.teardown(); }
+});
