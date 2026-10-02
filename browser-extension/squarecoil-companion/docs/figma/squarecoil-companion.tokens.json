@@ -1,0 +1,118 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "SquareCoil Companion UI tokens aligned with src/ui/workspace-ui.js.",
+  "$extensions": {
+    "com.squarecoil.companion": {
+      "source": "src/ui/workspace-ui.js",
+      "runtimeWallpaper": "Dark Glass and Light Glass use the runtime Bing provider or the built-in gradient fallback. Do not package generated or static wallpaper art.",
+      "figmaImport": "Import as variables and styles, then build the frames in COMPONENT-STATE-MATRIX.md."
+    }
+  },
+  "color": {
+    "$description": "Companion semantic colors.",
+    "light": {
+      "background": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.960784, 0.972549, 0.984314], "hex": "#f5f8fb" } },
+      "panel": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [1, 1, 1], "hex": "#ffffff" } },
+      "panelSecondary": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.929412, 0.952941, 0.968627], "hex": "#edf3f7" } },
+      "text": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.090196, 0.129412, 0.172549], "hex": "#17212c" } },
+      "muted": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.396078, 0.443137, 0.490196], "hex": "#65717d" } },
+      "border": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.823529, 0.858824, 0.894118], "hex": "#d2dbe4" } },
+      "accent": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.203922, 0.498039, 0.741176], "hex": "#347fbd" } },
+      "accentSoft": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.898039, 0.945098, 0.980392], "hex": "#e5f1fa" } },
+      "positive": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.14902, 0.45098, 0.301961], "hex": "#26734d" } },
+      "positiveSoft": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.894118, 0.952941, 0.921569], "hex": "#e4f3eb" } },
+      "warning": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.545098, 0.352941, 0.070588], "hex": "#8b5a12" } },
+      "warningSoft": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [1, 0.945098, 0.843137], "hex": "#fff1d7" } },
+      "danger": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.631373, 0.227451, 0.227451], "hex": "#a13a3a" } },
+      "dangerSoft": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.980392, 0.901961, 0.901961], "hex": "#fae6e6" } }
+    },
+    "dark": {
+      "background": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.054902, 0.082353, 0.109804], "hex": "#0e151c" } },
+      "panel": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.082353, 0.117647, 0.152941], "hex": "#151e27" } },
+      "panelSecondary": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.109804, 0.160784, 0.203922], "hex": "#1c2934" } },
+      "text": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.933333, 0.960784, 0.984314], "hex": "#eef5fb" } },
+      "muted": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.603922, 0.662745, 0.713725], "hex": "#9aa9b6" } },
+      "border": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.752941, 0.866667, 0.956863], "alpha": 0.14, "hex": "#c0ddf4" } },
+      "accent": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.380392, 0.682353, 0.968627], "hex": "#61aef7" } },
+      "accentSoft": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.090196, 0.203922, 0.294118], "hex": "#17344b" } },
+      "positive": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.482353, 0.811765, 0.639216], "hex": "#7bcfa3" } },
+      "positiveSoft": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.086275, 0.215686, 0.160784], "hex": "#163729" } },
+      "warning": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.929412, 0.745098, 0.435294], "hex": "#edbe6f" } },
+      "warningSoft": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.231373, 0.184314, 0.105882], "hex": "#3b2f1b" } },
+      "danger": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.941176, 0.615686, 0.615686], "hex": "#f09d9d" } },
+      "dangerSoft": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.266667, 0.137255, 0.137255], "hex": "#442323" } }
+    },
+    "threshold": {
+      "yellow": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.85098, 0.647059, 0.121569], "hex": "#d9a51f" } },
+      "orange": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.85098, 0.470588, 0.12549], "hex": "#d97820" } },
+      "redLight": { "$value": "{color.light.danger}" },
+      "redDark": { "$value": "{color.dark.danger}" }
+    },
+    "archiveVeil": {
+      "eligible": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.2, 0.227451, 0.258824], "alpha": 0.32, "hex": "#333a42" } },
+      "blocked": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.298039, 0.266667, 0.215686], "alpha": 0.22, "hex": "#4c4437" } }
+    }
+  },
+  "size": {
+    "companionWidth": { "$type": "dimension", "$value": { "value": 460, "unit": "px" } },
+    "companionCollapsedNoTabsWidth": { "$type": "dimension", "$value": { "value": 292, "unit": "px" } },
+    "tabStripHeight": { "$type": "dimension", "$value": { "value": 43, "unit": "px" } },
+    "tabHeight": { "$type": "dimension", "$value": { "value": 40, "unit": "px" } },
+    "tabWidth": { "$type": "dimension", "$value": { "value": 116, "unit": "px" } },
+    "tabMinWidth": { "$type": "dimension", "$value": { "value": 82, "unit": "px" } },
+    "tabMaxWidth": { "$type": "dimension", "$value": { "value": 132, "unit": "px" } },
+    "desktopEdge": { "$type": "dimension", "$value": { "value": 20, "unit": "px" } },
+    "mobileEdge": { "$type": "dimension", "$value": { "value": 8, "unit": "px" } },
+    "archiveDesktopReserve": { "$type": "dimension", "$value": { "value": 520, "unit": "px" } },
+    "archiveNarrowBreakpoint": { "$type": "dimension", "$value": { "value": 760, "unit": "px" } }
+  },
+  "radius": {
+    "shell": { "$type": "dimension", "$value": { "value": 15, "unit": "px" } },
+    "tab": { "$type": "dimension", "$value": { "value": 12, "unit": "px" } },
+    "card": { "$type": "dimension", "$value": { "value": 11, "unit": "px" } },
+    "control": { "$type": "dimension", "$value": { "value": 8, "unit": "px" } }
+  },
+  "space": {
+    "2xs": { "$type": "dimension", "$value": { "value": 3, "unit": "px" } },
+    "xs": { "$type": "dimension", "$value": { "value": 6, "unit": "px" } },
+    "sm": { "$type": "dimension", "$value": { "value": 9, "unit": "px" } },
+    "md": { "$type": "dimension", "$value": { "value": 12, "unit": "px" } },
+    "lg": { "$type": "dimension", "$value": { "value": 16, "unit": "px" } },
+    "xl": { "$type": "dimension", "$value": { "value": 20, "unit": "px" } }
+  },
+  "effect": {
+    "glassBackgroundMix": { "$type": "number", "$value": 0.84 },
+    "glassBlur": { "$type": "dimension", "$value": { "value": 18, "unit": "px" } },
+    "glassSaturation": { "$type": "number", "$value": 1.2 },
+    "shellShadowLight": {
+      "$type": "shadow",
+      "$value": [
+        { "color": { "colorSpace": "srgb", "components": [0.066667, 0.117647, 0.164706], "alpha": 0.24, "hex": "#111e2a" }, "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 22, "unit": "px" }, "blur": { "value": 60, "unit": "px" }, "spread": { "value": 0, "unit": "px" } },
+        { "color": { "colorSpace": "srgb", "components": [0.066667, 0.117647, 0.164706], "alpha": 0.12, "hex": "#111e2a" }, "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 3, "unit": "px" }, "blur": { "value": 14, "unit": "px" }, "spread": { "value": 0, "unit": "px" } }
+      ]
+    },
+    "shellShadowDark": {
+      "$type": "shadow",
+      "$value": [
+        { "color": { "colorSpace": "srgb", "components": [0, 0, 0], "alpha": 0.52, "hex": "#000000" }, "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 24, "unit": "px" }, "blur": { "value": 64, "unit": "px" }, "spread": { "value": 0, "unit": "px" } },
+        { "color": { "colorSpace": "srgb", "components": [0, 0, 0], "alpha": 0.34, "hex": "#000000" }, "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 3, "unit": "px" }, "blur": { "value": 14, "unit": "px" }, "spread": { "value": 0, "unit": "px" } }
+      ]
+    },
+    "tabShadow": {
+      "$type": "shadow",
+      "$value": { "color": { "colorSpace": "srgb", "components": [0.066667, 0.117647, 0.164706], "alpha": 0.08, "hex": "#111e2a" }, "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": -2, "unit": "px" }, "blur": { "value": 9, "unit": "px" }, "spread": { "value": 0, "unit": "px" } }
+    },
+    "selectedTabShadow": {
+      "$type": "shadow",
+      "$value": { "color": { "colorSpace": "srgb", "components": [0.066667, 0.117647, 0.164706], "alpha": 0.13, "hex": "#111e2a" }, "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": -5, "unit": "px" }, "blur": { "value": 16, "unit": "px" }, "spread": { "value": 0, "unit": "px" } }
+    }
+  },
+  "motion": {
+    "quick": { "$type": "duration", "$value": { "value": 140, "unit": "ms" } },
+    "wallpaperCrossfade": { "$type": "duration", "$value": { "value": 1200, "unit": "ms" } },
+    "wallpaperDrift": { "$type": "duration", "$value": { "value": 42000, "unit": "ms" } }
+  },
+  "font": {
+    "productFamily": { "$type": "fontFamily", "$value": ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"] }
+  }
+}

@@ -8,62 +8,109 @@
 </head>
 <body>
   <main>
-    <header>
-      <div class="mark">US</div>
-      <div>
+    <header class="topbar">
+      <div class="brand-copy">
         <h1>SquareCoil Companion</h1>
-        <p>Edge + Chrome job workspace</p>
+        <p id="stage">Your work at a glance</p>
       </div>
+      <button id="refresh" class="icon-button" type="button" aria-label="Refresh status">↻</button>
     </header>
 
-    <section>
-      <h2>Job Timer Appearance</h2>
-      <div class="modes" role="radiogroup" aria-label="Job Timer Appearance">
-        <button type="button" class="mode" data-theme="light" role="radio" aria-checked="false">
-          <span class="swatch light"></span>
-          <span><b>Light</b><small>Bright timer widget</small></span>
-        </button>
-        <button type="button" class="mode" data-theme="dark" role="radio" aria-checked="false">
-          <span class="swatch dark"></span>
-          <span><b>Dark</b><small>Sleek timer widget</small></span>
-        </button>
-        <button type="button" class="mode" data-theme="auto" role="radio" aria-checked="false">
-          <span class="swatch auto"></span>
-          <span><b>Auto</b><small>Follow system</small></span>
-        </button>
+    <section class="status-card" aria-live="polite">
+      <span id="statusIcon" class="status-icon" aria-hidden="true">↻</span>
+      <div>
+        <strong id="friendlyStatus">Working</strong>
+        <p id="friendlyMessage">Companion is connecting to this page.</p>
       </div>
     </section>
 
-    <section>
-      <h2>Panel Finish</h2>
-      <div class="modes" role="radiogroup" aria-label="Job Timer Panel Finish">
-        <button type="button" class="mode" data-surface="solid" role="radio" aria-checked="false">
-          <span class="swatch solid"></span>
-          <span><b>Solid</b><small>Maximum clarity and contrast</small></span>
-        </button>
-        <button type="button" class="mode" data-surface="glass" role="radio" aria-checked="false">
-          <span class="swatch glass"></span>
-          <span><b>Glass / Blur</b><small>Frosted translucent timer shell</small></span>
-        </button>
+    <details class="appearance-card" open>
+      <summary>Appearance</summary>
+      <div class="appearance-body">
+        <label class="field-label" for="websiteTheme">SquareCoil theme</label>
+        <select id="websiteTheme" disabled>
+          <option value="ORIGINAL">SquareCoil original</option>
+          <option value="SLEEK_DARK">Dark Glass</option>
+          <option value="LIGHT_GLASS">Light Glass</option>
+          <option value="REFINED_LIGHT">Refined Light</option>
+        </select>
+        <div class="setting-row photo-row">
+          <div>
+            <label class="setting-label" for="bingPhoto">Bing photo background</label>
+            <small>Show a photo behind a Glass theme.</small>
+          </div>
+          <label class="switch">
+            <input id="bingPhoto" type="checkbox" disabled>
+            <span aria-hidden="true"></span>
+          </label>
+        </div>
+        <p id="appearanceMessage" class="setting-note" role="status">Open a SquareCoil page to change its look.</p>
+        <p class="permission-card"><span id="wallpaperPermission" class="permission-result" aria-live="polite">Checking photo availability…</span></p>
+      </div>
+    </details>
+
+    <section class="control-row">
+      <div>
+        <label class="setting-label" for="panelVisible">Show Companion panel</label>
+        <small>Hide the on-page panel without stopping recorded time.</small>
+      </div>
+      <label class="switch">
+        <input id="panelVisible" type="checkbox" checked>
+        <span aria-hidden="true"></span>
+      </label>
+    </section>
+    <p id="panelMessage" class="inline-message" role="status" hidden></p>
+
+    <section id="summaryCard" class="work-card" hidden>
+      <div class="work-heading">
+        <span class="eyebrow">Current work</span>
+        <span id="summaryState" class="work-state">Working</span>
+      </div>
+      <strong id="summaryLabel">Production (General)</strong>
+      <div class="metrics">
+        <div><span>Today</span><b id="summaryToday">00:00:00</b></div>
+        <div><span>Current session</span><b id="summarySession">00:00:00</b></div>
       </div>
     </section>
 
-    <section class="updates">
-      <h2>Extension</h2>
-      <div class="version-card">
-        <div class="version-row"><span>Installed</span><b id="installedVersion">v0.7.0</b></div>
-        <div class="version-row"><span>Latest published</span><b id="latestVersion">Checking…</b></div>
-        <p id="updateMessage">Checking update channel…</p>
-        <p id="releaseNotes" class="release-notes" hidden></p>
-        <button type="button" id="checkUpdate" class="check-update">Check for update</button>
-      </div>
+    <section id="emptySummary" class="empty-card">
+      <strong>No job in progress</strong>
+      <p id="emptySummaryText">Open a SquareCoil page to see current work.</p>
     </section>
 
-    <footer>
-      <span class="dot"></span>
-      <span id="status">Ready</span>
-    </footer>
+    <details class="advanced-card">
+      <summary>More controls</summary>
+      <div class="control-row">
+        <div>
+          <label class="setting-label" for="enabled">Companion active</label>
+          <small>Turning this off stops local tracking, themes, and the on-page panel.</small>
+        </div>
+        <label class="switch">
+          <input id="enabled" type="checkbox" checked>
+          <span aria-hidden="true"></span>
+        </label>
+      </div>
+    </details>
+
+    <details class="technical-card">
+      <summary>Technical details</summary>
+      <p>Ready appears only after every required safety check passes.</p>
+      <p>Version <span id="version">v0.7.1</span></p>
+      <dl>
+        <div><dt>Probe</dt><dd id="classification">Checking…</dd></div>
+        <div><dt>Lifecycle</dt><dd id="lifecycle">Checking…</dd></div>
+        <div><dt>Reason</dt><dd id="reason">—</dd></div>
+        <div><dt>Runtime</dt><dd><code id="runtimeId">—</code></dd></div>
+      </dl>
+      <button id="copyDiagnostics" type="button">Copy diagnostics</button>
+      <span id="copyResult" class="copy-result" aria-live="polite"></span>
+      <p class="diagnostic-note">Recent app events stay on this device. Entries older than 30 days are removed when Companion next runs or you download the log; Chrome cannot remove them while closed. The saved log excludes job names, customer data, page content, and sign-in details. It is never sent automatically.</p>
+      <button id="downloadDiagnosticLog" type="button">Download diagnostic log</button>
+      <span id="diagnosticDownloadResult" class="copy-result" role="status" aria-live="polite"></span>
+      <button id="retryCleanup" type="button" hidden>Retry cleanup</button>
+      <button id="startFresh" type="button" hidden>Start fresh</button>
+    </details>
   </main>
-  <script src="popup.js"></script>
+  <script src="../dist/popup.js"></script>
 </body>
 </html>

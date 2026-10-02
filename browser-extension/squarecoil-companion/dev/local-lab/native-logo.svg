@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 40" role="img" aria-label="SquareCoil Lab">
+  <rect width="144" height="40" rx="8" fill="#1677c8"/>
+  <rect x="4" y="4" width="32" height="32" rx="7" fill="#e8f5ff"/>
+  <text x="20" y="25" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#075894">SC</text>
+  <text x="43" y="17" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#fff">SQUARECOIL</text>
+  <text x="43" y="29" font-family="Arial,sans-serif" font-size="8" fill="#d9effa">LOCAL LAB</text>
+</svg>

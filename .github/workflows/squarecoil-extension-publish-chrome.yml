@@ -1,0 +1,117 @@
+name: SquareCoil Companion Chrome Web Store Update
+
+on:
+  push:
+    branches:
+      - release/squarecoil-companion
+    paths:
+      - 'browser-extension/squarecoil-companion/**'
+      - '.github/workflows/squarecoil-extension-publish-chrome.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: squarecoil-companion-chrome-web-store
+  cancel-in-progress: false
+
+jobs:
+  publish-chrome:
+    if: github.event.created == false && github.event.deleted == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Require a clean, newer, internally consistent release version
+        env:
+          RELEASE_BASE_SHA: ${{ github.event.before }}
+          CWS_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=all)"
+          if ! git merge-base --is-ancestor "$RELEASE_BASE_SHA" "$GITHUB_SHA"; then
+            echo "Release branch history must advance from its previous tip; a new or force-replaced branch cannot submit a Store update." >&2
+            exit 1
+          fi
+          node browser-extension/squarecoil-companion/scripts/check-store-release.js --base-sha "$RELEASE_BASE_SHA"
+
+      - name: Test release version safeguards
+        run: node --test browser-extension/squarecoil-companion/tests/b6-store-release.test.js
+
+      - name: Run the full extension release-candidate gate
+        run: npm --prefix browser-extension/squarecoil-companion run check:b6-candidate
+
+      - name: Build and validate the exact store ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="browser-extension/squarecoil-companion"
+          PACKAGE_ROOT="$RUNNER_TEMP/squarecoil-store-package"
+          ROUND_TRIP="$RUNNER_TEMP/squarecoil-store-round-trip"
+          ZIP="$RUNNER_TEMP/squarecoil-companion-store.zip"
+          mkdir -p "$PACKAGE_ROOT" "$ROUND_TRIP"
+          node "$ROOT/scripts/package-inventory.js" --copy-to "$PACKAGE_ROOT"
+          node "$ROOT/scripts/validate-package.js" "$PACKAGE_ROOT" --expected-source-sha "$GITHUB_SHA" --evidence "$RUNNER_TEMP/squarecoil-store-package-evidence.json"
+          (cd "$PACKAGE_ROOT" && zip -X -r "$ZIP" . >/dev/null)
+          unzip -q "$ZIP" -d "$ROUND_TRIP"
+          node "$ROOT/scripts/validate-package.js" "$ROUND_TRIP" --expected-source-sha "$GITHUB_SHA"
+          sha256sum "$ZIP" | tee "$RUNNER_TEMP/squarecoil-store-package-sha256.txt"
+
+      - name: Retain the validated store package for audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: squarecoil-companion-chrome-store-candidate
+          path: |
+            ${{ runner.temp }}/squarecoil-companion-store.zip
+            ${{ runner.temp }}/squarecoil-store-package-evidence.json
+            ${{ runner.temp }}/squarecoil-store-package-sha256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Refuse to publish a stale release-branch commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/release/squarecoil-companion" --jq '.object.sha')
+          test -n "$CURRENT"
+          test "$CURRENT" = "$GITHUB_SHA"
+
+      - name: Require configured Chrome Web Store identity and credentials
+        env:
+          CWS_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in CWS_EXTENSION_ID CWS_PUBLISHER_ID CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN; do
+            if test -z "${!name:-}"; then
+              echo "Missing $name. Complete browser-extension/squarecoil-companion/docs/AUTO-UPDATE-DELIVERY.md before publishing." >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload and submit update to Chrome Web Store
+        uses: wdzeng/chrome-extension@37f4f9cdc664959bafef36b1f4da03dec5141620 # v2
+        with:
+          extension-id: ${{ vars.CWS_EXTENSION_ID }}
+          zip-path: ${{ runner.temp }}/squarecoil-companion-store.zip
+          publisher-id: ${{ vars.CWS_PUBLISHER_ID }}
+          client-id: ${{ secrets.CWS_CLIENT_ID }}
+          client-secret: ${{ secrets.CWS_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CWS_REFRESH_TOKEN }}
+          action: publish

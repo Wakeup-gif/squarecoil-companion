@@ -1,7 +1,11 @@
-name: SquareCoil Companion Validate
+name: SquareCoil Companion Rebuild Validate
 
 on:
   push:
+    paths:
+      - 'browser-extension/squarecoil-companion/**'
+      - '.github/workflows/squarecoil-extension-validate.yml'
+  pull_request:
     paths:
       - 'browser-extension/squarecoil-companion/**'
       - '.github/workflows/squarecoil-extension-validate.yml'
@@ -11,13 +15,36 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  validate-b6-candidate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Theme ports are regenerated from exact commits on the accepted
+          # theme-source branch. A shallow single-branch checkout cannot prove
+          # that provenance and makes the freshness check fail in CI.
+          fetch-depth: 0
 
-      - name: Validate JavaScript syntax
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build, test, and validate the B6 release candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=all)"
+          npm --prefix browser-extension/squarecoil-companion run check:b6-candidate
+
+      - name: Validate the installed-browser harness source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check browser-extension/squarecoil-companion/tests/b1-browser/run.js
+
+      - name: Validate generated JavaScript syntax
         shell: bash
         run: |
           set -euo pipefail
@@ -25,79 +52,66 @@ jobs:
           while IFS= read -r -d '' file; do
             echo "Checking $file"
             node --check "$file"
-          done < <(find "$ROOT" -type f -name '*.js' -print0)
+          done < <(find "$ROOT/dist" -type f -name '*.js' -print0)
 
-      - name: Validate manifest, release metadata, and referenced files
-        shell: bash
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          const fs = require('fs');
-          const path = require('path');
-          const root = path.resolve('browser-extension/squarecoil-companion');
-          const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
-          const release = JSON.parse(fs.readFileSync(path.join(root, 'release.json'), 'utf8'));
-          if (manifest.manifest_version !== 3) throw new Error('manifest_version must be 3');
-          if (manifest.version !== release.latestVersion) {
-            throw new Error(`manifest version ${manifest.version} does not match release ${release.latestVersion}`);
-          }
-          const required = new Set();
-          if (manifest.background?.service_worker) required.add(manifest.background.service_worker);
-          if (manifest.action?.default_popup) required.add(manifest.action.default_popup);
-          for (const script of manifest.content_scripts || []) {
-            for (const file of script.js || []) required.add(file);
-            for (const file of script.css || []) required.add(file);
-          }
-          for (const file of required) {
-            const full = path.join(root, file);
-            if (!fs.existsSync(full)) throw new Error(`Manifest references missing file: ${file}`);
-          }
-          for (const file of [
-            'page/timer-runtime.js',
-            'page/timer-controls.js',
-            'page/timer-workspace.js',
-            'page/timer-surface.js',
-            'styles/site-theme-v070.css',
-            'HANDOFF.md'
-          ]) {
-            if (!fs.existsSync(path.join(root, file))) throw new Error(`Required release file missing: ${file}`);
-          }
-          console.log(`Validated SquareCoil Companion v${manifest.version}`);
-          console.log(`Manifest references ${required.size} packaged files.`);
-          NODE
-
-      - name: Build Edge and Chrome packages
+      - name: Build and validate byte-identical Chrome and Edge packages
         shell: bash
         run: |
           set -euo pipefail
           ROOT="browser-extension/squarecoil-companion"
           VERSION=$(node -p "require('./${ROOT}/manifest.json').version")
-          build_package() {
-            LABEL="$1"
-            OUT="$GITHUB_WORKSPACE/SquareCoil-Companion-v${VERSION}-${LABEL}.zip"
-            (cd "$ROOT" && zip -r "$OUT" . -x '*.DS_Store' >/dev/null)
-            echo "Built $OUT"
-            unzip -l "$OUT" | grep -q 'manifest.json'
-            unzip -l "$OUT" | grep -q 'background.js'
-            unzip -l "$OUT" | grep -q 'page/timer-workspace.js'
-            unzip -l "$OUT" | grep -q 'page/timer-surface.js'
-            unzip -l "$OUT" | grep -q 'styles/site-theme-v070.css'
-          }
-          build_package EDGE
-          build_package CHROME
+          PACKAGE_ROOT="$RUNNER_TEMP/squarecoil-package"
+          EVIDENCE_ROOT="$RUNNER_TEMP/squarecoil-evidence"
+          rm -rf "$PACKAGE_ROOT" "$EVIDENCE_ROOT"
+          mkdir -p "$PACKAGE_ROOT"
+          mkdir -p "$EVIDENCE_ROOT"
+          node "$ROOT/scripts/package-inventory.js" --copy-to "$PACKAGE_ROOT"
 
-      - name: Upload Edge package
+          node "$ROOT/scripts/validate-package.js" "$PACKAGE_ROOT" --expected-source-sha "$GITHUB_SHA" --evidence "$EVIDENCE_ROOT/package-root.json"
+          CANONICAL="$RUNNER_TEMP/SquareCoil-Companion-v${VERSION}-B6-RELEASE-CANDIDATE.zip"
+          (cd "$PACKAGE_ROOT" && zip -X -r "$CANONICAL" . >/dev/null)
+          CHROME_OUT="$GITHUB_WORKSPACE/SquareCoil-Companion-v${VERSION}-B6-RELEASE-CANDIDATE-CHROME.zip"
+          EDGE_OUT="$GITHUB_WORKSPACE/SquareCoil-Companion-v${VERSION}-B6-RELEASE-CANDIDATE-EDGE.zip"
+          cp "$CANONICAL" "$CHROME_OUT"
+          cp "$CANONICAL" "$EDGE_OUT"
+          cmp --silent "$CHROME_OUT" "$EDGE_OUT"
+
+          for label in CHROME EDGE; do
+            archive="$GITHUB_WORKSPACE/SquareCoil-Companion-v${VERSION}-B6-RELEASE-CANDIDATE-${label}.zip"
+            extracted="$RUNNER_TEMP/squarecoil-${label,,}"
+            rm -rf "$extracted"
+            mkdir -p "$extracted"
+            unzip -q "$archive" -d "$extracted"
+            node "$ROOT/scripts/validate-package.js" "$extracted" --expected-source-sha "$GITHUB_SHA" --evidence "$EVIDENCE_ROOT/${label,,}.json"
+          done
+          CHROME_SHA=$(sha256sum "$CHROME_OUT" | awk '{print $1}')
+          EDGE_SHA=$(sha256sum "$EDGE_OUT" | awk '{print $1}')
+          test "$CHROME_SHA" = "$EDGE_SHA"
+          {
+            printf '%s  %s\n' "$CHROME_SHA" "$(basename "$CHROME_OUT")"
+            printf '%s  %s\n' "$EDGE_SHA" "$(basename "$EDGE_OUT")"
+          } | tee "$EVIDENCE_ROOT/archive-sha256.txt"
+
+      - name: Upload Chrome B6 release-candidate package
         uses: actions/upload-artifact@v4
         with:
-          name: squarecoil-companion-edge
-          path: SquareCoil-Companion-v*-EDGE.zip
+          name: squarecoil-companion-b6-release-candidate-chrome
+          path: SquareCoil-Companion-v*-B6-RELEASE-CANDIDATE-CHROME.zip
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload Chrome package
+      - name: Upload Edge B6 release-candidate package
         uses: actions/upload-artifact@v4
         with:
-          name: squarecoil-companion-chrome
-          path: SquareCoil-Companion-v*-CHROME.zip
+          name: squarecoil-companion-b6-release-candidate-edge
+          path: SquareCoil-Companion-v*-B6-RELEASE-CANDIDATE-EDGE.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload B6 release-candidate package evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: squarecoil-companion-b6-release-candidate-package-evidence
+          path: ${{ runner.temp }}/squarecoil-evidence/*
           if-no-files-found: error
           retention-days: 30

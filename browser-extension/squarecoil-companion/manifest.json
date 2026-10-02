@@ -2,27 +2,43 @@
   "manifest_version": 3,
   "name": "US Sign SquareCoil Companion",
   "version": "0.7.1",
-  "version_name": "0.7.1 Chrome Interaction Recovery",
-  "description": "SquareCoil Job Timer companion for Edge and Chrome with stale-root recovery, stable interaction controls, Solid/Glass timer finishes, website themes, dark-theme logo, CSV backup/restore, and versioned update support.",
-  "permissions": ["storage", "scripting"],
+  "version_name": "0.7.1 Companion Workspace",
+  "description": "A local SquareCoil companion for time context, themes, dashboard summaries, settings, and privacy-safe diagnostics.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": ["storage", "scripting", "webRequest"],
   "host_permissions": [
     "https://ussignandmill.squarecoil.net/*",
-    "https://raw.githubusercontent.com/Wakeup-gif/test_repo/*",
-    "https://i.imgur.com/*"
+    "https://www.bing.com/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "dist/background.js"
   },
   "action": {
     "default_title": "SquareCoil Companion",
-    "default_popup": "popup/popup.html"
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
   },
   "content_scripts": [
     {
       "matches": ["https://ussignandmill.squarecoil.net/*"],
-      "css": ["styles/site-theme.css", "styles/site-theme-v070.css"],
-      "js": ["content/theme-controller.js"],
-      "run_at": "document_start"
+      "js": ["dist/presentation-bootstrap.js", "dist/content-controller.js"],
+      "run_at": "document_start",
+      "all_frames": false,
+      "match_about_blank": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/themes/dark-glass.css", "dist/themes/light-glass.css"],
+      "matches": ["https://ussignandmill.squarecoil.net/*"]
     }
   ]
 }

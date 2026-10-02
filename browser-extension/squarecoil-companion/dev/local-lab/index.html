@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SquareCoil Companion Lab</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/__companion_lab__/lab.css">
+</head>
+<body>
+  <div id="lab-safety-banner" role="status">
+    <strong>LOCAL SIMULATOR</strong>
+    <span>No live SquareCoil data or account access</span>
+    <span class="lab-firewall">SquareCoil traffic blocked</span>
+  </div>
+
+  <header id="navbar" class="navbar">
+    <div class="navbar-branding">
+      <button id="toggle_sidemenu_l" type="button" aria-label="Collapse left navigation" aria-expanded="true"><span aria-hidden="true">☰</span></button>
+      <a class="navbar-brand lab-brand" href="/__companion_lab__/index.html" aria-label="SquareCoil Lab home">
+        <img src="/__companion_lab__/native-logo.svg" alt="SquareCoil Lab">
+        <span><strong>SquareCoil</strong><small>Companion Lab</small></span>
+      </a>
+    </div>
+    <label class="lab-search"><span>Search fake jobs</span><input id="job-search" type="search" placeholder="Job number or name"></label>
+    <div class="timeclock-container" aria-label="Simulated SquareCoil clock">
+      <span id="clockin-debug"></span>
+      <span id="clockin-remaining-time"></span>
+      <button id="clockin" type="button" data-lab-focus="jobs">Choose a fake job</button>
+      <button id="leave-context" type="button" data-native-action="4">Leave job</button>
+      <button id="clockout" type="button" data-native-action="2">Clock out</button>
+      <div class="clock-actions"></div>
+    </div>
+    <div class="lab-user"><span>Demo User</span><small>Isolated profile</small></div>
+  </header>
+
+  <aside id="sidebar_left" class="lab-sidebar" aria-label="Fake SquareCoil navigation">
+    <p class="lab-nav-label">Menu</p>
+    <nav>
+      <a data-route="home" href="/__companion_lab__/index.html"><span>⌂</span>Lab Home</a>
+      <a data-route="dashboard" href="/dashboard.php?show=2"><span>◫</span>Dashboard</a>
+      <a data-route="project" href="/project.php?id=910001"><span>▣</span>Project</a>
+      <a data-route="design" href="/project_designs.php"><span>✎</span>Designs</a>
+      <a data-route="leads" href="/leads.php"><span>◎</span>Leads</a>
+      <a data-route="calendar" href="/calendar.php"><span>▦</span>Calendar</a>
+    </nav>
+    <div class="lab-sidebar-note panel">
+      <strong>Safe test space</strong>
+      <span>Every job and customer shown here is fictional.</span>
+    </div>
+    <div class="sidebar-toggle-mini"><button type="button" aria-label="Expand left navigation">›</button></div>
+  </aside>
+
+  <div id="content_wrapper">
+    <div id="topbar" class="lab-topbar">
+      <div><span class="lab-eyebrow">COMPANION TEST WEBSITE</span><h1 id="route-title">Job activity lab</h1></div>
+      <div class="lab-state-chip"><span id="state-dot"></span><span id="state-label">Loading fake state…</span></div>
+    </div>
+
+    <main id="content">
+      <section class="lab-hero panel heading-border panel-primary">
+        <div>
+          <span class="lab-kicker">See the extension work end to end</span>
+          <h2>Clock into fictional jobs, then inspect Companion.</h2>
+          <p>The buttons below send realistic SquareCoil clock requests into the sealed simulator. The installed Companion observes them normally and records local sessions without contacting SquareCoil.</p>
+        </div>
+        <div class="lab-hero-actions">
+          <button type="button" class="lab-primary" data-lab-action="tour">Run guided job tour</button>
+          <button type="button" class="lab-secondary" data-lab-action="open-companion">Show Companion</button>
+        </div>
+      </section>
+
+      <section class="lab-metrics" aria-label="Simulated activity summary">
+        <article class="panel"><span>Fake jobs</span><strong id="metric-jobs">4</strong><small>Available to test</small></article>
+        <article class="panel"><span>Current state</span><strong id="metric-state">Clocked out</strong><small id="metric-detail">No job selected</small></article>
+        <article class="panel"><span>Observed actions</span><strong id="metric-actions">0</strong><small>This browser session</small></article>
+      </section>
+
+      <section id="jobs" class="lab-section panel">
+        <div class="lab-section-heading">
+          <div><span class="lab-eyebrow">FICTIONAL WORK</span><h2>Test jobs</h2></div>
+          <p>Clock in directly or switch while another job is running.</p>
+        </div>
+        <div id="job-grid" class="lab-job-grid" aria-live="polite"></div>
+      </section>
+
+      <div class="lab-columns">
+        <section class="lab-section lab-project-preview panel">
+          <div class="lab-section-heading"><div><span class="lab-eyebrow">THEME COVERAGE</span><h2>Project preview</h2></div></div>
+          <article id="projectbox" class="panel">
+            <header class="panel-heading"><span>Current design</span><span class="lab-status">In progress</span></header>
+            <div id="customer-name" class="panel-body"><strong>Northstar Museum Wayfinding</strong><small>Fictional customer</small></div>
+            <div id="customer-info" class="panel-footer"><span class="panel">910001-01</span><span class="panel">Presentation</span><span class="panel">Due Sep 18</span></div>
+          </article>
+          <article id="descriptionbox" class="panel">
+            <header class="panel-heading">Description</header>
+            <p class="panel-body">Develop a complete interior wayfinding package for a fictional museum expansion. This varied content makes Glass, contrast, wallpaper, and removal-overlay problems easy to spot.<br>Design files: C:\Lab Jobs\910001\Design<br><a href="https://ussignandmill.squarecoil.net/__companion_lab__/index.html?reference=check-set">Check Set</a></p>
+          </article>
+          <div class="lab-project-notes panel">
+            <label for="lab-important-notes">Important Details</label>
+            <textarea id="lab-important-notes" class="important-notes" rows="3" readonly>Project folder: \\lab-files\jobs\910001
+Survey: https://ussignandmill.squarecoil.net/__companion_lab__/index.html?reference=survey</textarea>
+          </div>
+          <article id="filesbox" class="panel"><header class="panel-heading">Files</header><div class="lab-file panel-body"><span>◇</span><span>910001-concept-set.pdf</span><small>Demo only</small></div></article>
+        </section>
+
+        <section class="lab-section lab-event-panel panel">
+          <div class="lab-section-heading"><div><span class="lab-eyebrow">SIMULATOR ONLY</span><h2>Native action log</h2></div><button type="button" class="lab-text-button" data-lab-action="clear-log">Clear view</button></div>
+          <ol id="event-log" class="lab-event-log"><li class="lab-empty">No fake clock actions yet.</li></ol>
+          <div class="lab-clock-controls">
+            <button type="button" data-native-action="4">Leave current job</button>
+            <button type="button" data-native-action="2">Full clock out</button>
+          </div>
+          <p class="lab-help">Action 4 leaves the current job but keeps the fictional company clock active. Action 2 fully clocks out. Neither button can reach your real account.</p>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="lab-toast" role="status" aria-live="polite"></div>
+  <script src="/__companion_lab__/lab.js"></script>
+</body>
+</html>

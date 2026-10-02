@@ -14,4 +14,4 @@ The active extension source is [browser-extension/squarecoil-companion](browser-
 - `restore-points/` — historical rollback notes
 - `docs/` — repository audit and planning notes
 
-The recommended GitHub repository name is `squarecoil-companion`; the GitHub repository is still named `test_repo`.
+The GitHub repository is [Wakeup-gif/squarecoil-companion](https://github.com/Wakeup-gif/squarecoil-companion).
