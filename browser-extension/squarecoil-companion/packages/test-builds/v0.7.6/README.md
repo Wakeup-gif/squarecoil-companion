@@ -1,0 +1,1 @@
+v0.7.6 test build repairs stale authority callback reconciliation. Live-profile verification remains required. Update existing unpacked extension folder, Reload and refresh SquareCoil. Do not uninstall or clear saved data. Evidence: ../../../implementation/AUTHORITY-MIGRATION-RECONCILIATION-2026-10-02.md. No main merge or stable release.
