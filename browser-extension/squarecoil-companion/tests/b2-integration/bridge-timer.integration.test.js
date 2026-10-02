@@ -1034,3 +1034,42 @@ test('IT-B2-MIG-COMPAT-003 failed migration persistence rolls back and imports o
     assert.deepEqual(sources, retained);
   } finally { await core.teardown(); await client.teardown(); }
 });
+
+
+test('IT-B2-MIG-PAD-001 live-profile padded shape preserves totals and reaches fresh Bridge without retained writes', async () => {
+  const fixture = createFixture();
+  const client = fixture.client(760, 'runtime-padded-migration');
+  const bridge = {};
+  const page = { clockedOut: true, fetches: 0 };
+  const padded = { key: 'job:001234', type: 'job', projectId: '001234', label: 'Fictional padded job',
+    accumulatedMs: 7_200_000, sessions: [{ id: 'padded-session', cycleId: 'padded-cycle',
+      startAt: 10_000, endAt: 3_610_000, durationMs: 3_600_000 }] };
+  const sources = migration073Sources({ schema: 3, contexts: { 'job:001234': padded },
+    active: null, pending: { key: 'job:001234' }, meta: { manualPausedKey: 'job:001234' } });
+  const retained = structuredClone(sources);
+  const core = createTrustedTransitionCore({ authorityClient: client, legacyStorage: readonly073Storage(sources),
+    now: () => fixture.clock.value, randomId: ids('padded'),
+    bridgeEnvironment: nativeBridgeEnvironment(fixture.clock, page), createBridge: nativeBridgeFactory(bridge) });
+  try {
+    const result = await core.ensure();
+    assert.equal(result.blocked, false);
+    assert.equal(result.preflight.disposition, 'COMPLETE_MATCH');
+    const migrated = fixture.area.read().document;
+    assert.equal(migrated.contexts['job:001234'], undefined);
+    assert.equal(migrated.contexts['job:1234'].projectId, '1234');
+    assert.equal(migrated.contexts['job:1234'].legacyUnattributedMs, 3_600_000);
+    assert.deepEqual(migrated.ledger.map(row => row.durationMs), [3_600_000, 3_600_000]);
+    assert.equal(migrated.timer.active, null);
+    assert.equal(migrated.timer.pending, null);
+    assert.equal(migrated.timer.localPause, null);
+    const revision = migrated.revision;
+    await core.settle();
+    assert.equal(fixture.area.read().document.revision, revision);
+    page.clockedOut = false;
+    fixture.clock.value = 2_000;
+    await core.verifyNow('fresh-post-padded-migration');
+    assert.equal(fixture.area.read().document.timer.active.contextId, 'job:260801');
+    assert.equal(bridge.value.snapshot().nativeMutationRequestCount, 0);
+    assert.deepEqual(sources, retained);
+  } finally { await core.teardown(); await client.teardown(); }
+});

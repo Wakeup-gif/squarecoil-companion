@@ -4988,6 +4988,9 @@ async function runUpgradeProfileSuite({ playwright, family, executablePath, pack
         legacy.active = null;
         legacy.pending = null;
         legacy.meta = { manualPausedKey: 'job:654321', observedClockKey: null };
+        legacy.contexts['job:00123456'] = { ...legacy.contexts['job:123456'],
+          key: 'job:00123456', projectId: '00123456' };
+        delete legacy.contexts['job:123456'];
         const rawLegacy = JSON.stringify(legacy);
         const stateBefore = await pageState(page);
         const storageBefore = await bridge.getStorage(['timerEnabled', AUTHORITY_STORAGE_KEY]);
@@ -5032,6 +5035,8 @@ async function runUpgradeProfileSuite({ playwright, family, executablePath, pack
         const markerBefore = authorityBefore?.migration?.completedSources?.['squarecoil-v07-localstorage-v1'];
 
         assert(markerBefore?.completionState === 'COMPLETE', 'Valid v0.7 migration completion marker is missing', markerBefore);
+        assert(authorityBefore?.contexts?.['job:00123456'] === undefined,
+          'Padded legacy identity was not canonicalized');
         assert(authorityBefore?.contexts?.['job:654321'] === undefined,
           'Orphan metadata fabricated a Context');
         assert(authorityBefore?.migration?.recoveryCandidates?.localPause === undefined,

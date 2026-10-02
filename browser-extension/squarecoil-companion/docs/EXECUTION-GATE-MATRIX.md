@@ -370,3 +370,17 @@ Exclusions: no retained-key writes, fallback authority, native clock mutations, 
 | MIG-073-003 | Same-core retry and repeat settlement import once and start Bridge only after COMPLETE_MATCH; fresh clock evidence owns new time. | IT-B2-MIG-COMPAT-001/002/003 | installed Chrome/Edge | BLOCKED: installed browsers unavailable; automated proof passed |
 
 Exact v0.7.3 automated/package proof and installed-browser limitations: `implementation/MIGRATION-STARTUP-REPAIR-2026-10-02.md`. REC-001/002 and affected migration startup evidence are reopened for this candidate; historical PASS remains source-bound.
+
+
+## Active v0.7.4 migration leading-zero identity repair
+
+Branch: fix/clock-detection-custom-dark-logo.
+Intent: repair the live demonstrated legacy-context-identity-invalid failure for a positive numeric job ID with leading zeros.
+Behavior: canonicalize digit-only positive IDs by the same string rule as the existing Bridge, keep original legacy aliases and retained bytes, preserve history/balances without additive double-counting, reject ambiguous IDs and conflicting sessions atomically.
+Impact tags: MIGRATION_STORAGE, TIMER_LEDGER, BRIDGE_OBSERVATION, SUPPORT_PRIVACY, PACKAGE_ARTIFACT, DOCS_ONLY.
+Contracts: L2 stable identity/atomic migration, L3 numeric project identity, L4 fresh observation, L6 preservation, L7 privacy.
+Targeted gates: migration/preflight/command/recovery, real kernel/router/client/core/Bridge compatibility, parser and theme regressions.
+Composed journey: leading-zero source + unrelated history -> COMPLETE_MATCH -> fresh Bridge observation; conflicting numeric aliases/session IDs -> rollback; explicit retry -> import once.
+Full candidate gate: yes after targeted gates pass.
+Exclusions: no source-key writes, guessed identity, imported live state, native mutation, main merge or stable publication.
+Proof: UT-B2-MIG-PAD-001/002, IT-B2-MIG-PAD-001. State: MAPPED; installed/live profile proof remains unverified.

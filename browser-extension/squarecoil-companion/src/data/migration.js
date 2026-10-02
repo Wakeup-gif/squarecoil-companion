@@ -196,7 +196,7 @@ function normalizeContextIdentity(legacyKey, raw) {
   const explicitKind = String(raw.kind || raw.type || '').trim().toLowerCase();
   const rawProjectId = String(raw.projectId ?? '').trim();
   const key = String(raw.contextId || raw.key || legacyKey || '').trim();
-  const keyJob = key.match(/^job:([1-9]\d*)$/i);
+  const keyJob = key.match(/^job:(\d+)$/i);
   const isGeneral = explicitKind === 'general' || rawProjectId === '0' || /^general:/i.test(key);
 
   if (isGeneral) {
@@ -205,10 +205,33 @@ function normalizeContextIdentity(legacyKey, raw) {
     return { contextId, kind: 'general', projectId: null };
   }
 
-  const projectId = /^[1-9]\d*$/.test(rawProjectId)
-    ? rawProjectId
-    : keyJob && keyJob[1];
+  // Match the Bridge's digit-only, string-based numeric ID normalization.
+  // Never use Number: it loses precision for long IDs. Retained source aliases
+  // are bound by collectContextGroups; the original source bytes remain intact.
+  const canonicalId = value => {
+    if (!/^\d+$/.test(value)) return null;
+    const normalized = value.replace(/^0+(?=\d)/, '');
+    return normalized !== '0' ? normalized : null;
+  };
+  const explicitId = canonicalId(rawProjectId);
+  const keyId = keyJob && canonicalId(keyJob[1]);
+  const projectId = explicitId || keyId;
   if (!projectId) return null;
+  const aliases = [legacyKey, raw.key, raw.contextId].map(value => String(value || '').trim());
+  const padded = /^0\d+$/.test(rawProjectId) || aliases.some(value => /^job:0\d+$/i.test(value));
+  if (padded) {
+    if (rawProjectId && !explicitId) return null;
+    // Normalization must not silently choose between contradictory identities.
+    for (const alias of aliases) {
+      const match = alias.match(/^job:(\d+)$/i);
+      if (match && canonicalId(match[1]) !== projectId) {
+        throw migrationError('legacy-context-identity-conflict');
+      }
+    }
+    if (explicitId && keyId && explicitId !== keyId) {
+      throw migrationError('legacy-context-identity-conflict');
+    }
+  }
   return { contextId: 'job:' + projectId, kind: 'job', projectId };
 }
 

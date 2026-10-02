@@ -504,3 +504,58 @@ test('UT-B2-MIG-25 ambiguous raw Context aliases fail instead of selecting the l
   );
   assert.deepEqual(original, before);
 });
+
+
+test('UT-B2-MIG-PAD-001 leading-zero numeric identities share Bridge canonical identity and preserve history', () => {
+  const raw = JSON.stringify({ contexts: {
+    'job:001234': context({ key: 'job:001234', projectId: '001234', accumulatedMs: 2 * HOUR_MS,
+      sessions: [session('padded-history', BASE_MS, BASE_MS + HOUR_MS)] })
+  }, active: null, pending: null });
+  const archive = JSON.stringify({ contexts: {
+    'job:1234': context({ key: 'job:1234', projectId: '1234', accumulatedMs: HOUR_MS,
+      sessions: [session('padded-history', BASE_MS, BASE_MS + HOUR_MS)] })
+  } });
+  const original = emptyDocument();
+  const result = migrate(sources(raw, archive), original);
+  assert.equal(result.migrated, true);
+  assert.deepEqual(Object.keys(result.document.contexts), ['job:1234']);
+  assert.equal(result.document.contexts['job:1234'].projectId, '1234');
+  assert.equal(result.document.contexts['job:1234'].legacyUnattributedMs, HOUR_MS);
+  assert.equal(result.document.ledger.length, 1);
+  assert.equal(result.document.ledger[0].durationMs, HOUR_MS);
+  assert.equal(timerIsIdle(result.document), true);
+  assert.deepEqual(original, emptyDocument());
+  const retry = migrate(sources(raw, archive), result.document);
+  assert.equal(retry.migrated, false);
+  assert.deepEqual(retry.document, result.document);
+  for (const id of ['001234', '000123456789012345678901234567890']) {
+    const onlyKey = migrate(sources({ contexts: {
+      ['job:' + id]: context({ key: 'job:' + id, projectId: null })
+    } }));
+    assert.equal(onlyKey.document.contexts['job:' + id.replace(/^0+/, '')].projectId, id.replace(/^0+/, ''));
+  }
+});
+
+test('UT-B2-MIG-PAD-002 padded identity normalization never accepts zero malformed or conflicting jobs', () => {
+  for (const [key, pid, code] of [
+    ['job:000000', '000000', 'legacy-context-identity-invalid'],
+    ['job:00x123', '00x123', 'legacy-context-identity-invalid'],
+    ['job:1234', '000000', 'legacy-context-identity-invalid'],
+    ['job:001234', 'malformed', 'legacy-context-identity-invalid'],
+    ['job:001234', '5678', 'legacy-context-identity-conflict'],
+    ['job:5678', '001234', 'legacy-context-identity-conflict']
+  ]) {
+    const original = emptyDocument();
+    assert.throws(() => migrate(sources({ contexts: { [key]: context({ key, projectId: pid }) } }), original),
+      error => error.code === code);
+    assert.deepEqual(original, emptyDocument());
+  }
+  const original = emptyDocument();
+  assert.throws(() => migrate(sources({ contexts: {
+    'job:001234': context({ key: 'job:001234', projectId: '001234',
+      sessions: [session('collision', BASE_MS, BASE_MS + HOUR_MS)] }),
+    'job:1234': context({ key: 'job:1234', projectId: '1234',
+      sessions: [session('collision', BASE_MS + HOUR_MS, BASE_MS + 2 * HOUR_MS)] })
+  } }), original), error => error.code === 'legacy-session-id-conflict');
+  assert.deepEqual(original, emptyDocument());
+});
