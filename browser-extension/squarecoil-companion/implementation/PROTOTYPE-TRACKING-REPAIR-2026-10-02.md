@@ -43,6 +43,18 @@ These use the real kernel, router, client, trusted core, Bridge and Timer with f
 
 Branded Chrome/Edge are unavailable. Supplemental Chromium unpacked loading was rejected by administrator policy in the previous candidate attempt; that unchanged policy is respected. Installed clean/upgrade acceptance, the user's actual migration, active-job detection and wall-clock accrual remain unverified. No main merge, deployment, stable release, credential change, permission change or policy bypass occurred.
 
+## Exact test package
+
+Clean implementation source: `52d5f6b68ddb956fa167a450f067b09710baa9f0`.
+Version: `0.7.7`; version name: `0.7.7 Prototype Tracking Repair TEST`; channel: `test`.
+Candidate fingerprint: `9a7575d2a3d0d854567230cc6a71382dd4590579889d90eb634d9beadf006b5f`.
+Canonical inventory: **16 files**; embedded `sourceDirty: false`.
+Chrome and Edge ZIP SHA-256: `d6ffa02f498f91b7d61b75e6729c1ec4e624066e214a53479bbea75c2263d5e9`; each **397,860 bytes**.
+
+The clean-source package and both independently extracted ZIPs pass exact-source/package validation. Every extracted file matches its canonical packaged byte content and ZIP integrity checks pass. Test artifacts: `packages/test-builds/v0.7.7/SquareCoil-Companion-v0.7.7-TEST-CHROME.zip` and `SquareCoil-Companion-v0.7.7-TEST-EDGE.zip`. Detailed validation JSON and roundtrip proof: `/workspace/artifacts/squarecoil-v0.7.7/`.
+
+The following artifact/evidence commit records these package bytes without changing packaged inputs. Its GitHub download paths will be checked against this ZIP hash before reporting a verified link. The implementation source SHA above remains the SHA embedded in the package.
+
 ## Next live check
 
 Use the new TEST package in the existing extension folder, Reload the same extension, and refresh SquareCoil. Preserve its extension identity and data; do not uninstall or clear storage. Confirm current clock Context, verify that a previously remembered Context offers Resume, then inspect finalized History. If Limited remains, provide Copy diagnostics with Core authority, Migration, Migration error and Bridge so the next repair follows the actual remaining cause.
